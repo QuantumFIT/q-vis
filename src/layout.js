@@ -103,7 +103,13 @@ export function layoutFrames(dd, frames, opts = {}) {
       // The zero terminal is a sink every diagram has; pinning it to the right keeps it
       // from shuffling the useful terminals around as the state changes.
       const zeroLast = ids.filter((id) => id !== dd.zero).concat(ids.filter((id) => id === dd.zero));
-      const ordered = stableOrder(zeroLast, prevRank);
+      // Internal nodes are anonymous, so their position *is* their identity and it must
+      // persist. Terminals carry their value as a label, so a reader finds "(1-i)/4" by
+      // reading it, not by remembering where it was — which frees the terminal row to be
+      // ordered for legibility instead. Following the scan there removes the edge
+      // crossings that stability would otherwise force after a gate reshuffles the tree
+      // above a set of terminals that all persisted (a SWAP does exactly this).
+      const ordered = lev === dd.nvars ? zeroLast : stableOrder(zeroLast, prevRank);
       width = Math.max(width, ordered.length);
       ordered.forEach((id, i) => {
         rank.set(id, i);

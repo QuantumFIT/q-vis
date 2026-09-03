@@ -138,12 +138,14 @@ function resetCanvas() {
   svg.setAttribute('aria-label', 'decision diagram of the quantum state');
 
   const rules = svgEl('g', { class: 'rules' });
+  app.ruleEls = new Map();
   for (let lev = 0; lev < n; lev++) {
     const y = yOf(lev);
-    rules.append(svgEl('line', { class: 'level-rule', x1: gutter - 6, y1: y, x2: W - 8, y2: y }));
+    const line = svgEl('line', { class: 'level-rule', x1: gutter - 6, y1: y, x2: W - 8, y2: y });
     const t = svgEl('text', { class: 'gutter', x: gutter - 16, y });
     t.textContent = app.circuit.qubits[lev].label;
-    rules.append(t);
+    rules.append(line, t);
+    app.ruleEls.set(lev, [line, t]);   // marked per frame with the current gate's qubits
   }
   // The terminal row is a different kind of thing: give it a solid rule of its own.
   const bandY = yOf(n) - GEO.levelH / 2;
@@ -151,6 +153,22 @@ function resetCanvas() {
   const bt = svgEl('text', { class: 'gutter band', x: gutter - 16, y: yOf(n) });
   bt.textContent = BAND_LABEL;
   rules.append(bt);
+
+  // Which line is dashed and which is solid is the one convention a reader cannot guess,
+  // so the plate states it. Drawn with the same classes as real edges, so it survives
+  // into an exported SVG and always matches what the diagram above it is doing.
+  const ly = H - 13;
+  const lc = svgEl('text', { class: 'gutter band', x: gutter - 16, y: ly });
+  lc.textContent = 'EDGE';
+  rules.append(lc);
+  let lx = gutter - 6;
+  for (const [kind, value] of [['low', '0'], ['high', '1']]) {
+    rules.append(svgEl('path', { class: `edge ${kind}`, d: `M${lx},${ly} L${lx + 18},${ly}` }));
+    const cap = svgEl('text', { class: 'gutter legend-cap', x: lx + 24, y: ly });
+    cap.textContent = value;
+    rules.append(cap);
+    lx += 48;
+  }
 
   svg.append(rules, svgEl('g', { class: 'edges' }), svgEl('g', { class: 'nodes' }));
   $('canvas').replaceChildren(svg);
@@ -214,6 +232,14 @@ function setFrame(i) {
 
 function drawFrame(f) {
   const pos = new Map(f.nodes.map((n) => [n.id, n]));
+
+  // Mark the qubits this gate acted on. Without it the score strip says "CX q[0] q[1]"
+  // and the reader has to find those levels by counting.
+  const touched = new Set(f.gate ? f.gate.qubits : []);
+  for (const [lev, els] of app.ruleEls) {
+    for (const el of els) el.classList.toggle('acting', touched.has(lev));
+  }
+
   const nodesG = app.svg.querySelector('.nodes');
   const edgesG = app.svg.querySelector('.edges');
 
@@ -429,6 +455,9 @@ function exportSvg() {
     .band-rule { stroke: ${v('--rule')}; stroke-width: 1 }
     .gutter { fill: ${v('--ink-faint')}; font: 10px monospace; text-anchor: end; dominant-baseline: middle }
     .gutter.band { font: 9px sans-serif; letter-spacing: .1em }
+    .gutter.legend-cap { text-anchor: start }
+    .level-rule.acting { stroke: ${v('--accent')}; opacity: .55 }
+    .gutter.acting { fill: ${v('--accent')} }
     .edge { fill: none; stroke: ${v('--ink')}; stroke-width: 1.1; opacity: .62 }
     .edge.low { stroke-dasharray: 3.5 2.5 }
     .edge.to-zero { opacity: .22 }

@@ -256,10 +256,15 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 
 /* ---- diagram ---------------------------------------------------------- */
 
-.level-rule { stroke: var(--rule-soft); stroke-width: 1; stroke-dasharray: 1 5; }
+.level-rule { stroke: var(--rule-soft); stroke-width: 1; stroke-dasharray: 1 5; transition: stroke .3s, opacity .3s; }
+/* The qubits the current gate acts on, so the score strip and the plate line up. */
+.level-rule.acting { stroke: var(--accent); opacity: 0.55; }
+.gutter.acting { fill: var(--accent); }
+.gutter.legend-cap { text-anchor: start; }
 .band-rule { stroke: var(--rule); stroke-width: 1; }
 .gutter {
   fill: var(--ink-faint);
+  transition: fill .3s;
   font: 10px/1 var(--mono);
   text-anchor: end;
   dominant-baseline: middle;

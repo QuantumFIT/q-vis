@@ -50,14 +50,14 @@ test('a surviving node never jumps across its neighbours between frames', () => 
     const prev = new Map(laid.frames[i - 1].nodes.map((nd) => [nd.id, nd]));
     const byLevel = new Map();
     for (const nd of laid.frames[i].nodes) {
-      if (!prev.has(nd.id)) continue;
+      if (!prev.has(nd.id) || nd.terminal) continue;   // terminals are ordered for legibility
       if (!byLevel.has(nd.level)) byLevel.set(nd.level, []);
       byLevel.get(nd.level).push(nd);
     }
     for (const group of byLevel.values()) {
       const nowOrder = [...group].sort((a, b) => a.x - b.x).map((nd) => nd.id);
       const thenOrder = [...group].sort((a, b) => prev.get(a.id).x - prev.get(b.id).x).map((nd) => nd.id);
-      assert.deepEqual(nowOrder, thenOrder, `frame ${i}: survivors reordered`);
+      assert.deepEqual(nowOrder, thenOrder, `frame ${i}: surviving internal nodes reordered`);
     }
   }
 });
@@ -92,6 +92,41 @@ test('no two nodes share a slot, and terminals sit on the bottom row', () => {
   // Amplitudes are what terminals are labelled with.
   const last = laid.frames[laid.frames.length - 1];
   assert.deepEqual(last.nodes.filter((nd) => nd.terminal).map((nd) => nd.label).sort(), ['0', '1/√2']);
+});
+
+test('the terminal row follows the scan, so a tree of distinct amplitudes has no crossings', () => {
+  // QFT gives every basis state its own amplitude and ends with a swap, which is the
+  // case where holding terminals in their previous positions forces edges to cross.
+  const m = new MTBDD(P.Ring, 3);
+  const gates = [
+    { name: 'h', qubits: [0] }, { name: 'cs', qubits: [1, 0] }, { name: 'ct', qubits: [2, 0] },
+    { name: 'h', qubits: [1] }, { name: 'cs', qubits: [2, 1] }, { name: 'h', qubits: [2] },
+    { name: 'swap', qubits: [0, 2] },
+  ];
+  const frames = simulate(m, m.basisState('101', P.one), { nqubits: 3, gates });
+  const laid = layoutFrames(m, frames);
+  const last = laid.frames[laid.frames.length - 1];
+
+  const scan = scanOrder(m, last.root);
+  const terminals = last.nodes.filter((nd) => nd.terminal && nd.label !== '0');
+  assert.equal(terminals.length, 8, 'all eight amplitudes are distinct');
+  const byX = [...terminals].sort((a, b) => a.x - b.x).map((nd) => nd.id);
+  const byScan = [...terminals].sort((a, b) => scan.get(a.id) - scan.get(b.id)).map((nd) => nd.id);
+  assert.deepEqual(byX, byScan, 'terminals are laid out in scan order');
+
+  // With the terminals in scan order the last level of a tree draws without crossings.
+  const pos = new Map(last.nodes.map((nd) => [nd.id, nd]));
+  const toTerminals = last.edges
+    .filter((e) => pos.get(e.to).terminal && pos.get(e.to).label !== '0')
+    .map((e) => [pos.get(e.from).x + (e.high ? 0.05 : -0.05), pos.get(e.to).x]);
+  let crossings = 0;
+  for (let a = 0; a < toTerminals.length; a++) {
+    for (let b = a + 1; b < toTerminals.length; b++) {
+      const [x1, y1] = toTerminals[a], [x2, y2] = toTerminals[b];
+      if ((x1 - x2) * (y1 - y2) < 0) crossings++;
+    }
+  }
+  assert.equal(crossings, 0, 'no edge into the amplitude row crosses another');
 });
 
 test('the zero terminal is pinned to the right of the terminal row', () => {
