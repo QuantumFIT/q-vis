@@ -95,7 +95,10 @@ export function layoutFrames(dd, frames, opts = {}) {
 
     const rank = new Map();
     const nodes = [];
-    const fresh = new Set(frame.added || []);
+    // Frame 0 is the input state, not a change to it. Flagging every node there as new
+    // would paint the whole opening diagram in the "just changed" colour and so make the
+    // colour meaningless exactly where the reader first looks.
+    const fresh = frame.index === 0 ? new Set() : new Set(frame.added || []);
     for (const [lev, ids] of [...byLevel].sort((a, b) => a[0] - b[0])) {
       // The zero terminal is a sink every diagram has; pinning it to the right keeps it
       // from shuffling the useful terminals around as the state changes.

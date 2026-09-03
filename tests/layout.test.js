@@ -111,7 +111,8 @@ test('freshly created nodes are flagged for highlighting', () => {
   const m = new MTBDD(P.Ring, 2);
   const frames = simulate(m, m.basisState('00', P.one), { nqubits: 2, gates: [{ name: 'h', qubits: [0] }] });
   const laid = layoutFrames(m, frames);
-  assert.ok(laid.frames[0].nodes.every((nd) => nd.fresh), 'everything in the first frame is new');
+  assert.ok(laid.frames[0].nodes.every((nd) => !nd.fresh),
+    'the input state is not a change, so nothing in frame 0 is flagged');
   const after = laid.frames[1];
   assert.deepEqual(after.nodes.filter((nd) => nd.fresh).map((nd) => nd.id).sort(),
     [...frames[1].added].sort(), 'later frames flag exactly the added nodes');

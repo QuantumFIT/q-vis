@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>quantum-vis — MTBDD state evolution</title>
+<link rel="stylesheet" href="src/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="masthead">
+    <span class="wordmark">quantum<span>-</span>vis</span>
+    <span class="tagline">how the decision diagram of a quantum state changes, gate by gate</span>
+    <span class="spacer"></span>
+    <label class="toggle"><input type="checkbox" id="hideZero"> hide the 0 terminal</label>
+  </header>
+
+  <section class="inputs">
+    <div class="panel" style="flex:1 1 auto">
+      <header>
+        <span class="label">Circuit</span>
+        <span class="spacer"></span>
+        <select id="example" aria-label="load an example"></select>
+      </header>
+      <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
+    </div>
+
+    <div class="panel">
+      <header>
+        <span class="label">Input state</span>
+        <span class="spacer"></span>
+        <span class="hint">basis : amplitude</span>
+      </header>
+      <textarea id="stateText" spellcheck="false" aria-label="input state"></textarea>
+      <p class="note" id="note"></p>
+      <p class="error" id="error" role="alert"></p>
+    </div>
+
+    <div class="panel" style="flex:1 1 auto">
+      <header>
+        <span class="label">Amplitudes</span>
+        <span class="spacer"></span>
+        <span class="hint">– is either value</span>
+      </header>
+      <div id="readout"></div>
+    </div>
+  </section>
+
+  <main class="plate">
+    <nav class="score" id="score" aria-label="circuit steps"></nav>
+    <div class="canvas" id="canvas"></div>
+  </main>
+
+  <footer class="transport">
+    <button id="prev" title="previous gate (← / Home)">‹</button>
+    <button id="play" title="play through the circuit (space)">▶</button>
+    <button id="next" title="next gate (→ / End)">›</button>
+    <span class="stat" id="position"></span>
+    <span class="spacer"></span>
+    <span class="stat" id="stats"></span>
+    <span class="spacer"></span>
+    <button id="export" title="save the current diagram as an SVG file">export SVG</button>
+  </footer>
+</div>
+<script type="module">
+  import { boot } from './src/ui.js';
+  boot();
+</script>
+</body>
+</html>

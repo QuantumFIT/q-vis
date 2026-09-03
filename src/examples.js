@@ -1,0 +1,113 @@
+// Worked examples. Each one is chosen to show something about the *diagram*, not just
+// about the circuit — the comment on each says what to watch.
+
+export const EXAMPLES = [
+  {
+    name: 'Bell pair',
+    note: 'Two amplitudes, one shared terminal: the diagram splits only where the state does.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+
+h q[0];
+cx q[0],q[1];
+`,
+    state: '|00> : 1',
+  },
+  {
+    name: 'GHZ, 5 qubits',
+    note: 'The diagram grows by two nodes per qubit, never exponentially.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[5];
+
+h q[0];
+cx q[0],q[1];
+cx q[1],q[2];
+cx q[2],q[3];
+cx q[3],q[4];
+`,
+    state: '|00000> : 1',
+  },
+  {
+    name: 'Uniform superposition, 8 qubits',
+    note: '256 equal amplitudes collapse to a single terminal — every level becomes a don\'t-care.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[8];
+
+h q;
+`,
+    state: '|00000000> : 1',
+  },
+  {
+    name: 'Symbolic input',
+    note: 'Amplitudes are the symbols a and b: watch the terminals become sums.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+
+h q[0];
+cx q[0],q[1];
+h q[1];
+`,
+    state: `|00> : a
+|10> : b`,
+  },
+  {
+    name: 'QFT, 3 qubits',
+    note: 'Every amplitude differs by a phase, so nothing can be shared: the worst case for a diagram.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[3];
+
+h q[0];
+cu1(pi/2) q[1],q[0];
+cu1(pi/4) q[2],q[0];
+barrier q;
+h q[1];
+cu1(pi/2) q[2],q[1];
+barrier q;
+h q[2];
+swap q[0],q[2];
+`,
+    state: '|101> : 1',
+  },
+  {
+    name: 'Grover, 2 qubits',
+    note: 'One iteration is enough here: the state collapses onto |11> and the diagram with it.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+
+h q[0];
+h q[1];
+barrier q;
+cz q[0],q[1];
+barrier q;
+h q[0];
+h q[1];
+x q[0];
+x q[1];
+cz q[0],q[1];
+x q[0];
+x q[1];
+h q[0];
+h q[1];
+`,
+    state: '|00> : 1',
+  },
+  {
+    name: 'Don\'t-care patterns',
+    note: 'A dash matches either value of that qubit — the input itself is written as a diagram.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[4];
+
+cx q[0],q[3];
+h q[1];
+`,
+    state: `0--0 : 1/(2*sqrt2)
+1--1 : 1/(2*sqrt2)`,
+  },
+];
