@@ -152,3 +152,35 @@ test('freshly created nodes are flagged for highlighting', () => {
   assert.deepEqual(after.nodes.filter((nd) => nd.fresh).map((nd) => nd.id).sort(),
     [...frames[1].added].sort(), 'later frames flag exactly the added nodes');
 });
+
+test('the unreduced tree marks every subtree that is entirely zero', () => {
+  const m = new MTBDD(P.Ring, 3);
+  // |000> + |001>, i.e. only the subtree under q0=0,q1=0 carries anything.
+  const h = P.fromZ(Z.INV_SQRT2);
+  const root = m.fromAmplitudes([['000', h], ['001', h]]);
+  const laid = layoutFrames(m, [{ index: 0, gate: null, root, added: [] }], { expand: true });
+  const f = laid.frames[0];
+  const byId = new Map(f.nodes.map((nd) => [nd.id, nd]));
+
+  assert.equal(f.nodes.length, 15, 'a 3-qubit tree is 2^4-1 nodes whatever the state');
+  // Complete-tree numbering: id = 2^level - 1 + path.
+  assert.equal(byId.get(0).zero, false, 'the root carries amplitude');
+  assert.equal(byId.get(1).zero, false, 'q0=0 leads to the live subtree');
+  assert.equal(byId.get(2).zero, true, 'q0=1 is entirely zero');
+  assert.equal(byId.get(3).zero, false, 'q0=0,q1=0 is live');
+  assert.equal(byId.get(4).zero, true, 'q0=0,q1=1 is entirely zero');
+  // Both leaves under the live node carry 1/√2, so neither is zero.
+  assert.equal(byId.get(7).zero, false);
+  assert.equal(byId.get(8).zero, false);
+  // Every node below an all-zero node is itself all-zero.
+  for (const nd of f.nodes) {
+    if (nd.terminal || !nd.zero) continue;
+    for (const e of f.edges.filter((x) => x.from === nd.id)) {
+      assert.ok(byId.get(e.to).zero, `child of zero-only node ${nd.id} must be zero-only`);
+      assert.ok(e.toZero, 'and the edge to it is marked');
+    }
+  }
+  // Hiding them leaves only the paths the state occupies.
+  const kept = f.nodes.filter((nd) => !nd.zero);
+  assert.deepEqual(kept.map((nd) => nd.id).sort((a, b) => a - b), [0, 1, 3, 7, 8]);
+});

@@ -10,9 +10,12 @@ import { layoutFrames } from './layout.js';
 import { EXAMPLES } from './examples.js';
 
 const GEO = { gutter: 72, padTop: 46, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
-// Small diagrams are magnified, large ones shrunk, but never past these limits: past them
-// the plate stops looking like a drawing and starts looking like a mistake.
-const SCALE_RANGE = [0.3, 1.5];
+// Small diagrams are magnified, large ones shrunk, but never past these limits. The floor
+// "Fit" really fits, however wide the diagram: it is the overview, and zooming is how you
+// read the detail. The ceiling stops a two-node diagram from being blown up absurdly.
+const SCALE_RANGE = [0.12, 1.5];
+const ZOOM_RANGE = [0.15, 8];
+const ZOOM_STEP = 1.25;
 const BAND_LABEL = 'AMPLITUDE';
 const MAX_DRAWN_NODES = 800;
 const MAX_READOUT_LINES = 14;
@@ -29,6 +32,9 @@ const app = {
   timer: null,
   hideZero: false,
   expand: false,
+  theme: 'auto',
+  zoom: 'fit',
+  scale: 1,
   nodeEls: new Map(),
   edgeEls: new Map(),
   exiting: new Map(),
@@ -76,6 +82,7 @@ function compile() {
   app.index = Math.min(app.index, frames.length - 1);
 
   $('error').textContent = '';
+  app.zoom = 'fit';
   // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
   // drawable nor informative.
   const big = circuit.nqubits > 10;
@@ -201,16 +208,47 @@ function resetCanvas() {
   fitCanvas();
 }
 
-/** Size the plate to the diagram, within limits. Called on redraw and on resize. */
-function fitCanvas() {
-  if (!app.svg || !app.geom) return;
+/** The scale at which the whole diagram is visible at once. */
+function fitScale() {
   const box = $('canvas');
   const { W, H } = app.geom;
   const raw = Math.min((box.clientWidth - 16) / W, (box.clientHeight - 16) / H);
-  const scale = Math.max(SCALE_RANGE[0], Math.min(raw || 1, SCALE_RANGE[1]));
+  return Math.max(SCALE_RANGE[0], Math.min(raw || 1, SCALE_RANGE[1]));
+}
+
+/** Apply the current zoom — either the fitted scale or an explicit one. */
+function fitCanvas() {
+  if (!app.svg || !app.geom) return;
+  const { W, H } = app.geom;
+  const scale = app.zoom === 'fit' ? fitScale() : app.zoom;
+  app.scale = scale;
   app.svg.style.width = `${Math.round(W * scale)}px`;
   app.svg.style.height = `${Math.round(H * scale)}px`;
+  $('zoomLevel').textContent = app.zoom === 'fit' ? 'fit' : `${Math.round(scale * 100)}%`;
 }
+
+/**
+ * Zoom, keeping the point under `clientX/clientY` fixed — otherwise zooming in on a
+ * detail throws it off screen and the reader has to hunt for it again.
+ * @param {number|'fit'} next
+ */
+function setZoom(next, clientX, clientY) {
+  if (!app.svg) return;
+  const box = $('canvas');
+  const before = app.scale;
+  app.zoom = next === 'fit' ? 'fit' : Math.max(ZOOM_RANGE[0], Math.min(next, ZOOM_RANGE[1]));
+  const rect = app.svg.getBoundingClientRect();
+  const ax = clientX === undefined ? rect.left + rect.width / 2 : clientX;
+  const ay = clientY === undefined ? rect.top + rect.height / 2 : clientY;
+  const contentX = (ax - rect.left) / before;
+  const contentY = (ay - rect.top) / before;
+  fitCanvas();
+  box.scrollLeft += contentX * (app.scale - before);
+  box.scrollTop += contentY * (app.scale - before);
+}
+
+const zoomBy = (factor) => setZoom(app.scale * factor);
+const zoomAt = (factor, x, y) => setZoom(app.scale * factor, x, y);
 
 const yOf = (level) => GEO.padTop + level * GEO.levelH;
 // Every frame shares one grid, anchored at the layout's leftmost slot, so a node's
@@ -303,6 +341,8 @@ function drawFrame(f) {
 
   const rootNode = pos.get(f.root);
   app.rootMarker.setAttribute('transform', `translate(${xOf(rootNode)},${yOf(rootNode.level)})`);
+  // A state that is zero everywhere hides its own root; the arrow must not outlive it.
+  app.rootMarker.style.display = hidden(rootNode) ? 'none' : '';
 
   for (const node of f.nodes) {
     if (hidden(node)) continue;
@@ -523,6 +563,17 @@ function exportSvg() {
 // ---- wiring -------------------------------------------------------------
 
 const STORE = 'quantum-vis:v1';
+const THEME_STORE = 'quantum-vis:theme';
+const THEMES = ['auto', 'light', 'dark'];
+
+/** 'auto' follows the system; the other two pin it. Kept per viewer, not in the file. */
+function applyTheme(name) {
+  app.theme = name;
+  if (name === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', name);
+  $('theme').textContent = name;
+  try { localStorage.setItem(THEME_STORE, name); } catch { /* storage may be unavailable */ }
+}
 
 function save() {
   try {
@@ -568,6 +619,38 @@ export function boot() {
   $('next').addEventListener('click', () => { stop(); step(1); });
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
+  $('zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
+  $('zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
+  $('zoomLevel').addEventListener('click', () => setZoom('fit'));
+
+  // Wheel scrolls, ctrl/⌘ + wheel zooms — which is also what a trackpad pinch sends.
+  $('canvas').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY / 300), e.clientX, e.clientY);
+  }, { passive: false });
+
+  // Drag anywhere on the plate to pan, which beats hunting for a scrollbar.
+  const box = $('canvas');
+  let panning = null;
+  box.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    panning = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+    box.setPointerCapture(e.pointerId);
+    box.classList.add('panning');
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (!panning) return;
+    box.scrollLeft = panning.left - (e.clientX - panning.x);
+    box.scrollTop = panning.top - (e.clientY - panning.y);
+  });
+  for (const ev of ['pointerup', 'pointercancel']) {
+    box.addEventListener(ev, () => { panning = null; box.classList.remove('panning'); });
+  }
+
+  $('theme').addEventListener('click', () => {
+    applyTheme(THEMES[(THEMES.indexOf(app.theme) + 1) % THEMES.length]);
+  });
   $('expand').addEventListener('change', (e) => {
     app.expand = e.target.checked;
     compile();
@@ -581,6 +664,11 @@ export function boot() {
 
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey) return;
+    const zoomKeys = {
+      '+': () => zoomBy(ZOOM_STEP), '=': () => zoomBy(ZOOM_STEP),
+      '-': () => zoomBy(1 / ZOOM_STEP), '0': () => setZoom('fit'),
+    };
+    if (zoomKeys[e.key]) { e.preventDefault(); zoomKeys[e.key](); return; }
     const keys = {
       ArrowRight: () => step(1), ArrowLeft: () => step(-1),
       Home: () => setFrame(0), End: () => setFrame(app.layout.frames.length - 1),
@@ -588,6 +676,13 @@ export function boot() {
     if (e.key === ' ') { e.preventDefault(); play(); return; }
     if (keys[e.key]) { e.preventDefault(); stop(); keys[e.key](); }
   });
+
+  let theme = 'auto';
+  try {
+    const stored = localStorage.getItem(THEME_STORE);
+    if (THEMES.includes(stored)) theme = stored;
+  } catch { /* storage may be unavailable */ }
+  applyTheme(theme);
 
   const saved = load();
   if (saved) {

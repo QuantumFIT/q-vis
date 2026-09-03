@@ -27,8 +27,10 @@
   --col: 340px;
 }
 
+/* Three states, because a viewer may want to override the system: no attribute follows
+ * prefers-color-scheme, data-theme pins it. The same tokens serve both overrides. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #0d1418;
     --plate: #131c22;
     --panel: #111a1f;
@@ -41,6 +43,22 @@
     --accent-soft: #3d1a2b;
   }
 }
+
+:root[data-theme="dark"] {
+    --paper: #0d1418;
+    --plate: #131c22;
+    --panel: #111a1f;
+    --ink: #dbe5ea;
+    --ink-soft: #8ea0ab;
+    --ink-faint: #5d6f7a;
+    --rule: #33454f;
+    --rule-soft: #29373f;
+    --accent: #ff74b1;
+    --accent-soft: #3d1a2b;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -247,12 +265,15 @@ button:disabled { color: var(--ink-faint); cursor: default; }
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
   overflow: auto;
   padding: 8px;
 }
-.canvas svg { display: block; flex: 0 0 auto; }
+/* auto margins rather than justify/align centring: they centre a diagram that fits and,
+   unlike centring, do not clip the leading edge of one that overflows and scrolls. */
+.canvas svg { display: block; flex: 0 0 auto; margin: auto; }
+.canvas { cursor: grab; }
+.canvas.panning { cursor: grabbing; }
+.canvas.panning .node { pointer-events: none; }
 
 /* ---- diagram ---------------------------------------------------------- */
 
@@ -340,6 +361,15 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 }
 .stat b { color: var(--ink); font-weight: 500; }
 .stat .delta { color: var(--accent); }
+
+#zoomLevel { min-width: 46px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+#theme {
+  min-width: 52px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
 
 .toggle {
   display: inline-flex;

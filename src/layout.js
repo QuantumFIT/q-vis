@@ -195,6 +195,19 @@ function layoutTrees(dd, frames, labels) {
       values.push(dd.evaluate(frame.root, p.toString(2).padStart(n, '0')));
     }
 
+    // A node counts as zero when everything under it is zero, not just when it is the
+    // zero leaf itself. In a reduced diagram those subtrees collapse into the single 0
+    // terminal; a tree keeps them, and they are pure scaffolding — so they dim together
+    // and hide together, leaving exactly the paths the state actually occupies.
+    const zeroOnly = new Array(2 ** (n + 1) - 1);
+    for (let p = 0; p < leaves; p++) zeroOnly[idOf(n, p)] = dd.ring.isZero(values[p]);
+    for (let level = n - 1; level >= 0; level--) {
+      for (let path = 0; path < 2 ** level; path++) {
+        zeroOnly[idOf(level, path)] =
+          zeroOnly[idOf(level + 1, path * 2)] && zeroOnly[idOf(level + 1, path * 2 + 1)];
+      }
+    }
+
     const nodes = [];
     const edges = [];
     for (let level = 0; level <= n; level++) {
@@ -208,7 +221,7 @@ function layoutTrees(dd, frames, labels) {
           x: xOf(level, path),
           y: level,
           terminal,
-          zero: terminal && dd.ring.isZero(value),
+          zero: zeroOnly[id],
           label: terminal ? dd.ring.format(value) : labels[level],
           // An unreduced tree never changes shape, so "new" can only mean "this
           // amplitude is not what it was before this gate".
@@ -221,7 +234,7 @@ function layoutTrees(dd, frames, labels) {
             from: id,
             to: idOf(level + 1, childPath),
             high,
-            toZero: level + 1 === n && dd.ring.isZero(values[childPath]),
+            toZero: zeroOnly[idOf(level + 1, childPath)],
           });
         }
       }
