@@ -176,5 +176,7 @@ export function formatParts(a) {
 export function format(a) {
   const { num, den, terms } = formatParts(a);
   if (den === '') return num;
-  return `${terms > 1 ? `(${num})` : num}/${den}`;
+  // "1/(2√2)" rather than "1/2√2", which reads as (1/2)·√2.
+  const d = /^\d+√2$/.test(den) ? `(${den})` : den;
+  return `${terms > 1 ? `(${num})` : num}/${d}`;
 }

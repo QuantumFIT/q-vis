@@ -136,10 +136,11 @@ export function format(p) {
     if (num === '1') head = ms;
     else if (num === '-1') head = '-' + ms;
     else head = `${terms > 1 ? `(${num})` : num}${ms}`;
-    parts.push(den === '' ? head : `${head}/${den}`);
+    const d = /^\d+√2$/.test(den) ? `(${den})` : den;
+    parts.push(den === '' ? head : `${head}/${d}`);
   }
   return parts.join(' + ').replace(/\+ -/g, '- ');
 }
 
 /** The ring interface consumed by the MTBDD manager. */
-export const Ring = { zero, one, add, mul, neg, isZero, eq, key, format };
+export const Ring = { zero, one, add, mul, neg, isZero, eq, key, format, fromScalar: fromZ };
