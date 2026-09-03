@@ -35,8 +35,8 @@
     --ink: #dbe5ea;
     --ink-soft: #8ea0ab;
     --ink-faint: #5d6f7a;
-    --rule: #2b3a43;
-    --rule-soft: #223038;
+    --rule: #33454f;
+    --rule-soft: #29373f;
     --accent: #ff74b1;
     --accent-soft: #3d1a2b;
   }
@@ -274,7 +274,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
   transition: opacity .25s, stroke .25s;
 }
 .edge.low { stroke-dasharray: 3.5 2.5; }
-.edge.to-zero { opacity: 0.22; }
+.edge.to-zero { opacity: 0.34; }
 .edge.fresh { stroke: var(--accent); opacity: 0.9; }
 
 .node { transition: transform .38s cubic-bezier(.4, 0, .2, 1), opacity .28s; }
@@ -292,7 +292,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
   pointer-events: none;
 }
 .node.terminal .cap { font: 12px/1 var(--serif); }
-.node.zero { opacity: 0.34; }
+.node.zero { opacity: 0.5; }
 .node.fresh .shape { stroke: var(--accent); stroke-width: 1.8; }
 .node.fresh .cap { fill: var(--accent); }
 .node.entering { opacity: 0; transform: scale(0.9); }

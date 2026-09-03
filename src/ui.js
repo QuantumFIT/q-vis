@@ -13,6 +13,7 @@ const GEO = { gutter: 72, padTop: 34, levelH: 64, slotW: 82, r: 9, termH: 23, pa
 // Small diagrams are magnified, large ones shrunk, but never past these limits: past them
 // the plate stops looking like a drawing and starts looking like a mistake.
 const SCALE_RANGE = [0.3, 1.5];
+const BAND_LABEL = 'AMPLITUDE';
 const MAX_DRAWN_NODES = 800;
 const MAX_READOUT_LINES = 14;
 const PLAY_MS = 750;
@@ -114,10 +115,23 @@ function resetCanvas() {
   app.exiting.clear();
 
   const n = app.dd.nvars;
-  const contentW = Math.max(2, app.layout.width) * GEO.slotW;
-  const W = GEO.gutter + contentW + GEO.pad;
+  // The gutter has to fit the longest thing written in it — register names can be much
+  // wider than "q[0]" — or the labels get clipped at the left edge of the plate.
+  const longest = Math.max(BAND_LABEL.length, ...app.circuit.qubits.map((q) => q.label.length));
+  const gutter = Math.max(GEO.gutter, Math.round(longest * 6.3) + 26);
+  // Amplitude boxes are the widest things drawn, so they set the column width. Measured
+  // over every frame, not just the current one, so stepping never rescales the plate.
+  let widest = 0;
+  for (const fr of app.layout.frames) {
+    for (const nd of fr.nodes) if (nd.terminal) widest = Math.max(widest, termWidth(nd.label));
+  }
+  const slotW = Math.max(GEO.slotW, Math.round(widest) + 14);
+  // A one-node diagram would otherwise get a stub of ruling that looks truncated rather
+  // than deliberate, so the staff is never narrower than this.
+  const contentW = Math.max(5, app.layout.width) * slotW;
+  const W = gutter + contentW + GEO.pad;
   const H = GEO.padTop + n * GEO.levelH + GEO.levelH + GEO.pad;
-  app.geom = { W, H, centerX: GEO.gutter + contentW / 2 };
+  app.geom = { W, H, gutter, slotW, centerX: gutter + contentW / 2 };
 
   const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet' });
   svg.setAttribute('role', 'img');
@@ -126,16 +140,16 @@ function resetCanvas() {
   const rules = svgEl('g', { class: 'rules' });
   for (let lev = 0; lev < n; lev++) {
     const y = yOf(lev);
-    rules.append(svgEl('line', { class: 'level-rule', x1: GEO.gutter - 6, y1: y, x2: W - 8, y2: y }));
-    const t = svgEl('text', { class: 'gutter', x: GEO.gutter - 16, y });
+    rules.append(svgEl('line', { class: 'level-rule', x1: gutter - 6, y1: y, x2: W - 8, y2: y }));
+    const t = svgEl('text', { class: 'gutter', x: gutter - 16, y });
     t.textContent = app.circuit.qubits[lev].label;
     rules.append(t);
   }
   // The terminal row is a different kind of thing: give it a solid rule of its own.
   const bandY = yOf(n) - GEO.levelH / 2;
-  rules.append(svgEl('line', { class: 'band-rule', x1: GEO.gutter - 6, y1: bandY, x2: W - 8, y2: bandY }));
-  const bt = svgEl('text', { class: 'gutter band', x: GEO.gutter - 16, y: yOf(n) });
-  bt.textContent = 'AMPLITUDE';
+  rules.append(svgEl('line', { class: 'band-rule', x1: gutter - 6, y1: bandY, x2: W - 8, y2: bandY }));
+  const bt = svgEl('text', { class: 'gutter band', x: gutter - 16, y: yOf(n) });
+  bt.textContent = BAND_LABEL;
   rules.append(bt);
 
   svg.append(rules, svgEl('g', { class: 'edges' }), svgEl('g', { class: 'nodes' }));
@@ -156,7 +170,7 @@ function fitCanvas() {
 }
 
 const yOf = (level) => GEO.padTop + level * GEO.levelH;
-const xOf = (node) => app.geom.centerX + node.x * GEO.slotW;
+const xOf = (node) => app.geom.centerX + node.x * app.geom.slotW;
 const termWidth = (label) => Math.max(34, label.length * 7.1 + 16);
 const edgeKey = (e) => `${e.from}>${e.to}${e.high ? 'H' : 'L'}`;
 
@@ -359,8 +373,9 @@ function renderReadout(f) {
 function renderStats(f) {
   const frame = app.frames[f.index];
   const norm = squaredNorm(app.dd, f.root);
-  const parts = [`<b>${f.nodes.length}</b> nodes`];
-  if (frame.added.length || frame.removed.length) {
+  const parts = [`<b>${f.nodes.length}</b> node${f.nodes.length === 1 ? '' : 's'}`];
+  // Frame 0 is the state as given, so "+4 −0" there would be counting it against nothing.
+  if (f.index > 0 && (frame.added.length || frame.removed.length)) {
     parts.push(`<span class="delta">+${frame.added.length} −${frame.removed.length}</span>`);
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
