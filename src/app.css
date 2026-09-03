@@ -282,7 +282,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .edge.to-zero { opacity: 0.34; }
 .edge.fresh { stroke: var(--accent); opacity: 0.9; }
 
-.node { transition: transform .38s cubic-bezier(.4, 0, .2, 1), opacity .28s; }
+.node { transition: transform .3s ease-out, opacity .24s; }
 .node .shape {
   fill: var(--plate);
   stroke: var(--ink);
@@ -300,14 +300,21 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .node.zero { opacity: 0.5; }
 .node.fresh .shape { stroke: var(--accent); stroke-width: 1.8; }
 .node.fresh .cap { fill: var(--accent); }
-.node.entering { opacity: 0; transform: scale(0.9); }
+/* Opacity only. A CSS transform here would override the SVG transform attribute, so the
+   node would be born at the origin and fly in from the corner of the plate. */
+.node.entering { opacity: 0; }
 .node.leaving { opacity: 0; }
 .node:hover .shape { fill: var(--accent-soft); }
+
+.root-marker { transition: transform .3s ease-out; }
+.root-marker .stem { fill: none; stroke: var(--ink-soft); stroke-width: 1.1; }
+.root-marker .head { fill: var(--ink-soft); stroke: none; }
+.root-marker text { fill: var(--ink-soft); font: 11px var(--serif); text-anchor: end; }
 
 .dimmed { opacity: 0.12 !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .node, .edge { transition: none; }
+  .node, .edge, .root-marker { transition: none; }
 }
 
 /* ---- transport -------------------------------------------------------- */

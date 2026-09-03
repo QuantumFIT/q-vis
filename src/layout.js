@@ -16,6 +16,9 @@
 //
 // Nodes are hash-consed globally, so "the same node" across frames is just id equality.
 
+/** How far a level may sit from centred, in slots, before it is pulled back. */
+const DRIFT_LIMIT = 1.5;
+
 /** Depth-first order, low branch first: the order in which a reader scans the diagram. */
 export function scanOrder(dd, root) {
   const order = new Map();
@@ -69,19 +72,22 @@ export function stableOrder(ids, prevRank) {
  */
 
 /**
- * Lay out every frame in one pass, in abstract units: x is a slot index centred on 0,
- * y is the level. Scaling to pixels is the renderer's business.
+ * Lay out every frame in one pass, in abstract units: x is a slot index on a grid shared
+ * by every frame, y is the level. Scaling to pixels is the renderer's business.
  *
  * @param {import('./dd.js').MTBDD} dd
  * @param {{index:number, gate:?object, root:number, added:number[]}[]} frames
- * @param {{qubitLabels?: string[]}} [opts]
- * @returns {{frames: FrameLayout[], width: number, height: number}}
+ * @param {{qubitLabels?: string[], expand?: boolean}} [opts]
+ * @returns {{frames: FrameLayout[], xMin: number, xMax: number, width: number, height: number}}
  */
 export function layoutFrames(dd, frames, opts = {}) {
   const labels = opts.qubitLabels || Array.from({ length: dd.nvars }, (_, i) => `q${i}`);
+  if (opts.expand) return layoutTrees(dd, frames, labels);
   const out = [];
   let prevRank = new Map();
-  let width = 1;
+  let prevX = new Map();
+  let xMin = Infinity;
+  let xMax = -Infinity;
 
   for (const frame of frames) {
     const scan = scanOrder(dd, frame.root);
@@ -94,6 +100,7 @@ export function layoutFrames(dd, frames, opts = {}) {
     for (const ids of byLevel.values()) ids.sort((a, b) => scan.get(a) - scan.get(b));
 
     const rank = new Map();
+    const nextX = new Map();
     const nodes = [];
     // Frame 0 is the input state, not a change to it. Flagging every node there as new
     // would paint the whole opening diagram in the "just changed" colour and so make the
@@ -110,16 +117,36 @@ export function layoutFrames(dd, frames, opts = {}) {
       // crossings that stability would otherwise force after a gate reshuffles the tree
       // above a set of terminals that all persisted (a SWAP does exactly this).
       const ordered = lev === dd.nvars ? zeroLast : stableOrder(zeroLast, prevRank);
-      width = Math.max(width, ordered.length);
+
+      // Where the level sits horizontally. Centring each level independently means every
+      // node in it shifts by half a slot whenever the level gains or loses one, so the
+      // whole diagram twitches on every step even where nothing structural changed.
+      // Instead the level is anchored on a node that was already on screen, which keeps
+      // survivors exactly where they were. The drift limit stops a long circuit from
+      // slowly walking the diagram off to one side.
+      const centred = (ordered.length - 1) / 2;
+      let offset = centred;
+      const anchors = ordered.map((id, i) => [id, i]).filter(([id]) => prevX.has(id));
+      if (anchors.length) {
+        const [id, i] = anchors[anchors.length >> 1];
+        offset = i - prevX.get(id);
+        offset = Math.max(centred - DRIFT_LIMIT, Math.min(centred + DRIFT_LIMIT, offset));
+      }
+
       ordered.forEach((id, i) => {
         rank.set(id, i);
+        const x = i - offset;
+        nextX.set(id, x);
+        xMin = Math.min(xMin, x);
+        xMax = Math.max(xMax, x);
         const terminal = dd.isTerminal(id);
         nodes.push({
           id,
           level: lev,
-          x: i - (ordered.length - 1) / 2,
+          x,
           y: lev,
           terminal,
+          zero: id === dd.zero,
           label: terminal ? dd.ring.format(dd.valueOf(id)) : labels[lev],
           fresh: fresh.has(id),
         });
@@ -129,13 +156,83 @@ export function layoutFrames(dd, frames, opts = {}) {
     const edges = [];
     for (const id of scan.keys()) {
       if (dd.isTerminal(id)) continue;
-      edges.push({ from: id, to: dd.lowOf(id), high: false });
-      edges.push({ from: id, to: dd.highOf(id), high: true });
+      edges.push({ from: id, to: dd.lowOf(id), high: false, toZero: dd.lowOf(id) === dd.zero });
+      edges.push({ from: id, to: dd.highOf(id), high: true, toZero: dd.highOf(id) === dd.zero });
     }
 
-    out.push({ index: frame.index, gate: frame.gate, root: frame.root, nodes, edges, size: nodes.length });
+    out.push({
+      index: frame.index, gate: frame.gate, root: frame.root, nodes, edges,
+      size: nodes.length, changed: nodes.filter((nd) => nd.fresh).length,
+    });
     prevRank = rank;
+    prevX = nextX;
   }
 
-  return { frames: out, width, height: dd.nvars + 1 };
+  // The grid every frame shares, so the renderer never rescales or recentres mid-circuit.
+  return { frames: out, xMin, xMax, width: xMax - xMin + 1, height: dd.nvars + 1 };
+}
+
+/**
+ * The unreduced decision tree: the same function drawn without any sharing and without
+ * skipping a level, so a reader can see what the reduction actually bought. Every state
+ * on n qubits gives the same complete tree of 2^(n+1)-1 nodes, so nothing here moves
+ * between frames — the only thing that changes is which amplitudes sit at the leaves,
+ * and those are what get marked when a gate changes them.
+ */
+function layoutTrees(dd, frames, labels) {
+  const n = dd.nvars;
+  const leaves = 2 ** n;
+  const idOf = (level, path) => 2 ** level - 1 + path;
+  // Each node sits above the centre of the subtree it heads, which is what makes a tree
+  // drawing readable; leaves land one slot apart.
+  const xOf = (level, path) => (path + 0.5) * 2 ** (n - level) - leaves / 2;
+
+  const out = [];
+  let prev = null;
+  for (const frame of frames) {
+    const values = [];
+    for (let p = 0; p < leaves; p++) {
+      values.push(dd.evaluate(frame.root, p.toString(2).padStart(n, '0')));
+    }
+
+    const nodes = [];
+    const edges = [];
+    for (let level = 0; level <= n; level++) {
+      for (let path = 0; path < 2 ** level; path++) {
+        const id = idOf(level, path);
+        const terminal = level === n;
+        const value = terminal ? values[path] : null;
+        nodes.push({
+          id,
+          level,
+          x: xOf(level, path),
+          y: level,
+          terminal,
+          zero: terminal && dd.ring.isZero(value),
+          label: terminal ? dd.ring.format(value) : labels[level],
+          // An unreduced tree never changes shape, so "new" can only mean "this
+          // amplitude is not what it was before this gate".
+          fresh: terminal && prev !== null && dd.ring.key(prev[path]) !== dd.ring.key(value),
+        });
+        if (terminal) continue;
+        for (const high of [false, true]) {
+          const childPath = path * 2 + (high ? 1 : 0);
+          edges.push({
+            from: id,
+            to: idOf(level + 1, childPath),
+            high,
+            toZero: level + 1 === n && dd.ring.isZero(values[childPath]),
+          });
+        }
+      }
+    }
+
+    out.push({
+      index: frame.index, gate: frame.gate, root: idOf(0, 0), nodes, edges,
+      size: nodes.length, changed: nodes.filter((nd) => nd.fresh).length,
+    });
+    prev = values;
+  }
+
+  return { frames: out, xMin: -leaves / 2 + 0.5, xMax: leaves / 2 - 0.5, width: leaves, height: n + 1 };
 }

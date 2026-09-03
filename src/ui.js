@@ -9,7 +9,7 @@ import { parseState, buildState, squaredNorm } from './state.js';
 import { layoutFrames } from './layout.js';
 import { EXAMPLES } from './examples.js';
 
-const GEO = { gutter: 72, padTop: 34, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
+const GEO = { gutter: 72, padTop: 46, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
 // Small diagrams are magnified, large ones shrunk, but never past these limits: past them
 // the plate stops looking like a drawing and starts looking like a mistake.
 const SCALE_RANGE = [0.3, 1.5];
@@ -28,6 +28,7 @@ const app = {
   playing: false,
   timer: null,
   hideZero: false,
+  expand: false,
   nodeEls: new Map(),
   edgeEls: new Map(),
   exiting: new Map(),
@@ -68,10 +69,20 @@ function compile() {
   app.dd = dd;
   app.circuit = circuit;
   app.frames = frames;
-  app.layout = layoutFrames(dd, frames, { qubitLabels: circuit.qubits.map((q) => q.label) });
+  app.layout = layoutFrames(dd, frames, {
+    qubitLabels: circuit.qubits.map((q) => q.label),
+    expand: app.expand,
+  });
   app.index = Math.min(app.index, frames.length - 1);
 
   $('error').textContent = '';
+  // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
+  // drawable nor informative.
+  const big = circuit.nqubits > 10;
+  $('expand').disabled = big;
+  $('expand').closest('label').title = big
+    ? `the full tree for ${circuit.nqubits} qubits has ${2 ** (circuit.nqubits + 1) - 1} nodes`
+    : 'draw the same state without sharing or skipped levels';
   resetCanvas();
   renderScore();
   setFrame(app.index);
@@ -129,9 +140,10 @@ function resetCanvas() {
   // A one-node diagram would otherwise get a stub of ruling that looks truncated rather
   // than deliberate, so the staff is never narrower than this.
   const contentW = Math.max(5, app.layout.width) * slotW;
+  const originX = gutter + slotW / 2;
   const W = gutter + contentW + GEO.pad;
   const H = GEO.padTop + n * GEO.levelH + GEO.levelH + GEO.pad;
-  app.geom = { W, H, gutter, slotW, centerX: gutter + contentW / 2 };
+  app.geom = { W, H, gutter, slotW, originX };
 
   const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet' });
   svg.setAttribute('role', 'img');
@@ -170,7 +182,20 @@ function resetCanvas() {
     lx += 48;
   }
 
-  svg.append(rules, svgEl('g', { class: 'edges' }), svgEl('g', { class: 'nodes' }));
+  // The arrow into the root, as decision diagrams are drawn on paper. It also shows
+  // something worth seeing: the root is not always at level 0, because the top qubits
+  // can become don't-cares.
+  const marker = svgEl('g', { class: 'root-marker' });
+  marker.append(
+    svgEl('path', { class: 'stem', d: 'M0,-32 L0,-16' }),
+    svgEl('path', { class: 'head', d: 'M-3.5,-17 L3.5,-17 L0,-10 Z' }),
+  );
+  const psi = svgEl('text', { x: -9, y: -25 });
+  psi.textContent = '|ψ⟩';
+  marker.append(psi);
+  app.rootMarker = marker;
+
+  svg.append(rules, svgEl('g', { class: 'edges' }), marker, svgEl('g', { class: 'nodes' }));
   $('canvas').replaceChildren(svg);
   app.svg = svg;
   fitCanvas();
@@ -188,7 +213,9 @@ function fitCanvas() {
 }
 
 const yOf = (level) => GEO.padTop + level * GEO.levelH;
-const xOf = (node) => app.geom.centerX + node.x * app.geom.slotW;
+// Every frame shares one grid, anchored at the layout's leftmost slot, so a node's
+// position depends only on where it sits — never on which frame is showing.
+const xOf = (node) => app.geom.originX + (node.x - app.layout.xMin) * app.geom.slotW;
 const termWidth = (label) => Math.max(34, label.length * 7.1 + 16);
 const edgeKey = (e) => `${e.from}>${e.to}${e.high ? 'H' : 'L'}`;
 
@@ -243,9 +270,10 @@ function drawFrame(f) {
   const nodesG = app.svg.querySelector('.nodes');
   const edgesG = app.svg.querySelector('.edges');
 
+  const hidden = (node) => app.hideZero && node.zero;
   const wantEdges = new Map();
   for (const e of f.edges) {
-    if (app.hideZero && e.to === app.dd.zero) continue;
+    if (hidden(pos.get(e.to))) continue;
     wantEdges.set(edgeKey(e), e);
   }
   for (const [k, el] of app.edgeEls) {
@@ -260,11 +288,11 @@ function drawFrame(f) {
     }
     el.setAttribute('d', edgePath(pos.get(e.from), pos.get(e.to), e.high));
     el.setAttribute('class', 'edge' + (e.high ? ' high' : ' low') +
-      (e.to === app.dd.zero ? ' to-zero' : '') + (pos.get(e.from).fresh ? ' fresh' : ''));
+      (e.toZero ? ' to-zero' : '') + (pos.get(e.from).fresh ? ' fresh' : ''));
   }
 
   for (const [id, el] of app.nodeEls) {
-    if (pos.has(id) || app.exiting.has(id)) continue;
+    if ((pos.has(id) && !hidden(pos.get(id))) || app.exiting.has(id)) continue;
     el.classList.add('leaving');
     app.exiting.set(id, setTimeout(() => {
       el.remove();
@@ -273,8 +301,11 @@ function drawFrame(f) {
     }, 300));
   }
 
+  const rootNode = pos.get(f.root);
+  app.rootMarker.setAttribute('transform', `translate(${xOf(rootNode)},${yOf(rootNode.level)})`);
+
   for (const node of f.nodes) {
-    if (app.hideZero && node.id === app.dd.zero) continue;
+    if (hidden(node)) continue;
     let el = app.nodeEls.get(node.id);
     if (app.exiting.has(node.id)) {          // it came back before the fade finished
       clearTimeout(app.exiting.get(node.id));
@@ -292,7 +323,7 @@ function drawFrame(f) {
     }
     el.setAttribute('transform', `translate(${xOf(node)},${yOf(node.level)})`);
     el.classList.toggle('fresh', node.fresh);
-    el.classList.toggle('zero', node.id === app.dd.zero);
+    el.classList.toggle('zero', node.zero);
   }
 }
 
@@ -368,7 +399,10 @@ function renderReadout(f) {
   const out = $('readout');
   out.replaceChildren();
   let shown = 0, more = 0;
-  for (const { path, value } of app.dd.paths(f.root)) {
+  // The engine's root, not the layout's: in tree mode the layout renumbers nodes and its
+  // root id means nothing to the diagram this readout describes.
+  const root = app.frames[f.index].root;
+  for (const { path, value } of app.dd.paths(root)) {
     if (shown >= MAX_READOUT_LINES) { more++; continue; }
     const line = document.createElement('div');
     line.className = 'amp-line';
@@ -398,11 +432,16 @@ function renderReadout(f) {
 
 function renderStats(f) {
   const frame = app.frames[f.index];
-  const norm = squaredNorm(app.dd, f.root);
+  const norm = squaredNorm(app.dd, frame.root);
   const parts = [`<b>${f.nodes.length}</b> node${f.nodes.length === 1 ? '' : 's'}`];
   // Frame 0 is the state as given, so "+4 −0" there would be counting it against nothing.
-  if (f.index > 0 && (frame.added.length || frame.removed.length)) {
-    parts.push(`<span class="delta">+${frame.added.length} −${frame.removed.length}</span>`);
+  if (f.index > 0) {
+    if (app.expand && f.changed) {
+      // An unreduced tree never changes shape, so the only news is which amplitudes moved.
+      parts.push(`<span class="delta">${f.changed} amplitude${f.changed === 1 ? '' : 's'} changed</span>`);
+    } else if (!app.expand && (frame.added.length || frame.removed.length)) {
+      parts.push(`<span class="delta">+${frame.added.length} −${frame.removed.length}</span>`);
+    }
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
   $('stats').innerHTML = parts.join(' · ');
@@ -467,7 +506,10 @@ function exportSvg() {
     .node .cap { fill: ${v('--ink')}; font: 10.5px monospace; text-anchor: middle; dominant-baseline: central }
     .node.terminal .cap { font: 12px serif }
     .node.fresh .cap { fill: ${v('--accent')} }
-    .node.zero { opacity: .34 }
+    .node.zero { opacity: .5 }
+    .root-marker .stem { fill: none; stroke: ${v('--ink-soft')}; stroke-width: 1.1 }
+    .root-marker .head { fill: ${v('--ink-soft')}; stroke: none }
+    .root-marker text { fill: ${v('--ink-soft')}; font: 11px serif; text-anchor: end }
   `;
   clone.prepend(style);
   const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' });
@@ -526,10 +568,15 @@ export function boot() {
   $('next').addEventListener('click', () => { stop(); step(1); });
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
+  $('expand').addEventListener('change', (e) => {
+    app.expand = e.target.checked;
+    compile();
+  });
   $('hideZero').addEventListener('change', (e) => {
     app.hideZero = e.target.checked;
-    resetCanvas();
-    setFrame(app.index);
+    // Only a redraw: hiding the sink changes nothing about where anything sits, so
+    // rebuilding the plate would make every node re-enter for no reason.
+    drawFrame(app.layout.frames[app.index]);
   });
 
   document.addEventListener('keydown', (e) => {
