@@ -189,6 +189,16 @@ function resetCanvas() {
     lx += 48;
   }
 
+  // Most amplitudes print in a familiar form, but a genuine eighth root of unity has to
+  // be shown as a power of w, and nothing else on screen says what w is. Shown only on
+  // the frames where it actually appears, so it is a footnote rather than clutter.
+  const omega = svgEl('text', { class: 'gutter legend-cap', x: lx + 16, y: ly });
+  const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
+  sup.textContent = 'iπ/4';
+  omega.append('ω = e', sup);
+  rules.append(omega);
+  app.omegaNote = omega;
+
   // The arrow into the root, as decision diagrams are drawn on paper. It also shows
   // something worth seeing: the root is not always at level 0, because the top qubits
   // can become don't-cares.
@@ -338,6 +348,9 @@ function drawFrame(f) {
       app.exiting.delete(id);
     }, 300));
   }
+
+  app.omegaNote.style.display =
+    f.nodes.some((nd) => nd.terminal && nd.label.includes('ω')) ? '' : 'none';
 
   const rootNode = pos.get(f.root);
   app.rootMarker.setAttribute('transform', `translate(${xOf(rootNode)},${yOf(rootNode.level)})`);
@@ -602,13 +615,17 @@ function useExample(i) {
 export function boot() {
   new ResizeObserver(fitCanvas).observe($('canvas'));
   const picker = $('example');
+  // A blank entry so the picker can stop claiming to show an example once the text has
+  // been edited into something else.
+  picker.append(new Option('custom', ''));
   EXAMPLES.forEach((ex, i) => picker.append(new Option(ex.name, String(i))));
-  picker.addEventListener('change', () => useExample(+picker.value));
+  picker.addEventListener('change', () => { if (picker.value !== '') useExample(+picker.value); });
 
   let timer = null;
   const onEdit = () => {
     clearTimeout(timer);
     stop();
+    picker.value = '';
     $('note').textContent = '';
     timer = setTimeout(compile, 350);
   };
@@ -688,6 +705,9 @@ export function boot() {
   if (saved) {
     $('qasm').value = saved.qasm;
     $('stateText').value = saved.state;
+    const match = EXAMPLES.findIndex((ex) => ex.qasm === saved.qasm && ex.state === saved.state);
+    picker.value = match >= 0 ? String(match) : '';
+    if (match >= 0) $('note').textContent = EXAMPLES[match].note;
     compile();
   } else {
     picker.value = '0';
