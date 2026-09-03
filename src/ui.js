@@ -33,6 +33,7 @@ const app = {
   hideZero: false,
   expand: false,
   theme: 'auto',
+  ampFormat: 'exact',
   zoom: 'fit',
   scale: 1,
   nodeEls: new Map(),
@@ -78,6 +79,7 @@ function compile() {
   app.layout = layoutFrames(dd, frames, {
     qubitLabels: circuit.qubits.map((q) => q.label),
     expand: app.expand,
+    formatValue: (v) => P.format(v, app.ampFormat),
   });
   app.index = Math.min(app.index, frames.length - 1);
 
@@ -461,7 +463,7 @@ function renderReadout(f) {
     line.className = 'amp-line';
     const coef = document.createElement('span');
     coef.className = 'amp-coef';
-    coef.textContent = P.format(value);
+    coef.textContent = P.format(value, app.ampFormat);
     const ket = document.createElement('span');
     ket.className = 'amp-ket';
     ket.textContent = `|${path}⟩`;
@@ -577,6 +579,7 @@ function exportSvg() {
 
 const STORE = 'quantum-vis:v1';
 const THEME_STORE = 'quantum-vis:theme';
+const AMP_STORE = 'quantum-vis:amplitudes';
 const THEMES = ['auto', 'light', 'dark'];
 
 /** 'auto' follows the system; the other two pin it. Kept per viewer, not in the file. */
@@ -636,6 +639,15 @@ export function boot() {
   $('next').addEventListener('click', () => { stop(); step(1); });
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
+  $('ampFormat').addEventListener('change', (e) => {
+    app.ampFormat = e.target.value;
+    try { localStorage.setItem(AMP_STORE, app.ampFormat); } catch { /* storage may be unavailable */ }
+    // Only the labels change, so hold the current zoom rather than snapping back to fit.
+    const held = app.zoom;
+    compile();
+    app.zoom = held;
+    fitCanvas();
+  });
   $('zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
   $('zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
   $('zoomLevel').addEventListener('click', () => setZoom('fit'));
@@ -700,6 +712,12 @@ export function boot() {
     if (THEMES.includes(stored)) theme = stored;
   } catch { /* storage may be unavailable */ }
   applyTheme(theme);
+
+  try {
+    const amp = localStorage.getItem(AMP_STORE);
+    if (['exact', 'rect', 'polar'].includes(amp)) app.ampFormat = amp;
+  } catch { /* storage may be unavailable */ }
+  $('ampFormat').value = app.ampFormat;
 
   const saved = load();
   if (saved) {

@@ -242,6 +242,34 @@ export function formatParts(a) {
   return { num: numeratorString(a.c, ['', 'ω', 'i', 'ω³']), den, terms: countTerms(a.c) };
 }
 
+/** Four decimals, trailing zeros trimmed, and no "-0". */
+function decimal(x) {
+  if (Math.abs(x) < 5e-5) return '0';
+  return x.toFixed(4).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
+/** Floating-point rectangular form: "0.7071", "-0.5+0.5i", "-0.7071i". */
+export function formatRect(a) {
+  const { re, im } = toComplex(a);
+  const r = decimal(re);
+  const i = decimal(im);
+  if (i === '0') return r;
+  const imag = `${i === '1' ? '' : i === '-1' ? '-' : i}i`;
+  return r === '0' ? imag : `${r}${imag.startsWith('-') ? '' : '+'}${imag}`;
+}
+
+/**
+ * Floating-point polar form: "0.7071∠45°". The angle is always shown, even at zero,
+ * so a column of amplitudes can be compared phase against phase at a glance — which is
+ * the only reason to ask for polar in the first place.
+ */
+export function formatPolar(a) {
+  const { re, im } = toComplex(a);
+  const r = Math.hypot(re, im);
+  if (r < 5e-5) return '0';
+  return `${decimal(r)}∠${decimal((Math.atan2(im, re) * 180) / Math.PI)}°`;
+}
+
 /** Human-readable form: "1/√2", "-i", "(1-i)/2", "ω/2", ... */
 export function format(a) {
   const { num, den, terms } = formatParts(a);

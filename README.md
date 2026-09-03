@@ -46,6 +46,16 @@ leave the ring, which would cost both exactness and the property that equal stat
 identical diagrams. `measure`, `reset` and classical control are rejected for the same
 kind of reason — this tool shows unitary evolution of a pure state.
 
+## Reading the amplitudes
+
+Amplitudes are shown exactly by default: `1/√2`, `(1-i)/2`, `ω` (= e^{iπ/4}, explained on
+the plate whenever it appears). The picker in the top right switches to floating point,
+either rectangular (`0.5-0.5i`) or polar (`0.3536∠-45°`). Symbolic amplitudes keep their
+symbols in every mode, only the coefficient changes: `0.7071a + 0.7071b`.
+
+Polar is the one to reach for when a circuit only moves phase around — the 3-qubit QFT
+prints as eight amplitudes of identical magnitude and eight different angles.
+
 ## Conventions
 
 Qubit *q* is decided at level *q*, so **qubit 0 is the top of the diagram and the

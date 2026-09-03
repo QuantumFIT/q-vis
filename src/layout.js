@@ -77,12 +77,13 @@ export function stableOrder(ids, prevRank) {
  *
  * @param {import('./dd.js').MTBDD} dd
  * @param {{index:number, gate:?object, root:number, added:number[]}[]} frames
- * @param {{qubitLabels?: string[], expand?: boolean}} [opts]
+ * @param {{qubitLabels?: string[], expand?: boolean, formatValue?: (v: any) => string}} [opts]
  * @returns {{frames: FrameLayout[], xMin: number, xMax: number, width: number, height: number}}
  */
 export function layoutFrames(dd, frames, opts = {}) {
   const labels = opts.qubitLabels || Array.from({ length: dd.nvars }, (_, i) => `q${i}`);
-  if (opts.expand) return layoutTrees(dd, frames, labels);
+  const show = opts.formatValue || ((v) => dd.ring.format(v));
+  if (opts.expand) return layoutTrees(dd, frames, labels, show);
   const out = [];
   let prevRank = new Map();
   let prevX = new Map();
@@ -147,7 +148,7 @@ export function layoutFrames(dd, frames, opts = {}) {
           y: lev,
           terminal,
           zero: id === dd.zero,
-          label: terminal ? dd.ring.format(dd.valueOf(id)) : labels[lev],
+          label: terminal ? show(dd.valueOf(id)) : labels[lev],
           fresh: fresh.has(id),
         });
       });
@@ -179,7 +180,7 @@ export function layoutFrames(dd, frames, opts = {}) {
  * between frames — the only thing that changes is which amplitudes sit at the leaves,
  * and those are what get marked when a gate changes them.
  */
-function layoutTrees(dd, frames, labels) {
+function layoutTrees(dd, frames, labels, show) {
   const n = dd.nvars;
   const leaves = 2 ** n;
   const idOf = (level, path) => 2 ** level - 1 + path;
@@ -222,7 +223,7 @@ function layoutTrees(dd, frames, labels) {
           y: level,
           terminal,
           zero: zeroOnly[id],
-          label: terminal ? dd.ring.format(value) : labels[level],
+          label: terminal ? show(value) : labels[level],
           // An unreduced tree never changes shape, so "new" can only mean "this
           // amplitude is not what it was before this gate".
           fresh: terminal && prev !== null && dd.ring.key(prev[path]) !== dd.ring.key(value),

@@ -123,8 +123,15 @@ function monoString(mono) {
   return mono.map(([n, e]) => (e === 1 ? n : `${n}${e === 2 ? '²' : e === 3 ? '³' : '^' + e}`)).join('');
 }
 
-export function format(p) {
+/**
+ * @param {Poly} p
+ * @param {'exact'|'rect'|'polar'} [mode] exact keeps the ring's own notation; the other
+ *   two evaluate coefficients to floating point. Symbolic terms keep their monomials
+ *   either way — only the coefficient in front of them changes.
+ */
+export function format(p, mode = 'exact') {
   if (p.t.size === 0) return '0';
+  if (mode !== 'exact') return formatNumeric(p, mode);
   const parts = [];
   for (const k of [...p.t.keys()].sort()) {
     const { mono, coef } = p.t.get(k);
@@ -138,6 +145,23 @@ export function format(p) {
     else head = `${terms > 1 ? `(${num})` : num}${ms}`;
     const d = /^\d+√2$/.test(den) ? `(${den})` : den;
     parts.push(den === '' ? head : `${head}/${d}`);
+  }
+  return parts.join(' + ').replace(/\+ -/g, '- ');
+}
+
+function formatNumeric(p, mode) {
+  const asNumber = mode === 'polar' ? Z.formatPolar : Z.formatRect;
+  const parts = [];
+  for (const k of [...p.t.keys()].sort()) {
+    const { mono, coef } = p.t.get(k);
+    const num = asNumber(coef);
+    if (mono.length === 0) { parts.push(num); continue; }
+    const ms = monoString(mono);
+    if (num === '1') parts.push(ms);
+    else if (num === '-1') parts.push(`-${ms}`);
+    // Brackets only when the coefficient would otherwise run into the monomial:
+    // "0.7071a" and "-ia" read fine, "0.5-0.5ia" and "1∠90°a" do not.
+    else parts.push(/[+∠]|.-/.test(num) ? `(${num})${ms}` : `${num}${ms}`);
   }
   return parts.join(' + ').replace(/\+ -/g, '- ');
 }

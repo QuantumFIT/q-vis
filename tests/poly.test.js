@@ -65,3 +65,51 @@ test('asScalar recognises constants only', () => {
   assert.equal(P.asScalar(P.variable('a')), null);
   assert.ok(Z.isZero(P.asScalar(P.zero)));
 });
+
+test('amplitudes can be printed as floating point, rectangular or polar', () => {
+  const half = Z.zo(1, 0, 0, 0, 2);
+  const cases = [
+    [P.one, '1', '1∠0°'],
+    [P.fromZ(Z.INV_SQRT2), '0.7071', '0.7071∠0°'],
+    [P.fromZ(Z.MINUS_I), '-i', '1∠-90°'],
+    [P.fromZ(Z.OMEGA), '0.7071+0.7071i', '1∠45°'],
+    [P.fromZ(Z.mul(Z.INV_SQRT2, Z.mul(Z.INV_SQRT2, Z.sub(Z.ONE, Z.I)))), '0.5-0.5i', '0.7071∠-45°'],
+    [P.fromZ(Z.neg(half)), '-0.5', '0.5∠180°'],
+    [P.zero, '0', '0'],
+  ];
+  for (const [v, rect, polar] of cases) {
+    assert.equal(P.format(v, 'rect'), rect, `rect of ${P.format(v)}`);
+    assert.equal(P.format(v, 'polar'), polar, `polar of ${P.format(v)}`);
+  }
+});
+
+test('numeric formatting agrees with the exact value it replaces', () => {
+  const r = rng(77);
+  for (let i = 0; i < 200; i++) {
+    const p = randPoly(r);
+    if (P.symbols(p).size) continue;
+    const want = P.evaluate(p, {});
+    const rect = P.format(p, 'rect');
+    // Parse the printed rectangular form back and check it is the same number.
+    const m = rect.match(/^(-?[\d.]+)?(?:([+-]?)([\d.]*)i)?$/);
+    assert.ok(m, `unparsable rectangular form: ${rect}`);
+    const re = m[1] ? parseFloat(m[1]) : 0;
+    const im = m[3] === undefined ? 0 : (m[2] === '-' ? -1 : 1) * (m[3] === '' ? 1 : parseFloat(m[3]));
+    assert.ok(Math.abs(re - want.re) < 1e-3 && Math.abs(im - want.im) < 1e-3,
+      `${P.format(p)} printed as ${rect}, but is ${want.re}+${want.im}i`);
+    // Polar must agree on magnitude.
+    const polar = P.format(p, 'polar');
+    const mag = polar === '0' ? 0 : parseFloat(polar);
+    assert.ok(Math.abs(mag - Math.hypot(want.re, want.im)) < 1e-3, `${polar} vs |${P.format(p)}|`);
+  }
+});
+
+test('symbolic terms keep their monomials in every format', () => {
+  const a = P.variable('a');
+  assert.equal(P.format(P.mul(P.fromZ(Z.I), a), 'rect'), 'ia');
+  assert.equal(P.format(P.mul(P.fromZ(Z.INV_SQRT2), a), 'rect'), '0.7071a');
+  // A coefficient that would run into the monomial gets brackets; one that would not, does not.
+  assert.equal(P.format(P.mul(P.fromZ(Z.I), a), 'polar'), '(1∠90°)a');
+  assert.equal(P.format(P.mul(P.fromZ(Z.mul(Z.INV_SQRT2, Z.mul(Z.INV_SQRT2, Z.sub(Z.ONE, Z.I)))), a), 'rect'),
+    '(0.5-0.5i)a');
+});
