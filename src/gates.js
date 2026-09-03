@@ -91,13 +91,7 @@ for (const [name, g] of Object.entries(GATES)) {
   g.arity = Math.log2(g.matrix.length);
 }
 
-/** w^m, i.e. e^{i*m*pi/4}, for any integer m. */
-export function omegaPow(m) {
-  let acc = L;
-  const r = ((m % 8) + 8) % 8;
-  for (let i = 0; i < r; i++) acc = Z.mul(acc, Z.OMEGA);
-  return acc;
-}
+export const omegaPow = Z.omegaPow;   // e^{i*m*pi/4}
 
 /**
  * The phase gate diag(1, e^{i*m*pi/4}). This is how `u1`/`p` from qelib1 enters the

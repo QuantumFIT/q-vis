@@ -106,6 +106,65 @@ export function mul(a, b) {
   return normalize(r, a.k + b.k);
 }
 
+/** w^m for any integer m. */
+export function omegaPow(m) {
+  const r = ((m % 8) + 8) % 8;
+  return r < 4 ? zo(...[0, 1, 2, 3].map((j) => (j === r ? 1 : 0)))
+               : neg(zo(...[0, 1, 2, 3].map((j) => (j === r - 4 ? 1 : 0))));
+}
+
+/** Repeated multiplication; `n` is small (a power of sqrt(2), say). */
+export function pow(a, n) {
+  let acc = ONE;
+  for (let i = 0; i < n; i++) acc = mul(acc, a);
+  return acc;
+}
+
+/** The Galois conjugate sending w to w^j, for odd j. */
+function sigma(a, j) {
+  let acc = ZERO;
+  for (let m = 0; m < 4; m++) {
+    if (a.c[m] === B0) continue;
+    acc = add(acc, mul(zo(a.c[m], 0, 0, 0), omegaPow(j * m)));
+  }
+  return normalize([...acc.c], acc.k + a.k);
+}
+
+function log2Exact(n) {
+  if (n <= 0n) return -1;
+  let t = 0;
+  while (n % B2 === B0) { n /= B2; t++; }
+  return n === B1 ? t : -1;
+}
+
+/**
+ * Multiplicative inverse, when it exists.
+ *
+ * For a numerator p, the product of p with its three Galois conjugates is the rational
+ * integer norm N(p). So 1/p = (conjugate product)/N(p), which stays inside the ring
+ * exactly when |N(p)| is a power of two — 1/2 = (1/sqrt(2))^2 is available, 1/3 is not.
+ * @throws if the element is zero or not invertible
+ */
+export function invert(a) {
+  if (isZero(a)) throw new Error('division by zero');
+  const p = normalize([...a.c], 0);
+  let prod = ONE;
+  for (const j of [3, 5, 7]) prod = mul(prod, sigma(p, j));
+  const n = mul(p, prod);
+  if (n.k !== 0 || n.c[1] !== B0 || n.c[2] !== B0 || n.c[3] !== B0) {
+    throw new Error(`internal: norm of ${format(a)} is not a rational integer`);
+  }
+  const negative = n.c[0] < B0;
+  const t = log2Exact(negative ? -n.c[0] : n.c[0]);
+  if (t < 0) {
+    throw new Error(`${format(a)} is not invertible in Z[1/√2, i]: its norm ${n.c[0]} is not a power of two`);
+  }
+  // 1/p = prod / (+-2^t), then 1/a = sqrt(2)^k / p.
+  let inv = normalize([...prod.c], 2 * t);
+  if (negative) inv = neg(inv);
+  return mul(inv, pow(SQRT2, a.k));
+}
+
 /** Complex conjugate: w^j -> w^{-j}. Used for norm checks, not by the DD itself. */
 export function conj(a) {
   return normalize([a.c[0], -a.c[3], -a.c[2], -a.c[1]], a.k);
@@ -165,6 +224,17 @@ export function formatParts(a) {
   if (c[1] === B0 && c[3] === B0) {
     const m = k >> 1;
     return { num: numeratorString(c, ['', '', 'i', '']), den: m > 0 ? String(2n ** BigInt(m)) : '', terms: countTerms(c) };
+  }
+  // Even k and no Gaussian form: the value may still be a Gaussian multiple of sqrt(2),
+  // which reads far better as "√2" or "(1+i)√2" than as "ω-ω³".
+  const q = numMulSqrt2(a.c);
+  if (q[1] === B0 && q[3] === B0 && q[0] % B2 === B0 && q[2] % B2 === B0) {
+    const h = [q[0] / B2, B0, q[2] / B2, B0];
+    const t = countTerms(h);
+    const body = numeratorString(h, ['', '', 'i', '']);
+    const head = body === '1' ? '' : body === '-1' ? '-' : (t > 1 ? `(${body})` : body);
+    const m2 = a.k >> 1;
+    return { num: `${head}√2`, den: m2 > 0 ? String(2n ** BigInt(m2)) : '', terms: 1 };
   }
   const m = a.k >> 1;
   let den = m > 0 ? String(2n ** BigInt(m)) : '';

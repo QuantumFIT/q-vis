@@ -162,21 +162,43 @@ export class MTBDD {
     return cur;
   }
 
-  /** `amplitude * |bits>`, where `bits` is a string or array of n bits. */
-  basisState(bits, amplitude) {
-    const b = typeof bits === 'string' ? [...bits].map(Number) : bits;
-    if (b.length !== this.nvars) throw new Error(`expected ${this.nvars} bits, got ${b.length}`);
+  /**
+   * `amplitude` on every basis state matching `pattern`, zero elsewhere.
+   * The pattern has one character per qubit: '0', '1', or '-' for a don't-care.
+   * A don't-care costs nothing: it is exactly a level the diagram skips, so
+   * "----------" is a single terminal rather than 1024 paths.
+   */
+  patternState(pattern, amplitude) {
+    const p = typeof pattern === 'string' ? [...pattern] : pattern.map(String);
+    if (p.length !== this.nvars) throw new Error(`expected ${this.nvars} bits, got ${p.length}`);
     let cur = this.terminal(amplitude);
     for (let lev = this.nvars - 1; lev >= 0; lev--) {
-      cur = b[lev] ? this.mk(lev, this.zero, cur) : this.mk(lev, cur, this.zero);
+      const ch = p[lev];
+      if (ch === '-') continue;
+      if (ch !== '0' && ch !== '1') throw new Error(`bad pattern character '${ch}'`);
+      cur = ch === '1' ? this.mk(lev, this.zero, cur) : this.mk(lev, cur, this.zero);
     }
     return cur;
+  }
+
+  /** `amplitude * |bits>`. */
+  basisState(bits, amplitude) {
+    const b = typeof bits === 'string' ? bits : bits.join('');
+    if (/[^01]/.test(b)) throw new Error(`basis state must be bits, got '${b}'`);
+    return this.patternState(b, amplitude);
   }
 
   /** Build a state from a sparse list of [basis string, amplitude] pairs. */
   fromAmplitudes(entries) {
     let acc = this.zero;
     for (const [bits, amp] of entries) acc = this.add(acc, this.basisState(bits, amp));
+    return acc;
+  }
+
+  /** Build a state from [pattern, amplitude] pairs, where a pattern may hold '-'. */
+  fromPatterns(entries) {
+    let acc = this.zero;
+    for (const [pattern, amp] of entries) acc = this.add(acc, this.patternState(pattern, amp));
     return acc;
   }
 
