@@ -67,6 +67,14 @@ export function applyNamed(dd, root, name, qubits) {
   return applyGate(dd, root, qubits, g.matrix);
 }
 
+/** Apply one circuit operation. Parsed operations carry their own matrix (u1/p are
+ *  built per-angle), so the gate table is only a fallback for hand-written ops. */
+export function applyOp(dd, root, op) {
+  const matrix = op.matrix || (GATES[op.name] && GATES[op.name].matrix);
+  if (!matrix) throw new Error(`unknown gate '${op.name}'`);
+  return applyGate(dd, root, op.qubits, matrix);
+}
+
 /**
  * @typedef {object} Frame
  * @property {number} index          0 for the input state, i+1 after the i-th gate
@@ -107,7 +115,7 @@ export function simulate(dd, initialRoot, circuit) {
 
   push(0, null);
   circuit.gates.forEach((g, i) => {
-    root = applyNamed(dd, root, g.name, g.qubits);
+    root = applyOp(dd, root, g);
     push(i + 1, g);
   });
   return frames;

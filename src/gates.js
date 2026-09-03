@@ -91,6 +91,20 @@ for (const [name, g] of Object.entries(GATES)) {
   g.arity = Math.log2(g.matrix.length);
 }
 
+/** w^m, i.e. e^{i*m*pi/4}, for any integer m. */
+export function omegaPow(m) {
+  let acc = L;
+  const r = ((m % 8) + 8) % 8;
+  for (let i = 0; i < r; i++) acc = Z.mul(acc, Z.OMEGA);
+  return acc;
+}
+
+/**
+ * The phase gate diag(1, e^{i*m*pi/4}). This is how `u1`/`p` from qelib1 enters the
+ * ring: an angle that is a multiple of pi/4 is exactly representable, any other is not.
+ */
+export function phaseGate(m) { return [[L, O], [O, omegaPow(m)]]; }
+
 /** Numeric matrix, for the floating-point oracle. */
 export function toComplexMatrix(m) {
   return m.map((row) => row.map(Z.toComplex));
