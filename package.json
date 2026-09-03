@@ -1,0 +1,12 @@
+{
+  "name": "quantum-vis",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MTBDD visualisation of quantum state evolution. No dependencies, ever.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/",
+    "build": "node tools/build.mjs",
+    "serve": "python3 -m http.server 8000"
+  }
+}
