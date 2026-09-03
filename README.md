@@ -12,9 +12,11 @@ symbols. No dependencies, no build step; ships as a single self-contained HTML f
 
 ## Development
 
+Requires Node 20.19+ (the test runner and the tooling assume it).
+
 ```sh
 python3 -m http.server 8000   # then open http://localhost:8000/dev.html
-node --test tests/            # no node_modules required
+node --test tests/*.test.js   # no node_modules required
 node tools/build.mjs          # -> quantum-vis.html (single file)
 ```
 

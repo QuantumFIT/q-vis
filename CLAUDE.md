@@ -10,8 +10,9 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
   `tools/build.mjs` inlines everything into a single self-contained `quantum-vis.html`
   that works offline from `file://`. Same idea as `~/qf-art/wrap.py`.
 - **No TypeScript compiler.** Types are documented with JSDoc only.
-- `node --test tests/` must pass with **zero `node_modules`**. Tests import the exact
-  same ES modules the browser loads.
+- `node --test tests/*.test.js` must pass with **zero `node_modules`**. Tests import the
+  exact same ES modules the browser loads. (Pass the glob, not the directory: since
+  Node 24 a bare directory argument is resolved as a module and fails.)
 - Layer discipline: `zomega.js` → `poly.js` → `dd.js` → `sim.js`/`qasm.js` → `layout.js` → `ui.js`.
   **Nothing in the first four layers may touch the DOM.** They must run headless in Node.
 
