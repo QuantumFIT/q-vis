@@ -10,9 +10,8 @@ import { layoutFrames } from './layout.js';
 import { EXAMPLES } from './examples.js';
 
 const GEO = { gutter: 72, padTop: 46, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
-// Small diagrams are magnified, large ones shrunk, but never past these limits. The floor
-// "Fit" really fits, however wide the diagram: it is the overview, and zooming is how you
-// read the detail. The ceiling stops a two-node diagram from being blown up absurdly.
+// "Fit" really fits, however wide the diagram: it is the overview, and zooming is how the
+// detail is read. The ceiling stops a two-node diagram from being blown up absurdly.
 const SCALE_RANGE = [0.12, 1.5];
 const ZOOM_RANGE = [0.15, 8];
 const ZOOM_STEP = 1.25;
@@ -577,9 +576,9 @@ function exportSvg() {
 
 // ---- wiring -------------------------------------------------------------
 
-const STORE = 'quantum-vis:v1';
-const THEME_STORE = 'quantum-vis:theme';
-const AMP_STORE = 'quantum-vis:amplitudes';
+const STORE = 'q-vis:v1';
+const THEME_STORE = 'q-vis:theme';
+const AMP_STORE = 'q-vis:amplitudes';
 const THEMES = ['auto', 'light', 'dark'];
 
 /** 'auto' follows the system; the other two pin it. Kept per viewer, not in the file. */

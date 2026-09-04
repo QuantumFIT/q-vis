@@ -1,4 +1,4 @@
-# quantum-vis — project conventions
+# q-vis — project conventions
 
 Web app that visualises how an **MTBDD representing a pure quantum state** evolves,
 gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo tool.
@@ -7,7 +7,7 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
 
 - **No runtime dependencies. No CDN. No build step in the dev loop.**
   Source is native ES modules in `src/`, loaded by `dev.html` via `<script type="module">`.
-  `tools/build.mjs` inlines everything into a single self-contained `quantum-vis.html`
+  `tools/build.mjs` inlines everything into a single self-contained `q-vis.html`
   that works offline from `file://`. Same idea as `~/qf-art/wrap.py`.
 - **No TypeScript compiler.** Types are documented with JSDoc only.
 - `node --test tests/*.test.js` must pass with **zero `node_modules`**. Tests import the

@@ -40,7 +40,7 @@ jobs:
         run: |
           node tools/build.mjs
           mkdir -p _site
-          cp quantum-vis.html _site/index.html
+          cp q-vis.html _site/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

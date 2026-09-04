@@ -1,5 +1,5 @@
 {
-  "name": "quantum-vis",
+  "name": "q-vis",
   "version": "0.0.0",
   "private": true,
   "description": "Visualise how the MTBDD of a pure quantum state evolves, gate by gate, under a unitary circuit.",

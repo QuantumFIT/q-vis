@@ -1,4 +1,4 @@
-# quantum-vis
+# q-vis
 
 Watch the **MTBDD** of a pure quantum state change, gate by gate, as a unitary circuit is
 applied to it.
@@ -77,7 +77,7 @@ directly, so a change is one reload away.
 ```sh
 python3 -m http.server 8000    # then open http://localhost:8000/dev.html
 node --test tests/*.test.js    # 62 tests, no node_modules
-node tools/build.mjs           # -> quantum-vis.html, one self-contained file
+node tools/build.mjs           # -> q-vis.html, one self-contained file
 ```
 
 Developed on Node 24. Nothing in the project needs more than Node 18, but pass the test

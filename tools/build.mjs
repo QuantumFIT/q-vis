@@ -2,7 +2,7 @@
 // Inlines the ES module graph and the stylesheet into one self-contained HTML file.
 //
 // The dev loop has no build step: dev.html loads real modules over http. This script
-// exists only to produce the artefact — a single quantum-vis.html that works offline
+// exists only to produce the artefact — a single q-vis.html that works offline
 // from file://, with no server, no CDN and no dependencies.
 //
 // It is a deliberately tiny bundler, not a general one. It understands exactly the
@@ -126,7 +126,7 @@ export function buildHtml() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const out = resolve(ROOT, 'quantum-vis.html');
+  const out = resolve(ROOT, 'q-vis.html');
   const { html, modules } = buildHtml();
   writeFileSync(out, html);
   const kb = (Buffer.byteLength(html) / 1024).toFixed(1);

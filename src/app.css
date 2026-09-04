@@ -1,4 +1,4 @@
-/* quantum-vis — an instrument plate for watching a decision diagram change.
+/* q-vis — an instrument plate for watching a decision diagram change.
  *
  * One rule governs the palette: the only colour on the page marks what changed in the
  * current step. Everything else is ink on paper, so a glance at the plate answers
