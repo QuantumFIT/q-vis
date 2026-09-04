@@ -21,7 +21,7 @@ const MAX_DRAWN_NODES = 800;
 const MAX_READOUT_LINES = 14;
 const PLAY_MS = 750;
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const AMP_FORMATS = ['exact', 'rect', 'polar-deg', 'polar-rad', 'polar-pi'];
+const AMP_FORMATS = ['exact', 'rect', 'polar-deg', 'polar-rad', 'polar-pi', 'tuple'];
 /** Links and stored settings written before the angle unit existed said just "polar". */
 const normaliseFormat = (f) => (f === 'polar' ? 'polar-deg' : f);
 
@@ -79,10 +79,19 @@ function compile() {
   app.dd = dd;
   app.circuit = circuit;
   app.frames = frames;
+  // The algebraic tuple form writes a whole state over one power of sqrt(2), so that
+  // power has to be known per frame before anything is laid out.
+  app.commonK = frames.map((f) => {
+    let k = 0;
+    for (const id of dd.reachable(f.root)) {
+      if (dd.isTerminal(id)) k = Math.max(k, P.denominatorPower(dd.valueOf(id)));
+    }
+    return k;
+  });
   app.layout = layoutFrames(dd, frames, {
     qubitLabels: circuit.qubits.map((q) => q.label),
     expand: app.expand,
-    formatValue: (v) => P.format(v, app.ampFormat),
+    formatValue: (v, i) => P.format(v, app.ampFormat, { k: app.commonK[i] }),
   });
   app.index = Math.min(app.index, frames.length - 1);
 
@@ -306,6 +315,11 @@ function resetCanvas() {
   sticky.append(omega);
   app.omegaNote = omega;
 
+  // The tuple form's common denominator, which changes from frame to frame.
+  const tuple = svgEl('text', { class: 'gutter legend-cap', x: lx + 16, y: ly });
+  sticky.append(tuple);
+  app.tupleNote = tuple;
+
   // The arrow into the root, as decision diagrams are drawn on paper. It also shows
   // something worth seeing: the root is not always at level 0, because the top qubits
   // can become don't-cares.
@@ -467,6 +481,14 @@ function drawFrame(f) {
 
   app.omegaNote.style.display =
     f.nodes.some((nd) => nd.terminal && nd.label.includes('ω')) ? '' : 'none';
+  const tupleMode = app.ampFormat === 'tuple';
+  app.tupleNote.style.display = tupleMode ? '' : 'none';
+  if (tupleMode) {
+    app.tupleNote.replaceChildren(`(a,b,c,d) = aω³+bω²+cω+d, over √2`);
+    const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
+    sup.textContent = String(app.commonK[f.index]);
+    app.tupleNote.append(sup);
+  }
 
   const rootNode = pos.get(f.root);
   app.rootMarker.setAttribute('transform', `translate(${xOf(rootNode)},${yOf(rootNode.level)})`);
@@ -577,7 +599,7 @@ function renderReadout(f) {
     line.className = 'amp-line';
     const coef = document.createElement('span');
     coef.className = 'amp-coef';
-    coef.textContent = P.format(value, app.ampFormat);
+    coef.textContent = P.format(value, app.ampFormat, { k: app.commonK[f.index] });
     const ket = document.createElement('span');
     ket.className = 'amp-ket';
     ket.textContent = `|${path}⟩`;

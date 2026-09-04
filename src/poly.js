@@ -96,6 +96,13 @@ export function asScalar(p) {
   return null;
 }
 
+/** The largest power of sqrt(2) any coefficient here is divided by. */
+export function denominatorPower(p) {
+  let k = 0;
+  for (const { coef } of p.t.values()) k = Math.max(k, Z.denominatorPower(coef));
+  return k;
+}
+
 export function symbols(p) {
   const s = new Set();
   for (const { mono } of p.t.values()) for (const [n] of mono) s.add(n);
@@ -125,14 +132,16 @@ function monoString(mono) {
 
 /**
  * @param {Poly} p
- * @param {'exact'|'rect'|'polar-deg'|'polar-rad'|'polar-pi'} [mode] exact keeps the
- *   ring's own notation; the others evaluate coefficients to floating point, polar in
- *   the requested angle unit. Symbolic terms keep their monomials either way — only the
+ * @param {'exact'|'rect'|'polar-deg'|'polar-rad'|'polar-pi'|'tuple'} [mode] exact keeps
+ *   the ring's own notation; rect and polar evaluate coefficients to floating point,
+ *   polar in the requested angle unit; tuple is the algebraic (a,b,c,d) form over a
+ *   common denominator. Symbolic terms keep their monomials in every mode — only the
  *   coefficient in front of them changes. 'polar' is accepted as 'polar-deg'.
+ * @param {{k?: number}} [opts] the common power of sqrt(2) to write tuples over
  */
-export function format(p, mode = 'exact') {
-  if (p.t.size === 0) return '0';
-  if (mode !== 'exact') return formatNumeric(p, mode);
+export function format(p, mode = 'exact', opts = {}) {
+  if (p.t.size === 0) return mode === 'tuple' ? Z.formatTuple(Z.ZERO, opts.k || 0) : '0';
+  if (mode !== 'exact') return formatNumeric(p, mode, opts);
   const parts = [];
   for (const k of [...p.t.keys()].sort()) {
     const { mono, coef } = p.t.get(k);
@@ -151,14 +160,15 @@ export function format(p, mode = 'exact') {
 }
 
 /** @returns {(z: any) => string} */
-function numberFormatter(mode) {
+function numberFormatter(mode, opts) {
   if (mode === 'rect') return Z.formatRect;
+  if (mode === 'tuple') return (z) => Z.formatTuple(z, Math.max(opts.k || 0, z.k));
   const unit = { 'polar-rad': 'rad', 'polar-pi': 'pi' }[mode] || 'deg';
   return (z) => Z.formatPolar(z, unit);
 }
 
-function formatNumeric(p, mode) {
-  const asNumber = numberFormatter(mode);
+function formatNumeric(p, mode, opts = {}) {
+  const asNumber = numberFormatter(mode, opts);
   const parts = [];
   for (const k of [...p.t.keys()].sort()) {
     const { mono, coef } = p.t.get(k);

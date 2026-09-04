@@ -84,3 +84,31 @@ test('formatting round-trips to the right number', () => {
     [Z.mul(Z.INV_SQRT2, Z.mul(Z.INV_SQRT2, Z.sub(Z.ONE, Z.I))), '(1-i)/2']];
   for (const [v, want] of cases) assert.equal(Z.format(v), want);
 });
+
+test('the algebraic tuple form reconstructs the value it stands for', () => {
+  const r = rng(91);
+  for (let i = 0; i < 300; i++) {
+    const z = randZ(r);
+    // A state is written over one common denominator, so the tuple must survive being
+    // scaled up to any k at least as large as the element's own.
+    const k = z.k + randInt(r, 0, 4);
+    const tuple = Z.formatTuple(z, k);
+    const [a, b, c, d] = tuple.slice(1, -1).split(',').map((n) => BigInt(n));
+    const rebuilt = Z.zo(d, c, b, a, k);
+    assert.ok(Z.eq(rebuilt, z),
+      `${Z.format(z)} written as ${tuple} over √2^${k} rebuilds as ${Z.format(rebuilt)}`);
+  }
+});
+
+test('the tuple is ordered by descending power of omega, as in the literature', () => {
+  // (a,b,c,d) means a*w^3 + b*w^2 + c*w + d.
+  assert.equal(Z.formatTuple(Z.ONE), '(0,0,0,1)');
+  assert.equal(Z.formatTuple(Z.OMEGA), '(0,0,1,0)');
+  assert.equal(Z.formatTuple(Z.I), '(0,1,0,0)');
+  assert.equal(Z.formatTuple(Z.zo(0, 0, 0, 1)), '(1,0,0,0)');
+  assert.equal(Z.formatTuple(Z.ZERO), '(0,0,0,0)');
+  // 1/sqrt(2) is (0,0,0,1) over sqrt(2)^1, and scaling it to sqrt(2)^3 multiplies by 2.
+  assert.equal(Z.formatTuple(Z.INV_SQRT2), '(0,0,0,1)');
+  assert.equal(Z.formatTuple(Z.INV_SQRT2, 3), '(0,0,0,2)');
+  assert.equal(Z.denominatorPower(Z.INV_SQRT2), 1);
+});

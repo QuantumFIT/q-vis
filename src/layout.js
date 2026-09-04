@@ -77,7 +77,10 @@ export function stableOrder(ids, prevRank) {
  *
  * @param {import('./dd.js').MTBDD} dd
  * @param {{index:number, gate:?object, root:number, added:number[]}[]} frames
- * @param {{qubitLabels?: string[], expand?: boolean, formatValue?: (v: any) => string}} [opts]
+ * @param {{qubitLabels?: string[], expand?: boolean,
+ *   formatValue?: (v: any, frameIndex: number) => string}} [opts] the frame index is
+ *   passed because a representation may factor something out per state — the algebraic
+ *   tuple form writes every amplitude of one frame over a common denominator.
  * @returns {{frames: FrameLayout[], xMin: number, xMax: number, width: number, height: number}}
  */
 export function layoutFrames(dd, frames, opts = {}) {
@@ -148,7 +151,7 @@ export function layoutFrames(dd, frames, opts = {}) {
           y: lev,
           terminal,
           zero: id === dd.zero,
-          label: terminal ? show(dd.valueOf(id)) : labels[lev],
+          label: terminal ? show(dd.valueOf(id), frame.index) : labels[lev],
           fresh: fresh.has(id),
         });
       });
@@ -223,7 +226,7 @@ function layoutTrees(dd, frames, labels, show) {
           y: level,
           terminal,
           zero: zeroOnly[id],
-          label: terminal ? show(value) : labels[level],
+          label: terminal ? show(value, frame.index) : labels[level],
           // An unreduced tree never changes shape, so "new" can only mean "this
           // amplitude is not what it was before this gate".
           fresh: terminal && prev !== null && dd.ring.key(prev[path]) !== dd.ring.key(value),

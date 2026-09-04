@@ -143,3 +143,22 @@ test('the pi form is exact for every angle the ring can produce', () => {
     assert.match(printed, /^1∠(0|-?\d*π(\/\d)?)$/, `unexpected form for w^${k}: ${printed}`);
   }
 });
+
+test('a state is written over one common denominator', () => {
+  // The eight QFT amplitudes share sqrt(2)^3 and become the signed unit tuples.
+  const k = 3;
+  const eighth = Z.zo(1, 0, 0, 0, k);
+  const seen = [];
+  for (let j = 0; j < 8; j++) {
+    seen.push(P.format(P.fromZ(Z.mul(eighth, Z.omegaPow(j))), 'tuple', { k }));
+  }
+  assert.deepEqual(seen, [
+    '(0,0,0,1)', '(0,0,1,0)', '(0,1,0,0)', '(1,0,0,0)',
+    '(0,0,0,-1)', '(0,0,-1,0)', '(0,-1,0,0)', '(-1,0,0,0)',
+  ]);
+  // Zero still prints as a tuple rather than as "0", so a column of them lines up.
+  assert.equal(P.format(P.zero, 'tuple', { k }), '(0,0,0,0)');
+  assert.equal(P.denominatorPower(P.fromZ(eighth)), 3);
+  // Symbolic terms keep their monomial here too.
+  assert.equal(P.format(P.mul(P.fromZ(Z.INV_SQRT2), P.variable('a')), 'tuple', { k: 1 }), '(0,0,0,1)a');
+});

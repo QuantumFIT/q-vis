@@ -184,6 +184,22 @@ export function toComplex(a) {
   return { re: re / d, im: im / d };
 }
 
+/** The power of sqrt(2) in this element's denominator. */
+export function denominatorPower(a) { return a.k; }
+
+/**
+ * The algebraic tuple form used in the MEDUSA/SliQSim literature: (a,b,c,d) standing for
+ * (a*w^3 + b*w^2 + c*w + d)/sqrt(2)^k. The k is not part of the tuple because a state is
+ * written with one common k for all of its amplitudes — pass that k here and the
+ * numerator is scaled up to match it, which is exact.
+ */
+export function formatTuple(a, k = a.k) {
+  let c = a.c;
+  for (let i = a.k; i < k; i++) c = numMulSqrt2(c);
+  // MEDUSA orders the tuple by descending power of w.
+  return `(${c[3]},${c[2]},${c[1]},${c[0]})`;
+}
+
 /** Canonical string, used as the hash-consing key for terminals. */
 export function key(a) {
   return `${a.c[0]},${a.c[1]},${a.c[2]},${a.c[3]}/${a.k}`;

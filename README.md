@@ -70,6 +70,12 @@ whenever it appears). The picker switches to floating point, either rectangular
 (`0.3536∠-0.7854`) or multiples of π (`0.3536∠-π/4`). Symbolic amplitudes keep their
 symbols in every mode; only the coefficient changes: `0.7071a + 0.7071b`.
 
+**tuple (a,b,c,d)** is the algebraic form used in the MEDUSA/SliQSim literature: `(a,b,c,d)`
+standing for `(a·ω³ + b·ω² + c·ω + d)/√2^k`. The `k` is not part of each tuple, because a
+state is written over one common power of √2 — the plate names that power under the
+diagram, and it changes from step to step. In this form the 3-qubit QFT is exactly the
+eight signed unit tuples.
+
 Polar is the one to reach for when a circuit only moves phase around — the 3-qubit QFT
 prints as eight amplitudes of identical magnitude and eight different angles. Every angle
 in this ring is a multiple of π/4, so the π form stays exact where the other two round.
