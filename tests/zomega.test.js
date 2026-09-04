@@ -112,3 +112,33 @@ test('the tuple is ordered by descending power of omega, as in the literature', 
   assert.equal(Z.formatTuple(Z.INV_SQRT2, 3), '(0,0,0,2)');
   assert.equal(Z.denominatorPower(Z.INV_SQRT2), 1);
 });
+
+test('the unit part factors exactly, and a unit reduces to 1', () => {
+  const r = rng(101);
+  for (let i = 0; i < 400; i++) {
+    const a = randZ(r);
+    const { unit, rest } = Z.unitPart(a);
+    assert.ok(Z.eq(Z.mul(unit, rest), a), `${Z.format(a)} = ${Z.format(unit)} * ${Z.format(rest)}`);
+  }
+  // Every unit a circuit can produce collapses to 1, which is what lets an edge-valued
+  // diagram share subfunctions differing only by a phase or a normalisation factor.
+  const units = [Z.ONE, Z.MINUS_ONE, Z.I, Z.MINUS_I, Z.SQRT2, Z.INV_SQRT2,
+    Z.add(Z.ONE, Z.I), Z.zo(1, 0, 0, 0, 5)];
+  for (let j = 0; j < 8; j++) units.push(Z.omegaPow(j));
+  for (const u of units) {
+    assert.ok(Z.eq(Z.unitPart(u).rest, Z.ONE),
+      `${Z.format(u)} is a unit but left ${Z.format(Z.unitPart(u).rest)}`);
+  }
+  // A non-unit keeps its essential part.
+  assert.ok(Z.eq(Z.unitPart(Z.fromInt(3)).rest, Z.fromInt(3)));
+  assert.ok(Z.eq(Z.unitPart(Z.fromInt(-3)).rest, Z.fromInt(3)));
+
+  // Two elements differing by a unit must land on the same rest — the property the
+  // diagram relies on.
+  for (let i = 0; i < 200; i++) {
+    const a = randZ(r);
+    if (Z.isZero(a)) continue;
+    const scaled = Z.mul(a, Z.mul(Z.omegaPow(randInt(r, 0, 7)), Z.zo(1, 0, 0, 0, randInt(r, 0, 3))));
+    assert.equal(Z.key(Z.unitPart(a).rest), Z.key(Z.unitPart(scaled).rest));
+  }
+});
