@@ -30,6 +30,7 @@
       <header>
         <span class="label">Circuit</span>
         <span class="spacer"></span>
+        <button id="help" type="button" title="which gates are supported, and how to write them">gates</button>
         <select id="example" aria-label="load an example"></select>
       </header>
       <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
@@ -75,6 +76,15 @@
     <button id="permalink" title="copy a link to this circuit, state and step">copy link</button>
     <button id="export" title="save the current diagram as an SVG file">export SVG</button>
   </footer>
+
+  <dialog id="helpDialog" aria-labelledby="helpTitle">
+    <header>
+      <span class="label" id="helpTitle">Gates and syntax</span>
+      <span class="spacer"></span>
+      <button id="helpClose" type="button">close</button>
+    </header>
+    <div id="helpBody"></div>
+  </dialog>
 </div>
 <script type="module">
   import { boot } from './src/ui.js';

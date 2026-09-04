@@ -8,6 +8,7 @@ import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm } from './state.js';
 import { layoutFrames } from './layout.js';
 import { EXAMPLES } from './examples.js';
+import { GATES } from './gates.js';
 
 const GEO = { gutter: 72, padTop: 46, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
 // "Fit" really fits, however wide the diagram: it is the overview, and zooming is how the
@@ -536,6 +537,79 @@ function renderStats(f) {
   $('next').disabled = f.index === app.layout.frames.length - 1;
 }
 
+// ---- the gate reference -------------------------------------------------
+
+const ARITY_HEADINGS = { 1: 'One qubit', 2: 'Two qubits', 3: 'Three qubits', 4: 'Four qubits' };
+
+const el = (tag, className, text) => {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+
+/** A row of `code` / plain-English pairs. */
+function helpTable(rows) {
+  const table = el('table', 'help-table');
+  for (const [code, text] of rows) {
+    const tr = el('tr');
+    tr.append(el('td', 'help-code', code), el('td', 'help-what', text));
+    table.append(tr);
+  }
+  return table;
+}
+
+/**
+ * Built from the gate table itself rather than written out, so it cannot drift away from
+ * what the tool actually accepts. Built once, on first opening.
+ */
+function buildHelp() {
+  const body = $('helpBody');
+  if (body.dataset.built) return;
+  body.dataset.built = '1';
+
+  const byArity = new Map();
+  for (const [name, g] of Object.entries(GATES)) {
+    if (!byArity.has(g.arity)) byArity.set(g.arity, []);
+    byArity.get(g.arity).push([name, g]);
+  }
+
+  for (const [arity, gates] of [...byArity].sort((a, b) => a[0] - b[0])) {
+    body.append(el('h3', null, ARITY_HEADINGS[arity] || `${arity} qubits`));
+    const args = Array.from({ length: arity }, (_, i) => `q[${i}]`).join(',');
+    body.append(helpTable(gates
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, g]) => [`${name} ${args};`, g.doc])));
+  }
+
+  body.append(el('h3', null, 'Phases'));
+  body.append(el('p', 'help-note',
+    'Only angles that are multiples of π/4, which is exactly when the phase stays exact. '
+    + 'Enough to write a QFT.'));
+  body.append(helpTable([
+    ['u1(pi/4) q[0];', 'multiplies |1> by e^(iπ/4); p is a synonym'],
+    ['cu1(pi/2) q[0],q[1];', 'the same phase, applied when the control is 1; cp is a synonym'],
+  ]));
+
+  body.append(el('h3', null, 'Circuit syntax'));
+  body.append(helpTable([
+    ['qreg q[3];', 'declare qubits; several registers are laid end to end'],
+    ['h q;', 'apply a one-qubit gate to every qubit of a register'],
+    ['gate flip a,b { x a; cx a,b; }', 'define a gate; calls to it are inlined'],
+    ['barrier q;', 'a section marker in the strip above; it does not change the state'],
+    ['// note', 'comment, as is /* ... */'],
+  ]));
+
+  body.append(el('h3', null, 'Refused, and why'));
+  body.append(helpTable([
+    ['rx(0.3) q[0];', 'an arbitrary rotation leaves the exact ring, so it cannot be represented'],
+    ['u1(pi/3) q[0];', 'the same reason: π/3 is not a multiple of π/4'],
+    ['measure q -> c;', 'not unitary; this tool shows unitary evolution of a pure state'],
+    ['reset q[0];', 'likewise not unitary'],
+    ['if (c==1) x q[0];', 'classical control needs a measurement to control on'],
+  ]));
+}
+
 // ---- transport ----------------------------------------------------------
 
 function step(d) {
@@ -747,6 +821,12 @@ export function boot() {
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
   $('permalink').addEventListener('click', copyPermalink);
+  $('help').addEventListener('click', () => { buildHelp(); $('helpDialog').showModal(); });
+  $('helpClose').addEventListener('click', () => $('helpDialog').close());
+  // Clicking the backdrop, which is the dialog element itself outside its own box.
+  $('helpDialog').addEventListener('click', (e) => {
+    if (e.target === $('helpDialog')) $('helpDialog').close();
+  });
   $('ampFormat').addEventListener('change', (e) => {
     app.ampFormat = e.target.value;
     try { localStorage.setItem(AMP_STORE, app.ampFormat); } catch { /* storage may be unavailable */ }

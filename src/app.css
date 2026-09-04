@@ -18,6 +18,7 @@
   --rule-soft: #d8e0e4;
   --accent: #a8175f;
   --accent-soft: #f6dbe8;
+  --backdrop: rgba(20, 32, 42, 0.4);
 
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -41,6 +42,7 @@
     --rule-soft: #29373f;
     --accent: #ff74b1;
     --accent-soft: #3d1a2b;
+    --backdrop: rgba(0, 0, 0, 0.6);
   }
 }
 
@@ -55,6 +57,7 @@
     --rule-soft: #29373f;
     --accent: #ff74b1;
     --accent-soft: #3d1a2b;
+    --backdrop: rgba(0, 0, 0, 0.6);
   color-scheme: dark;
 }
 
@@ -179,6 +182,9 @@ select, button {
 }
 
 select { font-size: 12px; max-width: 100%; }
+/* A flex item will not shrink below its content unless told it may. Without this the
+   example names push the picker out past the edge of its panel. */
+#example { flex: 0 1 auto; min-width: 0; }
 
 button:hover:not(:disabled), select:hover { border-color: var(--ink-soft); }
 button:disabled { color: var(--ink-faint); cursor: default; }
@@ -341,6 +347,72 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .node, .edge, .root-marker { transition: none; }
 }
+
+/* ---- the gate reference ----------------------------------------------- */
+
+dialog {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0;
+  width: min(720px, calc(100% - 32px));
+  max-height: 82vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+dialog:not([open]) { display: none; }
+dialog::backdrop { background: var(--backdrop); }
+
+dialog > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+dialog > header .spacer { flex: 1; }
+
+#helpBody {
+  overflow: auto;
+  padding: 4px 14px 16px;
+}
+
+#helpBody h3 {
+  font: 600 10px/1 var(--sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 18px 0 7px;
+}
+
+.help-note {
+  margin: -2px 0 8px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+}
+
+.help-table { border-collapse: collapse; width: 100%; }
+
+.help-table td {
+  padding: 3px 0;
+  vertical-align: baseline;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.help-table tr:first-child td { border-top: 0; }
+
+.help-code {
+  font: 12px/1.5 var(--mono);
+  white-space: nowrap;
+  padding-right: 16px !important;
+  width: 1%;
+}
+
+.help-what { color: var(--ink-soft); font-size: 12px; }
 
 /* ---- transport -------------------------------------------------------- */
 
