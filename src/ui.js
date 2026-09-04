@@ -7,7 +7,7 @@ import { simulate } from './sim.js';
 import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
 import { layoutFrames, layoutEdgeValued } from './layout.js';
-import { EVDD, unitNormaliser } from './evdd.js';
+import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import * as Z from './zomega.js';
 import { EXAMPLES } from './examples.js';
 import { GATES } from './gates.js';
@@ -36,7 +36,8 @@ const app = {
   playing: false,
   timer: null,
   hideZero: false,
-  view: 'reduced',   // reduced | tree | edge-valued
+  view: 'reduced',   // reduced | tree | edge-valued | tree-edge-valued
+  canon: 'max',      // which edge an edge-valued diagram takes its factor from
   theme: 'auto',
   ampFormat: 'exact',
   zoom: 'fit',
@@ -97,7 +98,7 @@ function compile() {
     // Simulation stays on the MTBDD; this is the same states seen the other way, built
     // in one pass per frame. One manager for the whole run, so nodes shared between
     // frames stay the same nodes and the diagram morphs rather than being redrawn.
-    const ev = new EVDD(P.Ring, circuit.nqubits, unitNormaliser(P, Z));
+    const ev = new EVDD(P.Ring, circuit.nqubits, unitNormaliser(P, Z, app.canon));
     const memo = new Map();
     app.layout = layoutEdgeValued(ev,
       frames.map((f) => ({ index: f.index, gate: f.gate, edge: ev.fromMTBDD(dd, f.root, memo) })),
@@ -110,7 +111,7 @@ function compile() {
       // The unreduced tree drawn the edge-valued way: the same normalisation, with
       // nothing shared, which is the comparison worth having.
       weighting: app.view === 'tree-edge-valued'
-        ? { ring: P.Ring, normalise: unitNormaliser(P, Z) }
+        ? { ring: P.Ring, normalise: unitNormaliser(P, Z, app.canon) }
         : null,
     });
   }
@@ -131,6 +132,9 @@ function compile() {
   for (const value of ['tree', 'tree-edge-valued']) {
     $('view').querySelector(`option[value="${value}"]`).disabled = big;
   }
+  // The canonisation rule only means anything where there are edge weights.
+  $('canon').style.display = app.view.endsWith('edge-valued') ? '' : 'none';
+  $('canon').title = NORMALISERS[app.canon].note;
   resetCanvas();
   renderCircuit();
   setFrame(app.index);
@@ -938,6 +942,7 @@ function permalink() {
   p.set('s', encodeText($('stateText').value));
   if (app.index) p.set('i', String(app.index));
   if (app.view !== 'reduced') p.set('t', { tree: '1', 'edge-valued': 'e', 'tree-edge-valued': 'te' }[app.view]);
+  if (app.canon !== 'max') p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
   return `${location.href.split('#')[0]}#${p}`;
@@ -955,10 +960,12 @@ function applyPermalink() {
     return false;   // a mangled link should not stop the app from starting
   }
   app.view = { 1: 'tree', e: 'edge-valued', te: 'tree-edge-valued' }[p.get('t')] || 'reduced';
+  if (NORMALISERS[p.get('n')]) app.canon = p.get('n');
   app.hideZero = p.get('z') === '1';
   const f = normaliseFormat(p.get('f'));
   if (AMP_FORMATS.includes(f) && f !== 'exact') app.ampFormat = f;
   $('view').value = app.view;
+  $('canon').value = app.canon;
   $('hideZero').checked = app.hideZero;
   $('ampFormat').value = app.ampFormat;
   app.index = Math.max(0, parseInt(p.get('i') || '0', 10) || 0);
@@ -1119,6 +1126,14 @@ export function boot() {
   });
   $('view').addEventListener('change', (e) => {
     app.view = e.target.value;
+    compile();
+  });
+  for (const [kind, rule] of Object.entries(NORMALISERS)) {
+    $('canon').append(new Option(`factor: ${rule.label}`, kind));
+  }
+  $('canon').value = app.canon;
+  $('canon').addEventListener('change', (e) => {
+    app.canon = e.target.value;
     compile();
   });
   $('hideZero').addEventListener('change', (e) => {

@@ -83,9 +83,10 @@ The selector switches between them, and each answers a different question.
 | **full tree, edge-valued** | the same weights with nothing shared |
 
 The 3-qubit QFT is the case that separates them: 15 nodes reduced, and **4** edge-valued,
-because its amplitudes differ only by phases and phases factor onto the edges. `docs/EVDD.md`
-explains the normalisation this rests on, and why the ring not being a field makes it a
-decision rather than a formula.
+because its amplitudes differ only by phases and phases factor onto the edges. In the edge-valued views a second selector chooses which edge the normalisation factor is
+taken from — the choice Q-Sylvan calls `norm-low`, `norm-min` and `norm-max`.
+`docs/EVDD.md` maps those onto what is expressible here, and explains why the ring not
+being a field makes this a decision rather than a formula.
 
 ## Reading the amplitudes
 

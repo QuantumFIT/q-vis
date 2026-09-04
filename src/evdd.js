@@ -17,7 +17,7 @@ export class EVDD {
   /**
    * @param {object} ring the amplitude ring, as in dd.js
    * @param {number} nvars
-   * @param {(w: any) => ({unit: any, inverse: any}|null)} [normalise]
+   * @param {(low: object, high: object) => ({unit: any, inverse: any}|null)} [normalise]
    */
   constructor(ring, nvars, normalise = () => null) {
     this.ring = ring;
@@ -46,9 +46,8 @@ export class EVDD {
     if (this.edgeKey(e0) === this.edgeKey(e1)) return e0;
 
     // Factor a scalar out of both children and hand it to the incoming edge. Which
-    // scalar is the normaliser's business; it is taken from the first non-zero child so
-    // that the choice does not depend on which side happens to be zero.
-    const factor = this.normalise(zero0 ? e1.w : e0.w);
+    // scalar — and which edge it comes from — is the normaliser's business.
+    const factor = this.normalise(e0, e1);
     let w0 = e0.w;
     let w1 = e1.w;
     let carried = this.ring.one;
@@ -119,17 +118,89 @@ export class EVDD {
   size(edge) { return this.reachable(edge).length; }
 }
 
+// ---- canonisation ---------------------------------------------------------
+//
+// The literature's schemes all pick a normalisation factor v from the pair of edge
+// weights and divide both by it: Q-Sylvan implements v = low, min, max and an L2 rule,
+// and Quist et al. use 'low' (and 'L2') for the same Clifford+T ring this project uses.
+//
+// Dividing by a whole weight needs a field, and Z[1/sqrt(2), i] is not one — across this
+// project's own examples, 45% of the amplitudes that appear have no inverse in it (3/4
+// and 13/256 among them). Quist et al. answer that by moving to the fraction field and
+// canonicalising with Euclid's algorithm; until that exists here, what is available is
+// the *unit part* of the chosen weight, which is always invertible.
+//
+// So the choice offered is which edge the factor is taken from — the literature's
+// question — while what is taken from it is as much as this ring allows. Where the
+// chosen weight is a unit the two coincide exactly.
+
+/** |w|^2 as an exact ring element, or null when the weight is symbolic. */
+function magnitudeSquared(P, Z, w) {
+  const s = P.asScalar(w);
+  return s === null ? null : Z.mul(s, Z.conj(s));
+}
+
+function unitFactor(P, Z, w) {
+  const scalar = P.asScalar(w);
+  if (scalar === null || Z.isZero(scalar)) return null;
+  const { unit } = Z.unitPart(scalar);
+  if (Z.eq(unit, Z.ONE)) return null;
+  return { unit: P.fromZ(unit), inverse: P.fromZ(Z.invert(unit)) };
+}
+
 /**
- * Factor out the units a circuit produces — a power of sqrt(2) and a power of w. Exact,
- * since those are invertible. A symbolic weight is left alone rather than guessed at.
- * A gcd-based normaliser would slot in here unchanged; see docs/EVDD.md.
+ * Which of the two edges the factor comes from.
+ * @param {'low'|'max'|'min'} pick
  */
-export function unitNormaliser(P, Z) {
-  return (w) => {
-    const scalar = P.asScalar(w);
-    if (scalar === null || Z.isZero(scalar)) return null;
-    const { unit } = Z.unitPart(scalar);
-    if (Z.eq(unit, Z.ONE)) return null;
-    return { unit: P.fromZ(unit), inverse: P.fromZ(Z.invert(unit)) };
-  };
+function chooseEdge(P, Z, pick, e0, e1) {
+  if (P.isZero(e0.w)) return e1;
+  if (P.isZero(e1.w)) return e0;
+  if (pick === 'low') return e0;
+  const m0 = magnitudeSquared(P, Z, e0.w);
+  const m1 = magnitudeSquared(P, Z, e1.w);
+  if (m0 === null || m1 === null) return e0;   // symbolic: no magnitude to compare
+  // Compared as |w|^2 so no square root is needed. Equality is decided exactly, on the
+  // ring elements; only the ordering of unequal magnitudes goes through floating point,
+  // where it cannot change the answer.
+  if (Z.eq(m0, m1)) {
+    const bigger = e0.node >= e1.node ? e0 : e1;
+    const smaller = e0.node >= e1.node ? e1 : e0;
+    return pick === 'max' ? bigger : smaller;
+  }
+  const c0 = Z.toComplex(m0).re;
+  const c1 = Z.toComplex(m1).re;
+  return (pick === 'max') === (c0 > c1) ? e0 : e1;
+}
+
+/** The canonisation rules on offer, keyed as they are named in the literature. */
+export const NORMALISERS = {
+  none: {
+    label: 'none',
+    note: 'Weights are left where they fall. Sharing then needs subfunctions to be equal, '
+      + 'not merely proportional — but the terminals still collapse to one.',
+    make: () => () => null,
+  },
+  low: {
+    label: 'low edge',
+    note: "Q-Sylvan's norm-low and the rule Quist et al. use for their scaling guarantees: "
+      + 'the factor comes from the low edge, or the high edge when the low one is zero.',
+    make: (P, Z) => (e0, e1) => unitFactor(P, Z, chooseEdge(P, Z, 'low', e0, e1).w),
+  },
+  max: {
+    label: 'larger edge',
+    note: "Q-Sylvan's norm-max, its default: the factor comes from the edge of larger "
+      + '|w|², so the larger values stay low in the diagram. Ties go to the larger child id.',
+    make: (P, Z) => (e0, e1) => unitFactor(P, Z, chooseEdge(P, Z, 'max', e0, e1).w),
+  },
+  min: {
+    label: 'smaller edge',
+    note: "Q-Sylvan's norm-min, which it measured as the least numerically stable of the "
+      + 'four. Exact arithmetic here makes that objection moot, so it is offered for comparison.',
+    make: (P, Z) => (e0, e1) => unitFactor(P, Z, chooseEdge(P, Z, 'min', e0, e1).w),
+  },
+};
+
+/** The default: take the factor from the larger edge, as Q-Sylvan does. */
+export function unitNormaliser(P, Z, kind = 'max') {
+  return (NORMALISERS[kind] || NORMALISERS.max).make(P, Z);
 }

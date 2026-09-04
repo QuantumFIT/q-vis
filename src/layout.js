@@ -206,7 +206,8 @@ export function treeEdgeWeights(dd, values, { ring, normalise }) {
       weightOf.set(id, [w0, w1]);
       return ring.zero;
     }
-    const f = normalise(ring.isZero(w0) ? w1 : w0);
+    const f = normalise({ w: w0, node: idOf(level + 1, path * 2) },
+      { w: w1, node: idOf(level + 1, path * 2 + 1) });
     if (!f) {
       weightOf.set(id, [w0, w1]);
       return ring.one;

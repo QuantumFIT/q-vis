@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EVDD, unitNormaliser } from '../src/evdd.js';
+import { EVDD, unitNormaliser, NORMALISERS } from '../src/evdd.js';
 import { MTBDD } from '../src/dd.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
@@ -137,4 +137,51 @@ test('an all-zero subtree is reached by a zero edge, not by a weight of 1', () =
   const [low, high] = weightOf.get(0);
   assert.ok(!P.isZero(low), 'the occupied side carries a weight');
   assert.ok(P.isZero(high), 'the empty side is a zero edge, so hiding zeros takes the subtree with it');
+});
+
+test('every canonisation rule preserves every amplitude', () => {
+  for (const kind of Object.keys(NORMALISERS)) {
+    for (const example of EXAMPLES) {
+      const circuit = parseQasm(example.qasm);
+      const n = circuit.nqubits;
+      if (n > 6) continue;
+      const dd = new MTBDD(P.Ring, n);
+      const frames = simulate(dd, buildState(dd, parseState(example.state, n).entries), circuit);
+      const root = frames[frames.length - 1].root;
+      const ev = new EVDD(P.Ring, n, unitNormaliser(P, Z, kind));
+      const edge = ev.fromMTBDD(dd, root);
+      for (const bits of allBits(n)) {
+        assert.equal(P.key(ev.evaluate(edge, bits)), P.key(dd.evaluate(root, bits)),
+          `${kind} on ${example.name} disagrees at |${bits}>`);
+      }
+    }
+  }
+});
+
+test('the rule chosen decides which edge keeps the weight', () => {
+  // A node whose two edges have different magnitudes, so low and max genuinely differ.
+  const dd = new MTBDD(P.Ring, 1);
+  const root = dd.fromAmplitudes([['0', P.fromZ(Z.OMEGA)], ['1', P.fromZ(Z.fromInt(2))]]);
+  const weights = (kind) => {
+    const ev = new EVDD(P.Ring, 1, unitNormaliser(P, Z, kind));
+    const edge = ev.fromMTBDD(dd, root);
+    return [P.format(ev.lowOf(edge.node).w), P.format(ev.highOf(edge.node).w)];
+  };
+  // 2/ω is (1-i)√2, which is how the formatter writes it.
+  assert.deepEqual(weights('low'), ['1', '(1-i)√2'], 'the low edge is divided out');
+  assert.deepEqual(weights('max'), ['ω/2', '1'], '2 has the larger magnitude, so it goes up');
+  assert.deepEqual(weights('min'), ['1', '(1-i)√2'], 'ω is the smaller, so this agrees with low here');
+  assert.deepEqual(weights('none'), ['ω', '2'], 'nothing is factored out');
+});
+
+test('ties are broken deterministically, not by whichever edge came first', () => {
+  // Equal magnitudes: the rule must still pick the same edge every time.
+  const dd = new MTBDD(P.Ring, 2);
+  const root = dd.fromAmplitudes([['00', P.fromZ(Z.OMEGA)], ['10', P.fromZ(Z.I)]]);
+  const once = () => {
+    const ev = new EVDD(P.Ring, 2, unitNormaliser(P, Z, 'max'));
+    const edge = ev.fromMTBDD(dd, root);
+    return `${P.format(edge.w)}|${P.format(ev.lowOf(edge.node).w)}|${P.format(ev.highOf(edge.node).w)}`;
+  };
+  assert.equal(once(), once());
 });

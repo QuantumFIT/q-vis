@@ -24,7 +24,51 @@ over the bits of `y`, and the two effects separate cleanly:
 Moving the amplitudes onto the edges collapses the *terminals* — eight become one.
 Normalising then collapses the *internal nodes*, leaving one per qubit.
 
-## The decision: normalising over a ring that is not a field
+## The canonisation rules on offer
+
+Every scheme in the literature picks a normalisation factor ν from a node's pair of edge
+weights and divides both by it, multiplying the incoming edge by ν. Q-Sylvan [1]
+implements four choices and measures them; Quist et al. [2] use two, over the same
+Clifford+T ring this project uses.
+
+| Q-Sylvan | ν | ℓ₂ error measured there | here |
+| --- | --- | --- | --- |
+| `norm-low` | α, the low weight | 8% | **low edge** |
+| `norm-min` | min(α, β) | 20% | **smaller edge** |
+| `norm-max` | max(α, β) | 0% (their default) | **larger edge** (our default) |
+| `norm-L2` | ‖(α,β)‖ with α/ν real positive | 0% | not expressible — see below |
+
+Their ranking is driven by floating-point error, and they conclude that "having larger
+values higher up in the decision diagram can increase issues with numerical instability".
+Exact arithmetic removes that objection entirely, so the rules are offered here on their
+other merits: what they do to the picture, and to the node count.
+
+Two things follow from the ring rather than from the rule.
+
+**Dividing by a whole weight needs a field, and this is not one.** Across this project's
+own examples, 45% of the amplitudes that appear have no inverse in `Z[1/√2, i]` — `3/4`,
+`5/(4√2)`, `13/256`. So what is factored out here is the *unit part* of the chosen
+weight, which is always invertible. Where the chosen weight is a unit the two coincide
+exactly; where it is not, this rule leaves the non-unit part behind and the literature's
+rule would leave the ring. Quist et al. answer the same problem by moving to the fraction
+field and canonicalising with Euclid's algorithm, which is the route to full canonicity
+here too.
+
+**`norm-L2` cannot be done exactly at all**, since it divides by ‖(α,β)‖ — a square root,
+which is not in the ring even after passing to fractions.
+
+Measured over the examples, the three edge choices give the same node counts (49 against
+53 for no normalisation) but visibly different diagrams: `smaller edge` mirrors the QFT,
+moving the phases onto the low edges. The choice of edge is what the literature debates;
+here it changes the drawing more than the size.
+
+[1] Brand & Laarman, *Q-Sylvan: A Parallel Decision Diagram Package for Quantum
+Computing*, arXiv:2508.00514.
+[2] Quist et al., *Exact quantum decision diagrams with scaling guarantees for Clifford+T
+circuits and beyond*, arXiv:2602.17775 — same ring, `low` canonicity, fractions plus
+Euclid for a canonical form.
+
+## Why the ring makes this a decision
 
 Canonicity needs a rule for which scalar to push up an edge, and every textbook rule
 divides. Amplitudes live in `Z[1/√2, i]`, where division is not always possible:
@@ -34,9 +78,9 @@ divides. Amplitudes live in `Z[1/√2, i]`, where division is not always possibl
 | `i`, `ω`, `√2`, `2`, `1+i`, `1+ω` | in the ring |
 | `3`, `1+2i` | **not in the ring** |
 
-So the normaliser is a parameter (`EVDD`'s third argument), and what ships factors out a
-power of `√2` and a power of `ω` — the units a gate can introduce, so the division is
-exact. `zomega.unitPart` does it, choosing canonically among the eight rotations, with
+So the normaliser is a parameter (`EVDD`'s third argument, `NORMALISERS` in `evdd.js`),
+and what it factors out is a power of `√2` and a power of `ω` — the units a gate can
+introduce, so the division is exact. `zomega.unitPart` does it, choosing canonically among the eight rotations, with
 the property that makes it work: **every unit reduces to 1**, so two amplitudes differing
 by a phase leave the same remainder. A symbolic weight is left alone rather than guessed
 at.
