@@ -24,7 +24,11 @@ The point is what the structure costs. A uniform superposition over 8 qubits has
 amplitudes and is **one node**. A 5-qubit GHZ state is 11 nodes, growing by two per qubit;
 the same state drawn as an unreduced tree is 63. A 3-qubit QFT gives every basis state a
 different phase, so nothing can be shared and the diagram is as large as the state vector.
-All three are one click apart in the examples, and the **full tree** toggle draws any of
+Grover on 4 qubits ends in **6 nodes**, because the state is symmetric in every unmarked
+basis state and sharing captures exactly that — `13/256` on one shared terminal and
+`-251/256` on the marked path, exactly, where a float simulator would say 0.98.
+
+All of them are one click apart in the examples, and the **full tree** toggle draws any of
 them unreduced for comparison.
 
 ## Writing the input state
@@ -49,8 +53,7 @@ sx sxdg`, controlled forms `cx cy cz ch cs csdg csx ct ctdg`, `swap iswap ccx cc
 and `u1`/`p`/`cu1`/`cp` when the angle is a multiple of π/4 — enough for QFT.
 
 `barrier` is accepted and drawn as a divider between steps in the circuit strip. It has
-no effect on the state — there is no compiler here for it to constrain — so it serves
-only to mark the sections of a circuit, such as oracle and diffusion in Grover.
+no effect on the state, since there is no compiler here for it to constrain.
 
 Arbitrary rotations such as `rz(π/3)` are **deliberately unsupported**: their entries leave
 the ring, which would cost both exactness and the property that equal states have identical

@@ -43,7 +43,6 @@ x q[0];
 
 ch q[0],q[2];
 cx q[2],q[0];
-barrier q;
 
 ch q[0],q[1];
 cx q[1],q[0];
@@ -87,10 +86,8 @@ qreg q[3];
 h q[0];
 cu1(pi/2) q[1],q[0];
 cu1(pi/4) q[2],q[0];
-barrier q;
 h q[1];
 cu1(pi/2) q[2],q[1];
-barrier q;
 h q[2];
 swap q[0],q[2];
 `,
@@ -105,9 +102,7 @@ qreg q[2];
 
 h q[0];
 h q[1];
-barrier q;
 cz q[0],q[1];
-barrier q;
 h q[0];
 h q[1];
 x q[0];
@@ -119,6 +114,56 @@ h q[0];
 h q[1];
 `,
     state: '|00> : 1',
+  },
+  {
+    name: 'Grover, 3 qubits',
+    note: 'Two iterations is the optimum for eight basis states: watch |111> grow while '
+      + 'the rest shrink and turn negative.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[3];
+
+// Mark |111>, then reflect about the mean. ccz does both jobs: as the oracle it flips
+// the sign of |111>, and inside the diffuser it flips the sign of |000> once the x gates
+// have moved it there.
+gate diffuse a,b,c {
+  h a; h b; h c;
+  x a; x b; x c;
+  ccz a,b,c;
+  x a; x b; x c;
+  h a; h b; h c;
+}
+gate step a,b,c { ccz a,b,c; diffuse a,b,c; }
+
+h q;
+step q[0],q[1],q[2];
+step q[0],q[1],q[2];
+`,
+    state: '|000> : 1',
+  },
+  {
+    name: 'Grover, 4 qubits',
+    note: 'Three iterations over sixteen basis states. The diagram stays small throughout: '
+      + 'the state is symmetric in the unmarked qubits, and sharing captures exactly that.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[4];
+
+gate diffuse a,b,c,d {
+  h a; h b; h c; h d;
+  x a; x b; x c; x d;
+  c3z a,b,c,d;
+  x a; x b; x c; x d;
+  h a; h b; h c; h d;
+}
+gate step a,b,c,d { c3z a,b,c,d; diffuse a,b,c,d; }
+
+h q;
+step q[0],q[1],q[2],q[3];
+step q[0],q[1],q[2],q[3];
+step q[0],q[1],q[2],q[3];
+`,
+    state: '|0000> : 1',
   },
   {
     name: 'Don\'t-care patterns',

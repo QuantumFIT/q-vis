@@ -519,23 +519,18 @@ function renderStats(f) {
   const norm = squaredNorm(app.dd, frame.root);
   const parts = [`<b>${f.nodes.length}</b> node${f.nodes.length === 1 ? '' : 's'}`];
   // Frame 0 is the state as given, so "+4 −0" there would be counting it against nothing.
-  if (f.index > 0) {
-    if (app.expand && f.changed) {
-      // An unreduced tree never changes shape, so the only news is which amplitudes moved.
-      parts.push(`<span class="delta">${f.changed} amplitude${f.changed === 1 ? '' : 's'} changed</span>`);
-    } else if (!app.expand && (frame.added.length || frame.removed.length)) {
-      // "+14 −10" alone was cryptic: the words say which way each number points.
-      parts.push(`<span class="delta">+${frame.added.length} new, −${frame.removed.length} dropped</span>`);
-    }
+  // No node churn count: which nodes this gate created is already on the plate, in the
+  // only colour it uses.
+  if (f.index > 0 && app.expand && f.changed) {
+    // An unreduced tree never changes shape, so the leaves are the only news.
+    parts.push(`<span class="delta">${f.changed} amplitude${f.changed === 1 ? '' : 's'} changed</span>`);
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
   $('stats').innerHTML = parts.join(' · ');
   $('stats').title = app.expand
-    ? 'How many amplitudes this gate changed. An unreduced tree never changes shape, so '
-      + 'the leaves are the only thing that can differ.'
-    : 'Nodes reachable from the root, then how the diagram changed: how many nodes this '
-      + 'gate created, and how many the previous diagram used that this one does not. '
-      + 'Nothing is discarded — every diagram shares its unchanged nodes with the last.';
+    ? 'Nodes in the tree, and how many amplitudes this gate changed. An unreduced tree '
+      + 'never changes shape, so the leaves are the only thing that can differ.'
+    : 'Nodes reachable from the root. The ones this gate created are marked on the plate.';
   $('position').textContent = `${f.index} / ${app.layout.frames.length - 1}`;
   $('prev').disabled = f.index === 0;
   $('next').disabled = f.index === app.layout.frames.length - 1;

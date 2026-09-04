@@ -84,6 +84,10 @@ export const GATES = {
   ccx: { matrix: controlled(X, 2), label: 'CCX', controls: 2 },
   ccz: { matrix: controlled(ZZ, 2), label: 'CCZ', controls: 2 },
   cswap: { matrix: controlled(SWAP), label: 'CSWAP', controls: 1, swap: true },
+  // Three controls, which a Grover diffuser on four qubits needs. Not in qelib1 — but
+  // neither is ccz, and the entries are integers, so both are exact here.
+  c3x: { matrix: controlled(X, 3), label: 'C³X', controls: 3 },
+  c3z: { matrix: controlled(ZZ, 3), label: 'C³Z', controls: 3 },
 };
 
 for (const [name, g] of Object.entries(GATES)) {
