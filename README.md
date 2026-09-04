@@ -42,13 +42,16 @@ One line per basis pattern. `-` matches either value of that qubit:
 |11> : b
 0-1  : 1/sqrt(2)            # a don't-care: 2 basis states, 1 line, 0 extra nodes
 ----------- : 1/2^5         # a 10-qubit uniform superposition — one terminal
---0-- : ?                   # 16 unknowns a00000..a11011, zero where the middle qubit is 1
+0-  : ?                     # two unknowns, a and b
+--0-- : ?                   # 16 unknowns a..q, zero where the middle qubit is 1
 ```
 
-A `?` amplitude gives every basis state the pattern matches its **own** symbol, named after
-that state, so a whole space of inputs can be explored at once — `all symbolic` fills this
-in for the current circuit. Write `x?` for a different prefix; the rest of the expression
-still applies, so `?/2` halves each of them.
+A `?` amplitude gives every basis state the pattern matches its **own** symbol, so a whole
+space of inputs can be explored at once — `all symbolic` fills this in for the current
+circuit. Symbols are plain letters while there are enough (skipping `i` and `w`, which
+already mean the imaginary unit and ω); past that each is named after its basis state,
+`a00000` and so on. Write `x?` to force that naming under a chosen prefix; the rest of the
+expression still applies, so `?/2` halves each of them.
 
 Amplitudes are expressions over integers, `i`, `sqrt2`, `omega` (= e^{iπ/4}) and symbols,
 combined with `+ - * / ^`. Division must stay exact: `1/2` and `1/(1+i)` are fine, while

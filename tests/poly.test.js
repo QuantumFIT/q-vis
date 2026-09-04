@@ -57,7 +57,7 @@ test('symbolic amplitudes format readably', () => {
   assert.equal(P.format(P.mul(P.fromZ(Z.INV_SQRT2), P.add(a, b))), 'a/√2 + b/√2');
   assert.equal(P.format(P.sub(a, b)), 'a - b');
   assert.equal(P.format(P.zero), '0');
-  assert.equal(P.format(P.mul(P.fromZ(Z.I), a)), 'ia');
+  assert.equal(P.format(P.mul(P.fromZ(Z.I), a)), 'i·a');
 });
 
 test('asScalar recognises constants only', () => {
@@ -106,12 +106,17 @@ test('numeric formatting agrees with the exact value it replaces', () => {
 
 test('symbolic terms keep their monomials in every format', () => {
   const a = P.variable('a');
-  assert.equal(P.format(P.mul(P.fromZ(Z.I), a), 'rect'), 'ia');
+  // A plain number runs straight into the monomial; anything else is bracketed when it
+  // already holds an operator, and separated otherwise. "-ω³a111" would be ambiguous.
   assert.equal(P.format(P.mul(P.fromZ(Z.INV_SQRT2), a), 'rect'), '0.7071a');
-  // A coefficient that would run into the monomial gets brackets; one that would not, does not.
+  assert.equal(P.format(P.mul(P.fromZ(Z.I), a), 'rect'), 'i·a');
+  assert.equal(P.format(P.mul(P.fromZ(Z.zo(0, 0, 0, -1)), P.variable('a111'))), '-ω³·a111');
+  assert.equal(P.format(P.mul(P.fromZ(Z.fromInt(3)), P.variable('a111'))), '3a111');
   assert.equal(P.format(P.mul(P.fromZ(Z.I), a), 'polar'), '(1∠90°)a');
   assert.equal(P.format(P.mul(P.fromZ(Z.mul(Z.INV_SQRT2, Z.mul(Z.INV_SQRT2, Z.sub(Z.ONE, Z.I)))), a), 'rect'),
     '(0.5-0.5i)a');
+  // An already-bracketed coefficient is not bracketed twice.
+  assert.equal(P.format(P.mul(P.fromZ(Z.MINUS_I), a), 'tuple', { k: 0 }), '(0,-1,0,0)a');
 });
 
 test('polar angles can be shown in degrees, radians or multiples of pi', () => {

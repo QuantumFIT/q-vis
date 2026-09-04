@@ -126,6 +126,20 @@ export function evaluate(p, env = {}) {
   return { re, im };
 }
 
+/**
+ * Join a coefficient to a monomial without ambiguity. A plain number can run straight
+ * into it ("3a", "0.7071a"), but "-ω³a111" could be read several ways, so anything else
+ * gets either brackets, when it already contains an operator, or a separator.
+ */
+function attachCoefficient(num, mono) {
+  if (num === '1') return mono;
+  if (num === '-1') return `-${mono}`;
+  if (/^\(.*\)$/.test(num)) return `${num}${mono}`;
+  if (/^-?\d+(\.\d+)?$/.test(num)) return `${num}${mono}`;
+  if (/[+\-∠]/.test(num.slice(1))) return `(${num})${mono}`;
+  return `${num}·${mono}`;
+}
+
 function monoString(mono) {
   return mono.map(([n, e]) => (e === 1 ? n : `${n}${e === 2 ? '²' : e === 3 ? '³' : '^' + e}`)).join('');
 }
@@ -146,13 +160,9 @@ export function format(p, mode = 'exact', opts = {}) {
   for (const k of [...p.t.keys()].sort()) {
     const { mono, coef } = p.t.get(k);
     if (mono.length === 0) { parts.push(Z.format(coef)); continue; }
-    const ms = monoString(mono);
     // Render the monomial inside the fraction: "a/√2", not "1/√2a".
-    const { num, den, terms } = Z.formatParts(coef);
-    let head;
-    if (num === '1') head = ms;
-    else if (num === '-1') head = '-' + ms;
-    else head = `${terms > 1 ? `(${num})` : num}${ms}`;
+    const { num, den } = Z.formatParts(coef);
+    const head = attachCoefficient(num, monoString(mono));
     const d = /^\d+√2$/.test(den) ? `(${den})` : den;
     parts.push(den === '' ? head : `${head}/${d}`);
   }
@@ -174,12 +184,7 @@ function formatNumeric(p, mode, opts = {}) {
     const { mono, coef } = p.t.get(k);
     const num = asNumber(coef);
     if (mono.length === 0) { parts.push(num); continue; }
-    const ms = monoString(mono);
-    if (num === '1') parts.push(ms);
-    else if (num === '-1') parts.push(`-${ms}`);
-    // Brackets only when the coefficient would otherwise run into the monomial:
-    // "0.7071a" and "-ia" read fine, "0.5-0.5ia" and "1∠90°a" do not.
-    else parts.push(/[+∠]|.-/.test(num) ? `(${num})${ms}` : `${num}${ms}`);
+    parts.push(attachCoefficient(num, monoString(mono)));
   }
   return parts.join(' + ').replace(/\+ -/g, '- ');
 }

@@ -92,25 +92,37 @@ test("'?' gives every matched basis state its own symbol", () => {
   const { entries, symbols } = parseState('--0-- : ?', 5);
   assert.equal(entries.length, 16, 'four don\'t-cares means sixteen basis states');
   assert.equal(symbols.length, 16, 'and sixteen distinct unknowns');
-  // Named after the state they belong to, in counting order.
   assert.deepEqual(entries.slice(0, 3).map((e) => e.pattern), ['00000', '00001', '00010']);
   assert.deepEqual(entries.map((e) => e.pattern).filter((p) => p[2] === '1'), [],
     'nothing is generated where the pattern pins a qubit to 0');
-  assert.ok(symbols.includes('a01000') && symbols.includes('a11011'));
 
   const m = new MTBDD(P.Ring, 5);
   const root = buildState(m, entries);
-  assert.equal(P.format(m.evaluate(root, '01000')), 'a01000');
+  assert.equal(P.format(m.evaluate(root, '00000')), 'a', 'the first matched state gets the first letter');
   assert.equal(P.format(m.evaluate(root, '00100')), '0', 'the pinned qubit kills half the space');
   assert.equal(squaredNorm(m, root), null, 'a symbolic state has no numeric norm');
 });
 
+test('generated symbols are plain letters while there are enough of them', () => {
+  assert.deepEqual(parseState('0- : ?', 2).symbols, ['a', 'b']);
+  assert.deepEqual(parseState('-- : ?', 2).symbols, ['a', 'b', 'c', 'd']);
+  // 'i' is the imaginary unit and 'w' is omega, so neither may be a variable name.
+  const sixteen = parseState('---- : ?', 4).symbols;
+  assert.equal(sixteen.length, 16);
+  assert.ok(!sixteen.includes('i') && !sixteen.includes('w'));
+  assert.deepEqual(sixteen.slice(0, 10), ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k']);
+  // Past the letters, fall back to naming each unknown after its basis state.
+  const thirtyTwo = parseState('----- : ?', 5).symbols;
+  assert.equal(thirtyTwo.length, 32);
+  assert.ok(thirtyTwo.includes('a00000') && thirtyTwo.includes('a11111'));
+});
+
 test("'?' takes a prefix and composes with the rest of the expression", () => {
+  // An explicit prefix asks for the family naming, however few there are.
   assert.deepEqual(parseState('-- : x?', 2).symbols, ['x00', 'x01', 'x10', 'x11']);
   const { entries } = parseState('-- : ?/2', 2);
-  assert.deepEqual(entries.map((e) => P.format(e.amplitude)), ['a00/2', 'a01/2', 'a10/2', 'a11/2']);
-  // A pattern with no don't-cares still names its one symbol after the state.
-  assert.deepEqual(parseState('|10> : ?', 2).symbols, ['a10']);
+  assert.deepEqual(entries.map((e) => P.format(e.amplitude)), ['a/2', 'b/2', 'c/2', 'd/2']);
+  assert.deepEqual(parseState('|10> : ?', 2).symbols, ['a']);
 });
 
 test('generating symbols has a ceiling', () => {

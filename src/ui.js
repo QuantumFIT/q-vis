@@ -712,8 +712,9 @@ function buildHelp() {
     ['|01> : 1/sqrt(2)', 'one basis state; the bars and ket are optional'],
     ['0-1 : 1/2', "'-' matches either value of that qubit — two states, one line, no extra nodes"],
     ['|00> : a', 'a free symbol, carried through the circuit unevaluated'],
-    ['--0-- : ?', "'?' gives every matched state its own symbol, named after it: a00000, a00001, ..."],
-    ['-- : x?', 'the same with a different prefix; ?/2 halves each of them'],
+    ['-- : ?', "'?' gives every matched state its own symbol: a, b, c, d"],
+    ['--0-- : ?', 'past the letters, each is named after its basis state: a00000, a00001, ...'],
+    ['-- : x?', 'a chosen prefix forces that naming; ?/2 halves each of them'],
   ]));
 
   body.append(el('h3', null, 'Circuit syntax'));

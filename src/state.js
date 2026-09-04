@@ -8,10 +8,11 @@
 // symbols, combined with + - * / ^. Division is exact: it is allowed only by a constant
 // whose inverse stays in Z[1/sqrt(2), i], so 1/sqrt(2) and 1/2 work and 1/3 does not.
 //
-// A '?' in the amplitude gives every basis state the pattern matches its *own* symbol,
-// named after that state: "--0-- : ?" is a five-qubit state with sixteen unknowns a00000
-// ... a11011 and zero wherever the middle qubit is 1. Write "x?" for a different prefix,
-// and the rest of the expression still applies, so "?/2" halves each of them.
+// A '?' in the amplitude gives every basis state the pattern matches its *own* symbol:
+// "0- : ?" is a, b; "--0-- : ?" needs sixteen and falls back to naming each after its
+// basis state, a00000 ... a11011, with zero wherever the middle qubit is 1. Write "x?" to
+// force that naming under a chosen prefix. The rest of the expression still applies, so
+// "?/2" halves each of them.
 
 import * as Z from './zomega.js';
 import * as P from './poly.js';
@@ -20,6 +21,11 @@ import * as P from './poly.js';
 const MAX_GENERATED_SYMBOLS = 256;
 
 const WILDCARD = /([A-Za-z_][A-Za-z0-9_]*)?\?/g;
+const PREFIXED_WILDCARD = /[A-Za-z_][A-Za-z0-9_]*\?/;
+
+// Single letters read far better in a terminal than a01101 does, so they are used while
+// they last. 'i' is the imaginary unit and 'w' is omega, so neither can be a variable.
+const LETTERS = [...'abcdefghjklmnopqrstuvxyz'];
 
 /** Every basis state a pattern matches, in counting order. */
 function* matching(pattern) {
@@ -180,10 +186,15 @@ export function parseState(text, nqubits) {
           `'${pattern}' matches ${count} basis states, so '?' would introduce ${count} `
           + `symbols; at most ${MAX_GENERATED_SYMBOLS} are allowed`, line);
       }
+      // Plain letters while there are enough of them; past that, name each unknown after
+      // the basis state it belongs to, so a terminal still says which amplitude it is
+      // rather than merely that it is the seventeenth.
+      const byLetter = count <= LETTERS.length && !PREFIXED_WILDCARD.test(rhs);
+      let index = 0;
       for (const bits of matching(pattern)) {
-        // Name each unknown after the basis state it belongs to, so a terminal says which
-        // amplitude it is rather than just that it is the seventh one.
-        const amplitude = parseAmplitude(rhs.replace(WILDCARD, (_, name) => (name || 'a') + bits), line);
+        const nth = index++;
+        const amplitude = parseAmplitude(
+          rhs.replace(WILDCARD, (_, name) => (byLetter ? LETTERS[nth] : (name || 'a') + bits)), line);
         for (const sym of P.symbols(amplitude)) symbols.add(sym);
         entries.push({ pattern: bits, amplitude, line });
       }
