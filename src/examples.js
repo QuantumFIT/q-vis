@@ -94,6 +94,35 @@ swap q[0],q[2];
     state: '|101> : 1',
   },
   {
+    name: 'Toffoli in Clifford+T',
+    note: 'Seven T gates and eight Clifford gates for one Toffoli. Every intermediate '
+      + 'phase is kept exactly, and they all cancel: the last diagram is the very node '
+      + 'ccx would have produced.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[3];
+
+// The textbook decomposition: q[0] and q[1] control, q[2] is the target. Seven T gates
+// is the known minimum for a Toffoli.
+h q[2];
+cx q[1],q[2];
+tdg q[2];
+cx q[0],q[2];
+t q[2];
+cx q[1],q[2];
+tdg q[2];
+cx q[0],q[2];
+t q[1];
+t q[2];
+h q[2];
+cx q[0],q[1];
+t q[0];
+tdg q[1];
+cx q[0],q[1];
+`,
+    state: '|110> : 1',
+  },
+  {
     name: 'Grover, 2 qubits',
     note: 'One iteration is enough here: the state collapses onto |11> and the diagram with it.',
     qasm: `OPENQASM 2.0;

@@ -148,14 +148,14 @@ export function parseQasm(src) {
     return reg.base + arg.index;
   };
 
-  const emit = (name, matrix, label, qs, line) => {
+  const emit = (name, matrix, label, qs, line, draw) => {
     if (new Set(qs).size !== qs.length) {
       throw new QasmError(`gate '${name}' applied to a repeated qubit`, line);
     }
     if (matrix.length !== (1 << qs.length)) {
       throw new QasmError(`gate '${name}' takes ${Math.log2(matrix.length)} qubit(s), got ${qs.length}`, line);
     }
-    gates.push({ name, label, qubits: qs, matrix, line });
+    gates.push({ name, label, qubits: qs, matrix, line, draw });
   };
 
   /** Resolve one gate application, expanding user-defined gates. */
@@ -178,12 +178,14 @@ export function parseQasm(src) {
       // The only rotations in the ring are phases by a multiple of pi/4.
       if ((name === 'u1' || name === 'p') && angles.length === 1) {
         const m = quarterTurns(angles[0], name, line);
-        emit(name, phaseGate(m), phaseLabel(m, ''), args, line);
+        emit(name, phaseGate(m), phaseLabel(m, ''), args, line,
+          { controls: 0, target: 'box', symbol: phaseLabel(m, '') });
         return;
       }
       if ((name === 'cu1' || name === 'cp') && angles.length === 1) {
         const m = quarterTurns(angles[0], name, line);
-        emit(name, controlled(phaseGate(m)), phaseLabel(m, 'C'), args, line);
+        emit(name, controlled(phaseGate(m)), phaseLabel(m, 'C'), args, line,
+          { controls: 1, target: 'box', symbol: phaseLabel(m, '') });
         return;
       }
       throw new QasmError(
@@ -195,7 +197,7 @@ export function parseQasm(src) {
     const g = GATES[name];
     if (!g) throw new QasmError(`unknown gate '${name}'`, line);
     if (angles.length) throw new QasmError(`gate '${name}' takes no parameters`, line);
-    emit(name, g.matrix, g.label, args, line);
+    emit(name, g.matrix, g.label, args, line, g.draw);
   };
 
   while (!p.eof) {

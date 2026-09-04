@@ -181,3 +181,32 @@ test('gate application rejects malformed input', () => {
   assert.throws(() => applyNamed(m, s, 'cx', [1, 1]), /repeated qubit/);
   assert.throws(() => applyNamed(m, s, 'h', [5]), /out of range/);
 });
+
+test('the Clifford+T decomposition of Toffoli really is a Toffoli', () => {
+  // The textbook 7-T decomposition. Worth testing by node identity rather than by
+  // comparing amplitudes: exact arithmetic plus canonicity means the diagrams are equal
+  // only if the unitaries agree on that input exactly, phases included.
+  const decomposition = [
+    ['h', [2]], ['cx', [1, 2]], ['tdg', [2]], ['cx', [0, 2]], ['t', [2]], ['cx', [1, 2]],
+    ['tdg', [2]], ['cx', [0, 2]], ['t', [1]], ['t', [2]], ['h', [2]], ['cx', [0, 1]],
+    ['t', [0]], ['tdg', [1]], ['cx', [0, 1]],
+  ];
+  assert.equal(decomposition.filter(([g]) => g === 't' || g === 'tdg').length, 7);
+
+  const m = new MTBDD(P.Ring, 3);
+  for (const bits of allBits(3)) {
+    const start = m.basisState(bits, P.one);
+    let viaDecomposition = start;
+    for (const [name, qubits] of decomposition) {
+      viaDecomposition = applyNamed(m, viaDecomposition, name, qubits);
+    }
+    assert.equal(viaDecomposition, applyNamed(m, start, 'ccx', [0, 1, 2]),
+      `decomposition differs from ccx on |${bits}>`);
+  }
+
+  // ... and on a superposition, where a wrong phase would survive rather than cancel.
+  let s = m.fromAmplitudes(allBits(3).map((b) => [b, P.fromZ(Z.zo(1, 0, 0, 0, 3))]));
+  const want = applyNamed(m, s, 'ccx', [0, 1, 2]);
+  for (const [name, qubits] of decomposition) s = applyNamed(m, s, name, qubits);
+  assert.equal(s, want, 'decomposition differs from ccx on a uniform superposition');
+});

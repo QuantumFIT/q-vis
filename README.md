@@ -14,6 +14,8 @@ open it offline. No install, no server, no dependencies.
 - **Input state**: a sparse list of `basis pattern : amplitude`, concrete or **symbolic**.
 - **Output**: a steppable, animatable diagram, with the nodes this gate created picked out
   in colour and the qubits it acted on marked on their rules.
+- The circuit itself is drawn in standard notation above the diagram, and doubles as the
+  scrubber: click a column to jump to that step.
 
 Amplitudes are **exact**, in the ring `Z[1/√2, i]` extended with free symbols. Nothing is
 rounded, and two states are equal precisely when their diagrams are the same node.
