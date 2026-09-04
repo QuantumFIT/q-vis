@@ -277,6 +277,10 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 
 /* ---- diagram ---------------------------------------------------------- */
 
+.gutter-bg { fill: var(--plate); }
+.gutter-edge { stroke: none; }
+.sticky.floating .gutter-edge { stroke: var(--rule-soft); stroke-width: 1; }
+
 .level-rule { stroke: var(--rule-soft); stroke-width: 1; stroke-dasharray: 1 5; transition: stroke .3s, opacity .3s; }
 /* The qubits the current gate acts on, so the score strip and the plate line up. */
 .level-rule.acting { stroke: var(--accent); opacity: 0.55; }
@@ -361,6 +365,8 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 }
 .stat b { color: var(--ink); font-weight: 500; }
 .stat .delta { color: var(--accent); }
+
+#permalink { min-width: 92px; }
 
 #zoomLevel { min-width: 46px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
 

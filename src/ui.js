@@ -158,13 +158,25 @@ function resetCanvas() {
   svg.setAttribute('aria-label', 'decision diagram of the quantum state');
 
   const rules = svgEl('g', { class: 'rules' });
+  // Labels live in their own layer, drawn last and slid sideways as the plate scrolls, so
+  // they stay readable when a wide diagram is panned. Everything that spans the width —
+  // the rules themselves — stays put.
+  const sticky = svgEl('g', { class: 'sticky' });
+  sticky.append(
+    svgEl('rect', { class: 'gutter-bg', x: 0, y: 0, width: gutter - 4, height: H }),
+    // Shown only once the labels have left home, so that content passing under the strip
+    // reads as a deliberate overlay rather than as clipping.
+    svgEl('line', { class: 'gutter-edge', x1: gutter - 4, y1: 0, x2: gutter - 4, y2: H }),
+  );
+  app.sticky = sticky;
   app.ruleEls = new Map();
   for (let lev = 0; lev < n; lev++) {
     const y = yOf(lev);
     const line = svgEl('line', { class: 'level-rule', x1: gutter - 6, y1: y, x2: W - 8, y2: y });
     const t = svgEl('text', { class: 'gutter', x: gutter - 16, y });
     t.textContent = app.circuit.qubits[lev].label;
-    rules.append(line, t);
+    rules.append(line);
+    sticky.append(t);
     app.ruleEls.set(lev, [line, t]);   // marked per frame with the current gate's qubits
   }
   // The terminal row is a different kind of thing: give it a solid rule of its own.
@@ -172,7 +184,7 @@ function resetCanvas() {
   rules.append(svgEl('line', { class: 'band-rule', x1: gutter - 6, y1: bandY, x2: W - 8, y2: bandY }));
   const bt = svgEl('text', { class: 'gutter band', x: gutter - 16, y: yOf(n) });
   bt.textContent = BAND_LABEL;
-  rules.append(bt);
+  sticky.append(bt);
 
   // Which line is dashed and which is solid is the one convention a reader cannot guess,
   // so the plate states it. Drawn with the same classes as real edges, so it survives
@@ -180,13 +192,13 @@ function resetCanvas() {
   const ly = H - 13;
   const lc = svgEl('text', { class: 'gutter band', x: gutter - 16, y: ly });
   lc.textContent = 'EDGE';
-  rules.append(lc);
+  sticky.append(lc);
   let lx = gutter - 6;
   for (const [kind, value] of [['low', '0'], ['high', '1']]) {
-    rules.append(svgEl('path', { class: `edge ${kind}`, d: `M${lx},${ly} L${lx + 18},${ly}` }));
+    sticky.append(svgEl('path', { class: `edge ${kind}`, d: `M${lx},${ly} L${lx + 18},${ly}` }));
     const cap = svgEl('text', { class: 'gutter legend-cap', x: lx + 24, y: ly });
     cap.textContent = value;
-    rules.append(cap);
+    sticky.append(cap);
     lx += 48;
   }
 
@@ -197,7 +209,7 @@ function resetCanvas() {
   const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
   sup.textContent = 'iπ/4';
   omega.append('ω = e', sup);
-  rules.append(omega);
+  sticky.append(omega);
   app.omegaNote = omega;
 
   // The arrow into the root, as decision diagrams are drawn on paper. It also shows
@@ -213,7 +225,7 @@ function resetCanvas() {
   marker.append(psi);
   app.rootMarker = marker;
 
-  svg.append(rules, svgEl('g', { class: 'edges' }), marker, svgEl('g', { class: 'nodes' }));
+  svg.append(rules, svgEl('g', { class: 'edges' }), marker, svgEl('g', { class: 'nodes' }), sticky);
   $('canvas').replaceChildren(svg);
   app.svg = svg;
   fitCanvas();
@@ -236,6 +248,15 @@ function fitCanvas() {
   app.svg.style.width = `${Math.round(W * scale)}px`;
   app.svg.style.height = `${Math.round(H * scale)}px`;
   $('zoomLevel').textContent = app.zoom === 'fit' ? 'fit' : `${Math.round(scale * 100)}%`;
+  updateSticky();
+}
+
+/** Hold the gutter labels at the left edge of the view while the plate scrolls under them. */
+function updateSticky() {
+  if (!app.sticky) return;
+  const dx = $('canvas').scrollLeft / (app.scale || 1);
+  app.sticky.setAttribute('transform', `translate(${dx},0)`);
+  app.sticky.classList.toggle('floating', dx > 0.5);
 }
 
 /**
@@ -541,11 +562,15 @@ function exportSvg() {
   clone.setAttribute('width', app.geom.W);
   clone.setAttribute('height', app.geom.H);
   for (const el of clone.querySelectorAll('.dimmed')) el.classList.remove('dimmed');
+  // The exported figure is not scrolled, so the labels belong back in the gutter.
+  clone.querySelector('.sticky')?.removeAttribute('transform');
   const style = document.createElementNS(SVG_NS, 'style');
   style.textContent = `
     svg { background: ${v('--plate')} }
     .level-rule { stroke: ${v('--rule-soft')}; stroke-width: 1; stroke-dasharray: 1 5 }
     .band-rule { stroke: ${v('--rule')}; stroke-width: 1 }
+    .gutter-bg { fill: ${v('--plate')} }
+    .gutter-edge { stroke: none }
     .gutter { fill: ${v('--ink-faint')}; font: 10px monospace; text-anchor: end; dominant-baseline: middle }
     .gutter.band { font: 9px sans-serif; letter-spacing: .1em }
     .gutter.legend-cap { text-anchor: start }
@@ -575,6 +600,76 @@ function exportSvg() {
 }
 
 // ---- wiring -------------------------------------------------------------
+
+// ---- permalinks ---------------------------------------------------------
+//
+// The whole state of a view — circuit, input state, which gate, and how it is drawn —
+// goes in the URL fragment, so a specific step can be linked from lecture notes or a
+// paper. base64url rather than percent-encoding because QASM is full of characters
+// (brackets, semicolons, newlines) that percent-encoding triples in length.
+
+function encodeText(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeText(code) {
+  const bin = atob(code.replace(/-/g, '+').replace(/_/g, '/'));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+function permalink() {
+  const p = new URLSearchParams();
+  p.set('c', encodeText($('qasm').value));
+  p.set('s', encodeText($('stateText').value));
+  if (app.index) p.set('i', String(app.index));
+  if (app.expand) p.set('t', '1');
+  if (app.hideZero) p.set('z', '1');
+  if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
+  return `${location.href.split('#')[0]}#${p}`;
+}
+
+/** @returns {boolean} whether a link was found and applied */
+function applyPermalink() {
+  if (!location.hash.startsWith('#c=')) return false;
+  let p;
+  try {
+    p = new URLSearchParams(location.hash.slice(1));
+    $('qasm').value = decodeText(p.get('c'));
+    $('stateText').value = decodeText(p.get('s') || '');
+  } catch {
+    return false;   // a mangled link should not stop the app from starting
+  }
+  app.expand = p.get('t') === '1';
+  app.hideZero = p.get('z') === '1';
+  if (['rect', 'polar'].includes(p.get('f'))) app.ampFormat = p.get('f');
+  $('expand').checked = app.expand;
+  $('hideZero').checked = app.hideZero;
+  $('ampFormat').value = app.ampFormat;
+  app.index = Math.max(0, parseInt(p.get('i') || '0', 10) || 0);
+  const match = EXAMPLES.findIndex((ex) => ex.qasm === $('qasm').value && ex.state === $('stateText').value);
+  $('example').value = match >= 0 ? String(match) : '';
+  if (match >= 0) $('note').textContent = EXAMPLES[match].note;
+  compile();
+  setFrame(Math.min(app.index, app.layout.frames.length - 1));
+  return true;
+}
+
+async function copyPermalink() {
+  const url = permalink();
+  history.replaceState(null, '', url);   // so the address bar can be copied from too
+  const button = $('permalink');
+  let ok = true;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    ok = false;   // no clipboard permission, or an insecure context such as file://
+  }
+  button.textContent = ok ? 'link copied' : 'link in address bar';
+  setTimeout(() => { button.textContent = 'copy link'; }, 1800);
+}
 
 const STORE = 'q-vis:v1';
 const THEME_STORE = 'q-vis:theme';
@@ -616,6 +711,7 @@ function useExample(i) {
 
 export function boot() {
   new ResizeObserver(fitCanvas).observe($('canvas'));
+  $('canvas').addEventListener('scroll', updateSticky, { passive: true });
   const picker = $('example');
   // A blank entry so the picker can stop claiming to show an example once the text has
   // been edited into something else.
@@ -638,6 +734,7 @@ export function boot() {
   $('next').addEventListener('click', () => { stop(); step(1); });
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
+  $('permalink').addEventListener('click', copyPermalink);
   $('ampFormat').addEventListener('change', (e) => {
     app.ampFormat = e.target.value;
     try { localStorage.setItem(AMP_STORE, app.ampFormat); } catch { /* storage may be unavailable */ }
@@ -717,6 +814,9 @@ export function boot() {
     if (['exact', 'rect', 'polar'].includes(amp)) app.ampFormat = amp;
   } catch { /* storage may be unavailable */ }
   $('ampFormat').value = app.ampFormat;
+
+  // A link wins over whatever this browser happened to be looking at last.
+  if (applyPermalink()) return;
 
   const saved = load();
   if (saved) {

@@ -63,6 +63,14 @@ mode; only the coefficient changes: `0.7071a + 0.7071b`.
 Polar is the one to reach for when a circuit only moves phase around — the 3-qubit QFT
 prints as eight amplitudes of identical magnitude and eight different angles.
 
+## Sharing a view
+
+**copy link** puts the whole view in the URL — circuit, input state, which gate you are
+on, and how it is drawn (tree or reduced, zeros hidden or not, exact or numeric). Opening
+that link reproduces exactly what you were looking at, which is what you want when
+pointing at one step from lecture notes, an issue, or a paper. **export SVG** saves the
+current diagram as a standalone figure, legend included.
+
 ## Conventions
 
 Qubit *q* is decided at level *q*, so **qubit 0 is the top of the diagram and the leftmost

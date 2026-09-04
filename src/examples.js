@@ -30,6 +30,29 @@ cx q[3],q[4];
     state: '|00000> : 1',
   },
   {
+    name: 'W state, 4 qubits',
+    note: 'Each splitter sends one excitation half onward, half sideways. Four qubits give '
+      + 'amplitude 1/2, which the exact ring holds; W on three needs 1/√3, which it cannot.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[4];
+
+// One excitation, then split it evenly twice. Each ch/cx pair is a 50/50 splitter:
+// it sends |1 0> to (|1 0> + |0 1>)/sqrt(2) and leaves |0 0> alone.
+x q[0];
+
+ch q[0],q[2];
+cx q[2],q[0];
+barrier q;
+
+ch q[0],q[1];
+cx q[1],q[0];
+ch q[2],q[3];
+cx q[3],q[2];
+`,
+    state: '|0000> : 1',
+  },
+  {
     name: 'Uniform superposition, 8 qubits',
     note: '256 equal amplitudes collapse to a single terminal — every level becomes a don\'t-care.',
     qasm: `OPENQASM 2.0;
