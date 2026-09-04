@@ -113,3 +113,33 @@ test('symbolic terms keep their monomials in every format', () => {
   assert.equal(P.format(P.mul(P.fromZ(Z.mul(Z.INV_SQRT2, Z.mul(Z.INV_SQRT2, Z.sub(Z.ONE, Z.I)))), a), 'rect'),
     '(0.5-0.5i)a');
 });
+
+test('polar angles can be shown in degrees, radians or multiples of pi', () => {
+  const cases = [
+    [Z.ONE, '1∠0°', '1∠0', '1∠0'],
+    [Z.OMEGA, '1∠45°', '1∠0.7854', '1∠π/4'],
+    [Z.I, '1∠90°', '1∠1.5708', '1∠π/2'],
+    [Z.zo(0, 0, 0, 1), '1∠135°', '1∠2.3562', '1∠3π/4'],
+    [Z.MINUS_ONE, '1∠180°', '1∠3.1416', '1∠π'],
+    [Z.MINUS_I, '1∠-90°', '1∠-1.5708', '1∠-π/2'],
+    [Z.INV_SQRT2, '0.7071∠0°', '0.7071∠0', '0.7071∠0'],
+    [Z.ZERO, '0', '0', '0'],
+  ];
+  for (const [z, deg, rad, pi] of cases) {
+    const v = P.fromZ(z);
+    assert.equal(P.format(v, 'polar-deg'), deg);
+    assert.equal(P.format(v, 'polar-rad'), rad);
+    assert.equal(P.format(v, 'polar-pi'), pi);
+  }
+  // Links and settings written before the angle unit existed still mean degrees.
+  assert.equal(P.format(P.fromZ(Z.OMEGA), 'polar'), '1∠45°');
+});
+
+test('the pi form is exact for every angle the ring can produce', () => {
+  // Every element of Z[1/sqrt2, i] has an argument that is a multiple of pi/4.
+  for (let k = 0; k < 8; k++) {
+    const printed = P.format(P.fromZ(Z.omegaPow(k)), 'polar-pi');
+    assert.doesNotMatch(printed, /\d\.\d/, `w^${k} printed with a decimal angle: ${printed}`);
+    assert.match(printed, /^1∠(0|-?\d*π(\/\d)?)$/, `unexpected form for w^${k}: ${printed}`);
+  }
+});

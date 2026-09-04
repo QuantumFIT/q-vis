@@ -259,15 +259,41 @@ export function formatRect(a) {
 }
 
 /**
- * Floating-point polar form: "0.7071∠45°". The angle is always shown, even at zero,
- * so a column of amplitudes can be compared phase against phase at a glance — which is
- * the only reason to ask for polar in the first place.
+ * The angle as a multiple of pi, exactly when it is a simple one. Every amplitude in this
+ * ring has an angle that is a multiple of pi/4, so this is the form that stays exact:
+ * "3π/4" rather than "2.3562".
  */
-export function formatPolar(a) {
+function overPi(theta) {
+  const r = theta / Math.PI;
+  if (Math.abs(r) < 1e-9) return '0';
+  // Ascending denominators, so the first hit is already in lowest terms.
+  for (let d = 1; d <= 12; d++) {
+    const n = r * d;
+    if (Math.abs(n - Math.round(n)) > 1e-9) continue;
+    const num = Math.round(n);
+    if (d === 1) return num === 1 ? 'π' : num === -1 ? '-π' : `${num}π`;
+    if (num === 1) return `π/${d}`;
+    if (num === -1) return `-π/${d}`;
+    return `${num}π/${d}`;
+  }
+  return `${decimal(r)}π`;
+}
+
+/**
+ * Floating-point polar form: "0.7071∠45°", "0.7071∠0.7854" or "0.7071∠π/4". The angle is
+ * always shown, even at zero, so a column of amplitudes can be compared phase against
+ * phase at a glance — which is the only reason to ask for polar in the first place.
+ * @param {'deg'|'rad'|'pi'} [unit]
+ */
+export function formatPolar(a, unit = 'deg') {
   const { re, im } = toComplex(a);
   const r = Math.hypot(re, im);
   if (r < 5e-5) return '0';
-  return `${decimal(r)}∠${decimal((Math.atan2(im, re) * 180) / Math.PI)}°`;
+  const theta = Math.atan2(im, re);
+  const angle = unit === 'pi' ? overPi(theta)
+    : unit === 'rad' ? decimal(theta)
+      : `${decimal((theta * 180) / Math.PI)}°`;
+  return `${decimal(r)}∠${angle}`;
 }
 
 /** Human-readable form: "1/√2", "-i", "(1-i)/2", "ω/2", ... */

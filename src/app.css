@@ -368,6 +368,8 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 
 #permalink { min-width: 92px; }
 
+#ampFormat { min-width: 104px; }
+
 #zoomLevel { min-width: 46px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 #theme {

@@ -20,6 +20,9 @@ const MAX_DRAWN_NODES = 800;
 const MAX_READOUT_LINES = 14;
 const PLAY_MS = 750;
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const AMP_FORMATS = ['exact', 'rect', 'polar-deg', 'polar-rad', 'polar-pi'];
+/** Links and stored settings written before the angle unit existed said just "polar". */
+const normaliseFormat = (f) => (f === 'polar' ? 'polar-deg' : f);
 
 const app = {
   dd: null,
@@ -120,6 +123,12 @@ function renderScore() {
     args.className = 'args';
     args.textContent = f.gate ? f.gate.qubits.map((q) => app.circuit.qubits[q].label).join(' ') : 'state';
     b.append(op, args);
+    if (barriers.has(i)) {
+      // A barrier constrains a compiler, and there is no compiler here. It survives only
+      // as a section break in the strip, which is why it is worth saying so out loud.
+      b.title = 'A barrier follows this step. It marks a section of the circuit and does '
+        + 'not change the state.';
+    }
     b.addEventListener('click', () => { stop(); setFrame(i); });
     score.append(b);
   });
@@ -515,11 +524,18 @@ function renderStats(f) {
       // An unreduced tree never changes shape, so the only news is which amplitudes moved.
       parts.push(`<span class="delta">${f.changed} amplitude${f.changed === 1 ? '' : 's'} changed</span>`);
     } else if (!app.expand && (frame.added.length || frame.removed.length)) {
-      parts.push(`<span class="delta">+${frame.added.length} −${frame.removed.length}</span>`);
+      // "+14 −10" alone was cryptic: the words say which way each number points.
+      parts.push(`<span class="delta">+${frame.added.length} new, −${frame.removed.length} dropped</span>`);
     }
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
   $('stats').innerHTML = parts.join(' · ');
+  $('stats').title = app.expand
+    ? 'How many amplitudes this gate changed. An unreduced tree never changes shape, so '
+      + 'the leaves are the only thing that can differ.'
+    : 'Nodes reachable from the root, then how the diagram changed: how many nodes this '
+      + 'gate created, and how many the previous diagram used that this one does not. '
+      + 'Nothing is discarded — every diagram shares its unchanged nodes with the last.';
   $('position').textContent = `${f.index} / ${app.layout.frames.length - 1}`;
   $('prev').disabled = f.index === 0;
   $('next').disabled = f.index === app.layout.frames.length - 1;
@@ -644,7 +660,8 @@ function applyPermalink() {
   }
   app.expand = p.get('t') === '1';
   app.hideZero = p.get('z') === '1';
-  if (['rect', 'polar'].includes(p.get('f'))) app.ampFormat = p.get('f');
+  const f = normaliseFormat(p.get('f'));
+  if (AMP_FORMATS.includes(f) && f !== 'exact') app.ampFormat = f;
   $('expand').checked = app.expand;
   $('hideZero').checked = app.hideZero;
   $('ampFormat').value = app.ampFormat;
@@ -811,7 +828,7 @@ export function boot() {
 
   try {
     const amp = localStorage.getItem(AMP_STORE);
-    if (['exact', 'rect', 'polar'].includes(amp)) app.ampFormat = amp;
+    if (AMP_FORMATS.includes(normaliseFormat(amp))) app.ampFormat = normaliseFormat(amp);
   } catch { /* storage may be unavailable */ }
   $('ampFormat').value = app.ampFormat;
 

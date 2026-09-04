@@ -125,9 +125,10 @@ function monoString(mono) {
 
 /**
  * @param {Poly} p
- * @param {'exact'|'rect'|'polar'} [mode] exact keeps the ring's own notation; the other
- *   two evaluate coefficients to floating point. Symbolic terms keep their monomials
- *   either way — only the coefficient in front of them changes.
+ * @param {'exact'|'rect'|'polar-deg'|'polar-rad'|'polar-pi'} [mode] exact keeps the
+ *   ring's own notation; the others evaluate coefficients to floating point, polar in
+ *   the requested angle unit. Symbolic terms keep their monomials either way — only the
+ *   coefficient in front of them changes. 'polar' is accepted as 'polar-deg'.
  */
 export function format(p, mode = 'exact') {
   if (p.t.size === 0) return '0';
@@ -149,8 +150,15 @@ export function format(p, mode = 'exact') {
   return parts.join(' + ').replace(/\+ -/g, '- ');
 }
 
+/** @returns {(z: any) => string} */
+function numberFormatter(mode) {
+  if (mode === 'rect') return Z.formatRect;
+  const unit = { 'polar-rad': 'rad', 'polar-pi': 'pi' }[mode] || 'deg';
+  return (z) => Z.formatPolar(z, unit);
+}
+
 function formatNumeric(p, mode) {
-  const asNumber = mode === 'polar' ? Z.formatPolar : Z.formatRect;
+  const asNumber = numberFormatter(mode);
   const parts = [];
   for (const k of [...p.t.keys()].sort()) {
     const { mono, coef } = p.t.get(k);
