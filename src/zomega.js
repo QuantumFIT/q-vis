@@ -165,6 +165,40 @@ export function invert(a) {
   return mul(inv, pow(SQRT2, a.k));
 }
 
+/** sqrt(2)^v for any integer v; a negative power is a denominator. */
+function sqrt2Pow(v) { return v >= 0 ? pow(SQRT2, v) : zo(1, 0, 0, 0, -v); }
+
+/**
+ * Split off a canonical unit factor: returns `{ unit, rest }` with `a = unit * rest`.
+ *
+ * The units taken out are a power of sqrt(2) and a power of w — the factors gates
+ * actually introduce. (The full unit group of this ring is larger: it contains 1+√2 and
+ * is infinite. Restricting to these keeps the factorisation finite and canonical.)
+ *
+ * Two elements differing by such a unit share a `rest`, which is what lets an
+ * edge-valued diagram share the subfunctions beneath them. A unit itself has rest 1.
+ */
+export function unitPart(a) {
+  if (isZero(a)) return { unit: ONE, rest: ZERO };
+
+  // How many times sqrt(2) divides the value: out of the numerator, less the denominator.
+  let c = [...a.c];
+  let v = -a.k;
+  while (numDivisibleBySqrt2(c)) { c = numDivSqrt2(c); v++; }
+  const stripped = normalize(c, 0);
+
+  // Then the phase. Of the eight rotations take the one with the largest key, which
+  // prefers a positive leading coefficient and is otherwise an arbitrary but fixed
+  // choice — so it is canonical, and a unit lands on 1.
+  let rest = stripped;
+  let phase = 0;
+  for (let j = 1; j < 8; j++) {
+    const rotated = mul(stripped, omegaPow(-j));
+    if (key(rotated) > key(rest)) { rest = rotated; phase = j; }
+  }
+  return { unit: mul(omegaPow(phase), sqrt2Pow(v)), rest };
+}
+
 /** Complex conjugate: w^j -> w^{-j}. Used for norm checks, not by the DD itself. */
 export function conj(a) {
   return normalize([a.c[0], -a.c[3], -a.c[2], -a.c[1]], a.k);

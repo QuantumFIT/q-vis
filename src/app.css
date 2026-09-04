@@ -358,6 +358,21 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .root-marker .head { fill: var(--ink-soft); stroke: none; }
 .root-marker text { fill: var(--ink-soft); font: 11px var(--serif); text-anchor: end; }
 
+/* The weight on an edge, stroked in the plate colour so it sits on the line legibly. */
+.edge-label {
+  fill: var(--ink);
+  font: 10px/1 var(--serif);
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: var(--plate);
+  stroke-width: 3px;
+  pointer-events: none;
+  transition: opacity .25s;
+}
+
+.root-marker .root-weight { text-anchor: start; fill: var(--ink); }
+
 .dimmed { opacity: 0.12 !important; }
 
 @media (prefers-reduced-motion: reduce) {

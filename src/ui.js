@@ -6,7 +6,9 @@ import * as P from './poly.js';
 import { simulate } from './sim.js';
 import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
-import { layoutFrames } from './layout.js';
+import { layoutFrames, layoutEdgeValued } from './layout.js';
+import { EVDD, unitNormaliser } from './evdd.js';
+import * as Z from './zomega.js';
 import { EXAMPLES } from './examples.js';
 import { GATES } from './gates.js';
 
@@ -34,13 +36,14 @@ const app = {
   playing: false,
   timer: null,
   hideZero: false,
-  expand: false,
+  view: 'reduced',   // reduced | tree | edge-valued
   theme: 'auto',
   ampFormat: 'exact',
   zoom: 'fit',
   scale: 1,
   nodeEls: new Map(),
   edgeEls: new Map(),
+  edgeLabels: new Map(),
   exiting: new Map(),
 };
 
@@ -88,11 +91,24 @@ function compile() {
     }
     return k;
   });
-  app.layout = layoutFrames(dd, frames, {
-    qubitLabels: circuit.qubits.map((q) => q.label),
-    expand: app.expand,
-    formatValue: (v, i) => P.format(v, app.ampFormat, { k: app.commonK[i] }),
-  });
+  const labels = circuit.qubits.map((q) => q.label);
+  const show = (v, i) => P.format(v, app.ampFormat, { k: app.commonK[i] });
+  if (app.view === 'edge-valued') {
+    // Simulation stays on the MTBDD; this is the same states seen the other way, built
+    // in one pass per frame. One manager for the whole run, so nodes shared between
+    // frames stay the same nodes and the diagram morphs rather than being redrawn.
+    const ev = new EVDD(P.Ring, circuit.nqubits, unitNormaliser(P, Z));
+    const memo = new Map();
+    app.layout = layoutEdgeValued(ev,
+      frames.map((f) => ({ index: f.index, gate: f.gate, edge: ev.fromMTBDD(dd, f.root, memo) })),
+      labels, show);
+  } else {
+    app.layout = layoutFrames(dd, frames, {
+      qubitLabels: labels,
+      expand: app.view === 'tree',
+      formatValue: show,
+    });
+  }
   app.index = Math.min(app.index, frames.length - 1);
 
   $('error').textContent = '';
@@ -107,10 +123,9 @@ function compile() {
     : 'give every basis state its own unknown amplitude';
 
   const big = circuit.nqubits > 10;
-  $('expand').disabled = big;
-  $('expand').closest('label').title = big
-    ? `the full tree for ${circuit.nqubits} qubits has ${2 ** (circuit.nqubits + 1) - 1} nodes`
-    : 'draw the same state without sharing or skipped levels';
+  const treeOption = $('view').querySelector('option[value="tree"]');
+  treeOption.disabled = big;
+  treeOption.textContent = big ? 'full tree (too many qubits)' : 'full tree';
   resetCanvas();
   renderCircuit();
   setFrame(app.index);
@@ -240,6 +255,7 @@ function renderCircuit() {
 function resetCanvas() {
   app.nodeEls.clear();
   app.edgeEls.clear();
+  app.edgeLabels.clear();
   for (const t of app.exiting.values()) clearTimeout(t);
   app.exiting.clear();
 
@@ -338,6 +354,11 @@ function resetCanvas() {
   const psi = svgEl('text', { x: -9, y: -25 });
   psi.textContent = '|ψ⟩';
   marker.append(psi);
+  // In the edge-valued form the state's overall factor rides on the root edge, so it is
+  // shown here rather than anywhere in the diagram.
+  const rootW = svgEl('text', { class: 'root-weight', x: 9, y: -25 });
+  marker.append(rootW);
+  app.rootWeight = rootW;
   app.rootMarker = marker;
 
   svg.append(rules, svgEl('g', { class: 'edges' }), marker, svgEl('g', { class: 'nodes' }), sticky);
@@ -409,10 +430,15 @@ function nodeAnchor(node, top) {
   return yOf(node.level) + (top ? -half : half);
 }
 
-function edgePath(from, to, high) {
+/**
+ * @param {boolean} spread the node's two edges land on the same target, so pull them
+ *   apart at the far end too — otherwise they coincide and read as one edge. Common in
+ *   the edge-valued form, where children often differ only by their weights.
+ */
+function edgePath(from, to, high, spread) {
   const x1 = xOf(from) + (high ? 6 : -6);
   const y1 = nodeAnchor(from, false);
-  const x2 = xOf(to);
+  const x2 = xOf(to) + (spread ? (high ? 6 : -6) : 0);
   const y2 = nodeAnchor(to, true);
   const bend = (y2 - y1) * 0.42;
   return `M${x1},${y1} C${x1},${y1 + bend} ${x2},${y2 - bend} ${x2},${y2}`;
@@ -456,13 +482,24 @@ function drawFrame(f) {
   const edgesG = app.svg.querySelector('.edges');
 
   const hidden = (node) => app.hideZero && node.zero;
+  // Both edges of a node landing on the same target have to be drawn apart.
+  const seenTarget = new Map();
+  const parallel = new Set();
+  for (const e of f.edges) {
+    if (seenTarget.get(e.from) === e.to) parallel.add(e.from);
+    seenTarget.set(e.from, e.to);
+  }
   const wantEdges = new Map();
   for (const e of f.edges) {
     if (hidden(pos.get(e.to))) continue;
     wantEdges.set(edgeKey(e), e);
   }
   for (const [k, el] of app.edgeEls) {
-    if (!wantEdges.has(k)) { el.remove(); app.edgeEls.delete(k); }
+    if (wantEdges.has(k)) continue;
+    el.remove();
+    app.edgeEls.delete(k);
+    const label = app.edgeLabels.get(k);
+    if (label) { label.remove(); app.edgeLabels.delete(k); }
   }
   for (const [k, e] of wantEdges) {
     let el = app.edgeEls.get(k);
@@ -471,9 +508,10 @@ function drawFrame(f) {
       app.edgeEls.set(k, el);
       edgesG.append(el);
     }
-    el.setAttribute('d', edgePath(pos.get(e.from), pos.get(e.to), e.high));
+    el.setAttribute('d', edgePath(pos.get(e.from), pos.get(e.to), e.high, parallel.has(e.from)));
     el.setAttribute('class', 'edge' + (e.high ? ' high' : ' low') +
       (e.toZero ? ' to-zero' : '') + (pos.get(e.from).fresh ? ' fresh' : ''));
+    setEdgeLabel(k, e, pos, parallel.has(e.from));
   }
 
   for (const [id, el] of app.nodeEls) {
@@ -501,6 +539,7 @@ function drawFrame(f) {
   app.rootMarker.setAttribute('transform', `translate(${xOf(rootNode)},${yOf(rootNode.level)})`);
   // A state that is zero everywhere hides its own root; the arrow must not outlive it.
   app.rootMarker.style.display = hidden(rootNode) ? 'none' : '';
+  app.rootWeight.textContent = f.rootWeight && f.rootWeight !== '1' ? f.rootWeight : '';
 
   for (const node of f.nodes) {
     if (hidden(node)) continue;
@@ -523,6 +562,29 @@ function drawFrame(f) {
     el.classList.toggle('fresh', node.fresh);
     el.classList.toggle('zero', node.zero);
   }
+}
+
+/** The weight on an edge, drawn at its midpoint. Absent when the weight is 1. */
+function setEdgeLabel(key, e, pos, spread) {
+  const existing = app.edgeLabels.get(key);
+  if (!e.label) {
+    if (existing) { existing.remove(); app.edgeLabels.delete(key); }
+    return;
+  }
+  const from = pos.get(e.from);
+  const to = pos.get(e.to);
+  const off = e.high ? 6 : -6;
+  const x = (xOf(from) + off + xOf(to) + (spread ? off : 0)) / 2;
+  const y = (nodeAnchor(from, false) + nodeAnchor(to, true)) / 2;
+  let el = existing;
+  if (!el) {
+    el = svgEl('text', { class: 'edge-label' });
+    app.edgeLabels.set(key, el);
+    app.svg.querySelector('.edges').append(el);
+  }
+  el.setAttribute('x', x);
+  el.setAttribute('y', y);
+  if (el.textContent !== e.label) el.textContent = e.label;
 }
 
 function makeNode(node) {
@@ -635,13 +697,13 @@ function renderStats(f) {
   // Frame 0 is the state as given, so "+4 −0" there would be counting it against nothing.
   // No node churn count: which nodes this gate created is already on the plate, in the
   // only colour it uses.
-  if (f.index > 0 && app.expand && f.changed) {
+  if (f.index > 0 && app.view === 'tree' && f.changed) {
     // An unreduced tree never changes shape, so the leaves are the only news.
     parts.push(`<span class="delta">${f.changed} amplitude${f.changed === 1 ? '' : 's'} changed</span>`);
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
   $('stats').innerHTML = parts.join(' · ');
-  $('stats').title = app.expand
+  $('stats').title = app.view === 'tree'
     ? 'Nodes in the tree, and how many amplitudes this gate changed. An unreduced tree '
       + 'never changes shape, so the leaves are the only thing that can differ.'
     : 'Nodes reachable from the root. The ones this gate created are marked on the plate.';
@@ -800,6 +862,9 @@ function exportSvg() {
     .root-marker .stem { fill: none; stroke: ${v('--ink-soft')}; stroke-width: 1.1 }
     .root-marker .head { fill: ${v('--ink-soft')}; stroke: none }
     .root-marker text { fill: ${v('--ink-soft')}; font: 11px serif; text-anchor: end }
+    .root-marker .root-weight { text-anchor: start; fill: ${v('--ink')} }
+    .edge-label { fill: ${v('--ink')}; font: 10px serif; text-anchor: middle;
+      dominant-baseline: central; paint-order: stroke; stroke: ${v('--plate')}; stroke-width: 3px }
   `;
   clone.prepend(style);
   const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' });
@@ -836,7 +901,7 @@ function permalink() {
   p.set('c', encodeText($('qasm').value));
   p.set('s', encodeText($('stateText').value));
   if (app.index) p.set('i', String(app.index));
-  if (app.expand) p.set('t', '1');
+  if (app.view !== 'reduced') p.set('t', app.view === 'tree' ? '1' : 'e');
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
   return `${location.href.split('#')[0]}#${p}`;
@@ -853,11 +918,11 @@ function applyPermalink() {
   } catch {
     return false;   // a mangled link should not stop the app from starting
   }
-  app.expand = p.get('t') === '1';
+  app.view = { 1: 'tree', e: 'edge-valued' }[p.get('t')] || 'reduced';
   app.hideZero = p.get('z') === '1';
   const f = normaliseFormat(p.get('f'));
   if (AMP_FORMATS.includes(f) && f !== 'exact') app.ampFormat = f;
-  $('expand').checked = app.expand;
+  $('view').value = app.view;
   $('hideZero').checked = app.hideZero;
   $('ampFormat').value = app.ampFormat;
   app.index = Math.max(0, parseInt(p.get('i') || '0', 10) || 0);
@@ -1010,8 +1075,8 @@ export function boot() {
   $('theme').addEventListener('click', () => {
     applyTheme(THEMES[(THEMES.indexOf(app.theme) + 1) % THEMES.length]);
   });
-  $('expand').addEventListener('change', (e) => {
-    app.expand = e.target.checked;
+  $('view').addEventListener('change', (e) => {
+    app.view = e.target.value;
     compile();
   });
   $('hideZero').addEventListener('change', (e) => {
