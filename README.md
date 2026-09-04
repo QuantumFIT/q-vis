@@ -30,8 +30,8 @@ Grover on 4 qubits ends in **6 nodes**, because the state is symmetric in every 
 basis state and sharing captures exactly that — `13/256` on one shared terminal and
 `-251/256` on the marked path, exactly, where a float simulator would say 0.98.
 
-All of them are one click apart in the examples, and the **full tree** toggle draws any of
-them unreduced for comparison.
+All of them are one click apart in the examples, and the view selector draws any state
+four ways — shared or unreduced, amplitudes in the terminals or on the edges.
 
 ## Writing the input state
 
@@ -70,6 +70,22 @@ Arbitrary rotations such as `rz(π/3)` are **deliberately unsupported**: their e
 the ring, which would cost both exactness and the property that equal states have identical
 diagrams. `measure`, `reset` and classical control are rejected for a related reason — this
 tool shows unitary evolution of a pure state.
+
+## Four ways to draw one state
+
+The selector switches between them, and each answers a different question.
+
+| view | what it shows |
+| --- | --- |
+| **reduced diagram** | the default: shared subfunctions, amplitudes in the terminals |
+| **full tree** | the same state unreduced, so the sharing can be seen for what it saves |
+| **edge-valued** | amplitudes on the edges and one terminal, so subfunctions equal *up to a scalar* are shared too |
+| **full tree, edge-valued** | the same weights with nothing shared |
+
+The 3-qubit QFT is the case that separates them: 15 nodes reduced, and **4** edge-valued,
+because its amplitudes differ only by phases and phases factor onto the edges. `docs/EVDD.md`
+explains the normalisation this rests on, and why the ring not being a field makes it a
+decision rather than a formula.
 
 ## Reading the amplitudes
 
@@ -110,7 +126,7 @@ directly, so a change is one reload away.
 
 ```sh
 python3 -m http.server 8000    # then open http://localhost:8000/dev.html
-node --test tests/*.test.js    # 62 tests, no node_modules
+node --test tests/*.test.js    # 81 tests, no node_modules
 node tools/build.mjs           # -> q-vis.html, one self-contained file
 ```
 

@@ -13,8 +13,9 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
 - `node --test tests/*.test.js` must pass with **zero `node_modules`**. Tests import the
   exact same ES modules the browser loads. (Pass the glob, not the directory: since
   Node 24 a bare directory argument is resolved as a module and fails.)
-- Layer discipline: `zomega.js` → `poly.js` → `dd.js` → `sim.js`/`qasm.js` → `layout.js` → `ui.js`.
-  **Nothing in the first four layers may touch the DOM.** They must run headless in Node.
+- Layer discipline: `zomega.js` → `poly.js` → `dd.js`/`evdd.js` → `sim.js`/`qasm.js` →
+  `layout.js` → `ui.js`. **Only `ui.js` may touch the DOM.** Everything else runs headless
+  in Node, which is what makes the test suite possible.
 
 ## Domain conventions (fixed — do not silently change)
 
@@ -28,6 +29,14 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
   and identical subgraphs are shared (hash-consing). Reduction is applied eagerly, so
   **structural equality of node ids is semantic equality** — the whole design leans on this.
 - A skipped level means "this variable is a don't-care here", *not* "this qubit is absent".
+
+## Representations
+
+A state can be drawn four ways, and `layout.js` produces all of them from one interface:
+shared (`dd.js`) or unreduced, with the amplitudes in the terminals or on the edges
+(`evdd.js`). The edge-valued forms need a normalisation rule, and since `Z[1/√2, i]` is
+not a field that rule is a **parameter**, not a constant — see `docs/EVDD.md` before
+changing it. Simulation always runs on `dd.js`; the edge-valued form is converted from it.
 
 ## Amplitude algebra
 

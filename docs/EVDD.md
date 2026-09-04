@@ -1,64 +1,65 @@
-# Extending q-vis to edge-valued diagrams
+# Edge-valued diagrams
 
-## What changes
+A state can be drawn four ways in q-vis: shared or unreduced, with the amplitudes in the
+terminals or on the edges. This note records why the edge-valued pair exists and the one
+decision it turned on.
 
-Today every amplitude sits in a terminal, and two subfunctions are shared only when they
-are *equal*. In an edge-valued diagram each edge carries a weight from the amplitude ring
-and a node denotes `weight × subfunction`, so two subfunctions are shared when they are
-equal **up to a scalar**. There is one terminal, `1`, and the state's global factor rides
-on a root edge.
+## What the edges buy
 
-That is exactly the sharing quantum circuits produce, because circuits multiply
-subfunctions by phases.
+With amplitudes in the terminals, two subfunctions are shared only when they are *equal*.
+With weights on the edges — one terminal, `1`, and the state's overall factor on a root
+edge — they are shared when they are equal **up to a scalar**. That is what circuits
+produce, because a gate multiplies subfunctions by phases.
 
-## Why it is worth doing
+The 3-qubit QFT is the case the terminal-valued form handles worst: a different phase on
+every amplitude, so nothing can be shared. Its amplitudes are `ω^(x·y)/√8`, which factors
+over the bits of `y`, and the two effects separate cleanly:
 
-The 3-qubit QFT is the case where the current representation looks worst: 15 nodes, one
-terminal per basis state, "nothing can be shared" (its own example note says so). But its
-amplitudes are `ω^(x·y)/√8`, and that function is a *product* over the bits of `y`:
+| | nodes |
+| --- | --- |
+| terminal-valued, shared | 15 |
+| edge-valued, no normalisation | 8 |
+| edge-valued, units factored out | 4 |
 
-    ψ(y) = (1/√8) · (ω^20)^y0 · (ω^10)^y1 · (ω^5)^y2
+Moving the amplitudes onto the edges collapses the *terminals* — eight become one.
+Normalising then collapses the *internal nodes*, leaving one per qubit.
 
-A product like that is one node per level in an edge-valued diagram — each with low
-weight 1 and high weight a phase — so **15 nodes should become 4**. Showing the same
-state both ways, side by side, is the clearest possible argument for edge weights, and
-this tool is already built to show two representations of one state (the `full tree`
-toggle does it today).
+## The decision: normalising over a ring that is not a field
 
-## The problem: this ring is not a field
-
-Canonicity needs a normalisation rule, and every standard rule divides by something. Our
-amplitudes live in `Z[1/√2, i]`, where division is not always possible. Measured:
+Canonicity needs a rule for which scalar to push up an edge, and every textbook rule
+divides. Amplitudes live in `Z[1/√2, i]`, where division is not always possible:
 
 | element | inverse |
 | --- | --- |
 | `i`, `ω`, `√2`, `2`, `1+i`, `1+ω` | in the ring |
 | `3`, `1+2i` | **not in the ring** |
 
-So "divide the child weights by the low one" can leave the ring, and with it exactness —
-the property the whole project is built on. Three ways out:
+So the normaliser is a parameter (`EVDD`'s third argument), and what ships factors out a
+power of `√2` and a power of `ω` — the units a gate can introduce, so the division is
+exact. `zomega.unitPart` does it, choosing canonically among the eight rotations, with
+the property that makes it work: **every unit reduces to 1**, so two amplitudes differing
+by a phase leave the same remainder. A symbolic weight is left alone rather than guessed
+at.
 
-1. **Normalise by units only.** Factor out the unit part of the first non-zero child
-   weight and push it up the edge. Exact, no new number type, a small change. Shares every
-   pair of subfunctions differing by a phase, by ±1, or by a power of √2 — which is what
-   circuits actually generate, and enough for the QFT result above. Not fully canonical:
-   subfunctions differing by a non-unit factor (3, say) stay separate.
-2. **Normalise by gcd and unit.** `Z[ω]` is a principal ideal domain with a Euclidean
-   algorithm, so a genuine gcd exists. Divide both child weights by their gcd times a
-   canonical unit. Fully canonical, still exact, still no new number type — at the cost of
-   implementing gcd in `Z[ω]` and clearing denominators first.
-3. **Extend to fractions.** Represent weights as elements of `Q(ω)`, so any non-zero
-   weight can be divided out and the textbook QMDD rule applies directly. The most
-   sharing, but a new number type, and "exact" starts to mean something different in the
-   interface.
+This is not fully canonical: subfunctions differing by a non-unit factor such as 3 stay
+separate. Two ways further, both still open:
 
-Whichever is chosen, the existing canonicity test — build the same state by different
-routes, assert the same node id — carries over unchanged and is the thing to write first.
+1. **gcd and unit.** `Z[ω]` is a principal ideal domain with a Euclidean algorithm, so
+   divide both child weights by their gcd times a canonical unit. Fully canonical, still
+   exact, no new number type — at the cost of implementing gcd in `Z[ω]`.
+2. **Fractions.** Weights in `Q(ω)`, so any non-zero weight divides out and the textbook
+   QMDD rule applies. The most sharing, but a new number type, and "exact" starts to mean
+   something different in the interface.
 
-## Shape of the work
+Either drops into the same slot.
 
-- `src/zomega.js`: unit extraction (and gcd, for option 2). Testable headless, as always.
-- `src/evdd.js`: a second manager beside `MTBDD`, same read interface, weights on edges.
-  The layout and renderer already consume that interface, so most of the UI is free.
-- `src/layout.js`: edge labels; the terminal row collapses to a single `1`.
-- UI: a representation switch beside `full tree`, so one state can be seen both ways.
+## How it is wired
+
+Simulation is unchanged: it runs on the MTBDD in `dd.js`, and `EVDD.fromMTBDD` converts
+each frame in one pass. That is all a visualiser needs, and it avoids reimplementing gate
+application to see the difference. If the goal ever becomes cheaper *simulation* rather
+than a clearer picture, native edge-valued gate application is the next step.
+
+`layout.treeEdgeWeights` applies the same normalisation to an unreduced tree, which is
+what the fourth view draws. The tests check the property directly: the weights along a
+path, times the root weight, are the amplitude.

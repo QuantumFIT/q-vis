@@ -215,9 +215,6 @@ export function buildState(dd, entries) {
   return dd.fromPatterns(entries.map((e) => [e.pattern, e.amplitude]));
 }
 
-/** The all-zeros state, the default when the user gives no input state. */
-export function defaultStateText(nqubits) { return `|${'0'.repeat(nqubits)}> : 1`; }
-
 /** A fully general state: every basis state its own unknown. */
 export function symbolicStateText(nqubits) { return `${'-'.repeat(nqubits)} : ?`; }
 

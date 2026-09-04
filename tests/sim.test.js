@@ -4,7 +4,7 @@ import { MTBDD } from '../src/dd.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
 import { applyGate, applyNamed, simulate } from '../src/sim.js';
-import { GATES, dagger } from '../src/gates.js';
+import { GATES, dagger, matMul, identity } from '../src/gates.js';
 import { applyNamedDense, basisString } from './oracle.js';
 import { rng, randInt, assertClose } from './helpers.js';
 
@@ -209,4 +209,19 @@ test('the Clifford+T decomposition of Toffoli really is a Toffoli', () => {
   const want = applyNamed(m, s, 'ccx', [0, 1, 2]);
   for (const [name, qubits] of decomposition) s = applyNamed(m, s, name, qubits);
   assert.equal(s, want, 'decomposition differs from ccx on a uniform superposition');
+});
+
+test('every gate in the table is exactly unitary', () => {
+  // Checked over the ring rather than with a floating-point tolerance: U†U must be the
+  // identity element for element. This is the invariant the whole gate table rests on,
+  // and it had been checked only by hand until now.
+  for (const [name, gate] of Object.entries(GATES)) {
+    const product = matMul(gate.matrix, dagger(gate.matrix));
+    const id = identity(gate.matrix.length);
+    product.forEach((row, i) => row.forEach((v, j) => {
+      assert.ok(Z.eq(v, id[i][j]), `${name}: U†U differs from the identity at ${i},${j}`);
+    }));
+    assert.equal(gate.matrix.length, 2 ** gate.arity, `${name}: matrix size and arity disagree`);
+    assert.ok(gate.doc && gate.draw, `${name}: missing its description or drawing hint`);
+  }
 });

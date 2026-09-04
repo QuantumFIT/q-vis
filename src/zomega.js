@@ -114,7 +114,7 @@ export function omegaPow(m) {
 }
 
 /** Repeated multiplication; `n` is small (a power of sqrt(2), say). */
-export function pow(a, n) {
+function pow(a, n) {
   let acc = ONE;
   for (let i = 0; i < n; i++) acc = mul(acc, a);
   return acc;

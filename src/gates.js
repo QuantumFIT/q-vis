@@ -45,17 +45,17 @@ export function controlled(m, nc = 1) {
 }
 
 export const X = [[O, L], [L, O]];
-export const Y = [[O, NI], [I, O]];
-export const ZZ = [[L, O], [O, NL]];
+const Y = [[O, NI], [I, O]];
+const ZZ = [[L, O], [O, NL]];
 export const H = [[H2, H2], [H2, NH2]];
 export const S = [[L, O], [O, I]];
-export const SDG = [[L, O], [O, NI]];
+const SDG = [[L, O], [O, NI]];
 export const T = [[L, O], [O, Z.OMEGA]];
-export const TDG = [[L, O], [O, Z.OMEGA_INV]];
-export const SX = [[P1, P2], [P2, P1]];
-export const SXDG = dagger(SX);
+const TDG = [[L, O], [O, Z.OMEGA_INV]];
+const SX = [[P1, P2], [P2, P1]];
+const SXDG = dagger(SX);
 export const SWAP = [[L, O, O, O], [O, O, L, O], [O, L, O, O], [O, O, O, L]];
-export const ISWAP = [[L, O, O, O], [O, O, I, O], [O, I, O, O], [O, O, O, L]];
+const ISWAP = [[L, O, O, O], [O, O, I, O], [O, I, O, O], [O, O, O, L]];
 
 /** name -> { matrix, arity, label }. Labels are what the circuit strip will draw. */
 export const GATES = {
