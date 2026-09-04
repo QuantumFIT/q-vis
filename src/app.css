@@ -477,9 +477,10 @@ dialog > header .spacer { flex: 1; }
 #zoomLevel { min-width: 46px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 #theme {
-  min-width: 52px;
+  min-width: 28px;
   text-align: center;
-  font-size: 11.5px;
+  font-size: 13px;
+  line-height: 1.15;
   color: var(--ink-soft);
 }
 

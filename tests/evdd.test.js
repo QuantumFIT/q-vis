@@ -7,6 +7,7 @@ import * as Z from '../src/zomega.js';
 import { parseQasm } from '../src/qasm.js';
 import { parseState, buildState } from '../src/state.js';
 import { simulate } from '../src/sim.js';
+import { treeEdgeWeights } from '../src/layout.js';
 import { EXAMPLES } from '../src/examples.js';
 import { rng, randInt } from './helpers.js';
 
@@ -95,4 +96,45 @@ test('a symbolic weight is left alone rather than guessed at', () => {
   for (const bits of allBits(n)) {
     assert.equal(P.key(ev.evaluate(edge, bits)), P.key(dd.evaluate(root, bits)));
   }
+});
+
+test('the unreduced tree carries weights that multiply back to the amplitudes', () => {
+  // Same normalisation as the shared diagram, but with nothing shared, so the tree keeps
+  // its shape. The weights along a path, times the root weight, must be the amplitude.
+  for (const example of EXAMPLES) {
+    const circuit = parseQasm(example.qasm);
+    const n = circuit.nqubits;
+    if (n > 5) continue;
+    const dd = new MTBDD(P.Ring, n);
+    const frames = simulate(dd, buildState(dd, parseState(example.state, n).entries), circuit);
+    const root = frames[frames.length - 1].root;
+
+    const values = allBits(n).map((b) => dd.evaluate(root, b));
+    const { weightOf, rootWeight } = treeEdgeWeights(dd, values,
+      { ring: P.Ring, normalise: unitNormaliser(P, Z) });
+
+    allBits(n).forEach((bits, index) => {
+      let product = rootWeight;
+      let path = 0;
+      for (let level = 0; level < n; level++) {
+        const bit = bits[level] === '1' ? 1 : 0;
+        product = P.mul(product, weightOf.get(2 ** level - 1 + path)[bit]);
+        path = path * 2 + bit;
+      }
+      assert.equal(P.key(product), P.key(values[index]),
+        `${example.name} at |${bits}>: weights multiply to ${P.format(product)}, not ${P.format(values[index])}`);
+    });
+  }
+});
+
+test('an all-zero subtree is reached by a zero edge, not by a weight of 1', () => {
+  const n = 2;
+  const dd = new MTBDD(P.Ring, n);
+  // Only |00> is occupied, so everything under q0 = 1 is zero.
+  const root = dd.basisState('00', P.one);
+  const values = allBits(n).map((b) => dd.evaluate(root, b));
+  const { weightOf } = treeEdgeWeights(dd, values, { ring: P.Ring, normalise: unitNormaliser(P, Z) });
+  const [low, high] = weightOf.get(0);
+  assert.ok(!P.isZero(low), 'the occupied side carries a weight');
+  assert.ok(P.isZero(high), 'the empty side is a zero edge, so hiding zeros takes the subtree with it');
 });

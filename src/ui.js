@@ -105,8 +105,13 @@ function compile() {
   } else {
     app.layout = layoutFrames(dd, frames, {
       qubitLabels: labels,
-      expand: app.view === 'tree',
+      expand: app.view.startsWith('tree'),
       formatValue: show,
+      // The unreduced tree drawn the edge-valued way: the same normalisation, with
+      // nothing shared, which is the comparison worth having.
+      weighting: app.view === 'tree-edge-valued'
+        ? { ring: P.Ring, normalise: unitNormaliser(P, Z) }
+        : null,
     });
   }
   app.index = Math.min(app.index, frames.length - 1);
@@ -123,9 +128,9 @@ function compile() {
     : 'give every basis state its own unknown amplitude';
 
   const big = circuit.nqubits > 10;
-  const treeOption = $('view').querySelector('option[value="tree"]');
-  treeOption.disabled = big;
-  treeOption.textContent = big ? 'full tree (too many qubits)' : 'full tree';
+  for (const value of ['tree', 'tree-edge-valued']) {
+    $('view').querySelector(`option[value="${value}"]`).disabled = big;
+  }
   resetCanvas();
   renderCircuit();
   setFrame(app.index);
@@ -431,17 +436,43 @@ function nodeAnchor(node, top) {
 }
 
 /**
+ * Where an edge starts and ends.
  * @param {boolean} spread the node's two edges land on the same target, so pull them
  *   apart at the far end too — otherwise they coincide and read as one edge. Common in
  *   the edge-valued form, where children often differ only by their weights.
  */
+function edgeEnds(from, to, high, spread) {
+  return {
+    x1: xOf(from) + (high ? 6 : -6),
+    y1: nodeAnchor(from, false),
+    x2: xOf(to) + (spread ? (high ? 6 : -6) : 0),
+    y2: nodeAnchor(to, true),
+  };
+}
+
 function edgePath(from, to, high, spread) {
-  const x1 = xOf(from) + (high ? 6 : -6);
-  const y1 = nodeAnchor(from, false);
-  const x2 = xOf(to) + (spread ? (high ? 6 : -6) : 0);
-  const y2 = nodeAnchor(to, true);
+  const { x1, y1, x2, y2 } = edgeEnds(from, to, high, spread);
   const bend = (y2 - y1) * 0.42;
   return `M${x1},${y1} C${x1},${y1 + bend} ${x2},${y2 - bend} ${x2},${y2}`;
+}
+
+/**
+ * Where to write an edge's weight. The curve's own midpoint is the straight midpoint —
+ * the bend cancels there — so writing the label at it puts the line through the text.
+ * It goes beside the edge instead, on the outward side: to the left of a low edge and
+ * the right of a high one, which also says which of a parallel pair it belongs to.
+ */
+const LABEL_OFFSET = 11;
+function edgeLabelPoint(from, to, high, spread) {
+  const { x1, y1, x2, y2 } = edgeEnds(from, to, high, spread);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const side = high ? 1 : -1;
+  return {
+    x: (x1 + x2) / 2 + (dy / len) * LABEL_OFFSET * side,
+    y: (y1 + y2) / 2 - (dx / len) * LABEL_OFFSET * side,
+  };
 }
 
 function setFrame(i) {
@@ -579,11 +610,7 @@ function setEdgeLabel(key, e, pos, spread) {
     if (existing) { existing.remove(); app.edgeLabels.delete(key); }
     return;
   }
-  const from = pos.get(e.from);
-  const to = pos.get(e.to);
-  const off = e.high ? 6 : -6;
-  const x = (xOf(from) + off + xOf(to) + (spread ? off : 0)) / 2;
-  const y = (nodeAnchor(from, false) + nodeAnchor(to, true)) / 2;
+  const { x, y } = edgeLabelPoint(pos.get(e.from), pos.get(e.to), e.high, spread);
   let el = existing;
   if (!el) {
     el = svgEl('text', { class: 'edge-label' });
@@ -705,13 +732,14 @@ function renderStats(f) {
   // Frame 0 is the state as given, so "+4 −0" there would be counting it against nothing.
   // No node churn count: which nodes this gate created is already on the plate, in the
   // only colour it uses.
-  if (f.index > 0 && app.view === 'tree' && f.changed) {
+  if (f.index > 0 && app.view.startsWith('tree') && f.changed) {
     // An unreduced tree never changes shape, so the leaves are the only news.
-    parts.push(`<span class="delta">${f.changed} amplitude${f.changed === 1 ? '' : 's'} changed</span>`);
+    const what = app.view === 'tree' ? 'amplitude' : 'node';
+    parts.push(`<span class="delta">${f.changed} ${what}${f.changed === 1 ? '' : 's'} changed</span>`);
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
   $('stats').innerHTML = parts.join(' · ');
-  $('stats').title = app.view === 'tree'
+  $('stats').title = app.view.startsWith('tree')
     ? 'Nodes in the tree, and how many amplitudes this gate changed. An unreduced tree '
       + 'never changes shape, so the leaves are the only thing that can differ.'
     : 'Nodes reachable from the root. The ones this gate created are marked on the plate.';
@@ -909,7 +937,7 @@ function permalink() {
   p.set('c', encodeText($('qasm').value));
   p.set('s', encodeText($('stateText').value));
   if (app.index) p.set('i', String(app.index));
-  if (app.view !== 'reduced') p.set('t', app.view === 'tree' ? '1' : 'e');
+  if (app.view !== 'reduced') p.set('t', { tree: '1', 'edge-valued': 'e', 'tree-edge-valued': 'te' }[app.view]);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
   return `${location.href.split('#')[0]}#${p}`;
@@ -926,7 +954,7 @@ function applyPermalink() {
   } catch {
     return false;   // a mangled link should not stop the app from starting
   }
-  app.view = { 1: 'tree', e: 'edge-valued' }[p.get('t')] || 'reduced';
+  app.view = { 1: 'tree', e: 'edge-valued', te: 'tree-edge-valued' }[p.get('t')] || 'reduced';
   app.hideZero = p.get('z') === '1';
   const f = normaliseFormat(p.get('f'));
   if (AMP_FORMATS.includes(f) && f !== 'exact') app.ampFormat = f;
@@ -960,13 +988,19 @@ const STORE = 'q-vis:v1';
 const THEME_STORE = 'q-vis:theme';
 const AMP_STORE = 'q-vis:amplitudes';
 const THEMES = ['auto', 'light', 'dark'];
+// A symbol rather than the word: the control is a single glyph among other controls, and
+// the word for the current state reads like a label for what clicking will do.
+const THEME_GLYPH = { auto: '◐', light: '☀', dark: '☾' };
 
 /** 'auto' follows the system; the other two pin it. Kept per viewer, not in the file. */
 function applyTheme(name) {
   app.theme = name;
   if (name === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', name);
-  $('theme').textContent = name;
+  const button = $('theme');
+  button.textContent = THEME_GLYPH[name];
+  button.title = `theme: ${name} — click to cycle through auto, light and dark`;
+  button.setAttribute('aria-label', `theme: ${name}`);
   try { localStorage.setItem(THEME_STORE, name); } catch { /* storage may be unavailable */ }
 }
 

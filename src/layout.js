@@ -86,7 +86,7 @@ export function stableOrder(ids, prevRank) {
 export function layoutFrames(dd, frames, opts = {}) {
   const labels = opts.qubitLabels || Array.from({ length: dd.nvars }, (_, i) => `q${i}`);
   const show = opts.formatValue || ((v) => dd.ring.format(v));
-  if (opts.expand) return layoutTrees(dd, frames, labels, show);
+  if (opts.expand) return layoutTrees(dd, frames, labels, show, opts.weighting);
   const out = [];
   let prevRank = new Map();
   let prevX = new Map();
@@ -183,7 +183,47 @@ export function layoutFrames(dd, frames, opts = {}) {
  * between frames — the only thing that changes is which amplitudes sit at the leaves,
  * and those are what get marked when a gate changes them.
  */
-function layoutTrees(dd, frames, labels, show) {
+/**
+ * Edge weights for an unreduced tree, normalised exactly as evdd.js normalises a shared
+ * diagram: bottom-up, a node hands its parent the scalar it factored out and keeps what
+ * is left on its own edges. An all-zero subtree hands up zero, so the edge into it reads
+ * 0 rather than 1.
+ *
+ * @param {object} dd only for its ring
+ * @param {any[]} values the amplitude of every basis state, in counting order
+ * @returns {{weightOf: Map<number, [any, any]>, rootWeight: any}}
+ */
+export function treeEdgeWeights(dd, values, { ring, normalise }) {
+  const n = Math.log2(values.length);
+  const idOf = (level, path) => 2 ** level - 1 + path;
+  const weightOf = new Map();
+  const factor = (level, path) => {
+    if (level === n) return values[path];
+    const w0 = factor(level + 1, path * 2);
+    const w1 = factor(level + 1, path * 2 + 1);
+    const id = idOf(level, path);
+    if (ring.isZero(w0) && ring.isZero(w1)) {
+      weightOf.set(id, [w0, w1]);
+      return ring.zero;
+    }
+    const f = normalise(ring.isZero(w0) ? w1 : w0);
+    if (!f) {
+      weightOf.set(id, [w0, w1]);
+      return ring.one;
+    }
+    weightOf.set(id, [ring.mul(w0, f.inverse), ring.mul(w1, f.inverse)]);
+    return f.unit;
+  };
+  return { weightOf, rootWeight: factor(0, 0) };
+}
+
+/**
+ * @param {?{ring: object, normalise: Function}} weighting when given, the tree is drawn
+ *   in the edge-valued style: weights on the edges, one terminal, normalised exactly as
+ *   evdd.js does it — but with nothing shared, so the tree keeps its shape and shows
+ *   what the sharing was worth.
+ */
+function layoutTrees(dd, frames, labels, show, weighting) {
   const n = dd.nvars;
   const leaves = 2 ** n;
   const idOf = (level, path) => 2 ** level - 1 + path;
@@ -212,6 +252,11 @@ function layoutTrees(dd, frames, labels, show) {
       }
     }
 
+    const weighted = weighting ? treeEdgeWeights(dd, values, weighting) : null;
+    const weightOf = weighted && weighted.weightOf;
+    const rootWeight = weighted && weighted.rootWeight;
+    const weightKey = (id) => weightOf.get(id).map((w) => dd.ring.key(w)).join('|');
+
     const nodes = [];
     const edges = [];
     for (let level = 0; level <= n; level++) {
@@ -225,20 +270,27 @@ function layoutTrees(dd, frames, labels, show) {
           x: xOf(level, path),
           y: level,
           terminal,
-          zero: zeroOnly[id],
-          label: terminal ? show(value, frame.index) : labels[level],
-          // An unreduced tree never changes shape, so "new" can only mean "this
-          // amplitude is not what it was before this gate".
-          fresh: terminal && prev !== null && dd.ring.key(prev[path]) !== dd.ring.key(value),
+          // With weights on the edges there is no zero node: a zero subfunction is a
+          // zero edge, and the subtree beneath it goes when that edge goes.
+          zero: weighting ? false : zeroOnly[id],
+          label: terminal ? (weighting ? '1' : show(value, frame.index)) : labels[level],
+          // An unreduced tree never changes shape, so "new" can only mean that what it
+          // carries is not what it was — an amplitude, or a pair of edge weights.
+          fresh: prev !== null && (weighting
+            ? !terminal && prev.weights.get(id) !== weightKey(id)
+            : terminal && dd.ring.key(prev.values[path]) !== dd.ring.key(value)),
         });
         if (terminal) continue;
         for (const high of [false, true]) {
           const childPath = path * 2 + (high ? 1 : 0);
+          const weight = weighting ? weightOf.get(id)[high ? 1 : 0] : null;
           edges.push({
             from: id,
             to: idOf(level + 1, childPath),
             high,
-            toZero: zeroOnly[idOf(level + 1, childPath)],
+            toZero: weighting ? dd.ring.isZero(weight) : zeroOnly[idOf(level + 1, childPath)],
+            // An edge of weight 1 is left unlabelled, as these diagrams are drawn.
+            ...(weighting ? { label: show(weight, frame.index) === '1' ? '' : show(weight, frame.index) } : {}),
           });
         }
       }
@@ -247,8 +299,11 @@ function layoutTrees(dd, frames, labels, show) {
     out.push({
       index: frame.index, gate: frame.gate, root: idOf(0, 0), nodes, edges,
       size: nodes.length, changed: nodes.filter((nd) => nd.fresh).length,
+      ...(weighting ? { rootWeight: show(rootWeight, frame.index) } : {}),
     });
-    prev = values;
+    prev = weighting
+      ? { weights: new Map([...weightOf.keys()].map((id) => [id, weightKey(id)])) }
+      : { values };
   }
 
   return { frames: out, xMin: -leaves / 2 + 0.5, xMax: leaves / 2 - 0.5, width: leaves, height: n + 1 };
