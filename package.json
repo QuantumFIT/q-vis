@@ -2,8 +2,29 @@
   "name": "quantum-vis",
   "version": "0.0.0",
   "private": true,
-  "description": "MTBDD visualisation of quantum state evolution. No dependencies, ever.",
+  "description": "Visualise how the MTBDD of a pure quantum state evolves, gate by gate, under a unitary circuit.",
+  "license": "MIT",
+  "author": "Ondřej Lengál",
+  "homepage": "https://quantumfit.github.io/q-vis/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuantumFIT/q-vis.git"
+  },
+  "bugs": {
+    "url": "https://github.com/QuantumFIT/q-vis/issues"
+  },
+  "keywords": [
+    "quantum",
+    "mtbdd",
+    "decision-diagram",
+    "openqasm",
+    "simulation",
+    "visualisation"
+  ],
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js",
     "build": "node tools/build.mjs",
