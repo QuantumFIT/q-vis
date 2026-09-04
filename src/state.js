@@ -7,9 +7,29 @@
 // Amplitudes are expressions over integers, i, sqrt2, omega (= e^{i pi/4}) and free
 // symbols, combined with + - * / ^. Division is exact: it is allowed only by a constant
 // whose inverse stays in Z[1/sqrt(2), i], so 1/sqrt(2) and 1/2 work and 1/3 does not.
+//
+// A '?' in the amplitude gives every basis state the pattern matches its *own* symbol,
+// named after that state: "--0-- : ?" is a five-qubit state with sixteen unknowns a00000
+// ... a11011 and zero wherever the middle qubit is 1. Write "x?" for a different prefix,
+// and the rest of the expression still applies, so "?/2" halves each of them.
 
 import * as Z from './zomega.js';
 import * as P from './poly.js';
+
+/** One line may not introduce more symbols than this; each becomes its own terminal. */
+const MAX_GENERATED_SYMBOLS = 256;
+
+const WILDCARD = /([A-Za-z_][A-Za-z0-9_]*)?\?/g;
+
+/** Every basis state a pattern matches, in counting order. */
+function* matching(pattern) {
+  const free = [...pattern].map((c, i) => (c === '-' ? i : -1)).filter((i) => i >= 0);
+  for (let m = 0; m < 2 ** free.length; m++) {
+    const bits = [...pattern];
+    free.forEach((pos, j) => { bits[pos] = String((m >> (free.length - 1 - j)) & 1); });
+    yield bits.join('');
+  }
+}
 
 export class StateError extends Error {
   constructor(message, line) {
@@ -152,6 +172,24 @@ export function parseState(text, nqubits) {
     }
     if (!rhs) throw new StateError('missing amplitude', line);
 
+    if (WILDCARD.test(rhs)) {
+      WILDCARD.lastIndex = 0;
+      const count = 2 ** [...pattern].filter((c) => c === '-').length;
+      if (count > MAX_GENERATED_SYMBOLS) {
+        throw new StateError(
+          `'${pattern}' matches ${count} basis states, so '?' would introduce ${count} `
+          + `symbols; at most ${MAX_GENERATED_SYMBOLS} are allowed`, line);
+      }
+      for (const bits of matching(pattern)) {
+        // Name each unknown after the basis state it belongs to, so a terminal says which
+        // amplitude it is rather than just that it is the seventh one.
+        const amplitude = parseAmplitude(rhs.replace(WILDCARD, (_, name) => (name || 'a') + bits), line);
+        for (const sym of P.symbols(amplitude)) symbols.add(sym);
+        entries.push({ pattern: bits, amplitude, line });
+      }
+      return;
+    }
+
     const amplitude = parseAmplitude(rhs, line);
     for (const s of P.symbols(amplitude)) symbols.add(s);
     entries.push({ pattern, amplitude, line });
@@ -168,6 +206,9 @@ export function buildState(dd, entries) {
 
 /** The all-zeros state, the default when the user gives no input state. */
 export function defaultStateText(nqubits) { return `|${'0'.repeat(nqubits)}> : 1`; }
+
+/** A fully general state: every basis state its own unknown. */
+export function symbolicStateText(nqubits) { return `${'-'.repeat(nqubits)} : ?`; }
 
 /**
  * Squared norm, if the state has no free symbols. Returns null when it is symbolic,

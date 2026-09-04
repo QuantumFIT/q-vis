@@ -87,3 +87,33 @@ test('squaredNorm is null exactly when the state is symbolic', () => {
   const unnormalised = buildState(m, parseState('|00> : 1\n|11> : 1\n', 2).entries);
   assert.ok(Math.abs(squaredNorm(m, unnormalised) - 2) < 1e-12);
 });
+
+test("'?' gives every matched basis state its own symbol", () => {
+  const { entries, symbols } = parseState('--0-- : ?', 5);
+  assert.equal(entries.length, 16, 'four don\'t-cares means sixteen basis states');
+  assert.equal(symbols.length, 16, 'and sixteen distinct unknowns');
+  // Named after the state they belong to, in counting order.
+  assert.deepEqual(entries.slice(0, 3).map((e) => e.pattern), ['00000', '00001', '00010']);
+  assert.deepEqual(entries.map((e) => e.pattern).filter((p) => p[2] === '1'), [],
+    'nothing is generated where the pattern pins a qubit to 0');
+  assert.ok(symbols.includes('a01000') && symbols.includes('a11011'));
+
+  const m = new MTBDD(P.Ring, 5);
+  const root = buildState(m, entries);
+  assert.equal(P.format(m.evaluate(root, '01000')), 'a01000');
+  assert.equal(P.format(m.evaluate(root, '00100')), '0', 'the pinned qubit kills half the space');
+  assert.equal(squaredNorm(m, root), null, 'a symbolic state has no numeric norm');
+});
+
+test("'?' takes a prefix and composes with the rest of the expression", () => {
+  assert.deepEqual(parseState('-- : x?', 2).symbols, ['x00', 'x01', 'x10', 'x11']);
+  const { entries } = parseState('-- : ?/2', 2);
+  assert.deepEqual(entries.map((e) => P.format(e.amplitude)), ['a00/2', 'a01/2', 'a10/2', 'a11/2']);
+  // A pattern with no don't-cares still names its one symbol after the state.
+  assert.deepEqual(parseState('|10> : ?', 2).symbols, ['a10']);
+});
+
+test('generating symbols has a ceiling', () => {
+  assert.throws(() => parseState('-'.repeat(10) + ' : ?', 10), /1024 basis states.*at most 256/s);
+  assert.equal(parseState('-'.repeat(8) + ' : ?', 8).entries.length, 256, '256 is allowed');
+});

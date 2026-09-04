@@ -5,7 +5,7 @@ import { MTBDD } from './dd.js';
 import * as P from './poly.js';
 import { simulate } from './sim.js';
 import { parseQasm } from './qasm.js';
-import { parseState, buildState, squaredNorm } from './state.js';
+import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
 import { layoutFrames } from './layout.js';
 import { EXAMPLES } from './examples.js';
 import { GATES } from './gates.js';
@@ -99,6 +99,13 @@ function compile() {
   app.zoom = 'fit';
   // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
   // drawable nor informative.
+  // One unknown per basis state, so it is only offered while that is a sane number.
+  const tooMany = 2 ** circuit.nqubits > 256;
+  $('symbolic').disabled = tooMany;
+  $('symbolic').title = tooMany
+    ? `${2 ** circuit.nqubits} basis states is too many to give each its own symbol`
+    : 'give every basis state its own unknown amplitude';
+
   const big = circuit.nqubits > 10;
   $('expand').disabled = big;
   $('expand').closest('label').title = big
@@ -697,6 +704,18 @@ function buildHelp() {
     ['cu1(pi/2) q[0],q[1];', 'the same phase, applied when the control is 1; cp is a synonym'],
   ]));
 
+  body.append(el('h3', null, 'The input state'));
+  body.append(el('p', 'help-note',
+    'One line per basis pattern. Amplitudes are built from integers, i, sqrt2, omega and '
+    + 'free symbols with + - * / ^, and division must stay exact.'));
+  body.append(helpTable([
+    ['|01> : 1/sqrt(2)', 'one basis state; the bars and ket are optional'],
+    ['0-1 : 1/2', "'-' matches either value of that qubit — two states, one line, no extra nodes"],
+    ['|00> : a', 'a free symbol, carried through the circuit unevaluated'],
+    ['--0-- : ?', "'?' gives every matched state its own symbol, named after it: a00000, a00001, ..."],
+    ['-- : x?', 'the same with a different prefix; ?/2 halves each of them'],
+  ]));
+
   body.append(el('h3', null, 'Circuit syntax'));
   body.append(helpTable([
     ['qreg q[3];', 'declare qubits; several registers are laid end to end'],
@@ -927,6 +946,22 @@ export function boot() {
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
   $('permalink').addEventListener('click', copyPermalink);
+  $('symbolic').addEventListener('click', () => {
+    // From the circuit as currently typed, not the last one that compiled: after editing
+    // the register the old state no longer parses, and that is exactly when this is used.
+    let nqubits;
+    try {
+      nqubits = parseQasm($('qasm').value).nqubits;
+    } catch {
+      if (!app.circuit) return;
+      nqubits = app.circuit.nqubits;
+    }
+    $('stateText').value = symbolicStateText(nqubits);
+    picker.value = '';
+    $('note').textContent = '';
+    app.index = 0;
+    compile();
+  });
   $('help').addEventListener('click', () => { buildHelp(); $('helpDialog').showModal(); });
   $('helpClose').addEventListener('click', () => $('helpDialog').close());
   // Clicking the backdrop, which is the dialog element itself outside its own box.
