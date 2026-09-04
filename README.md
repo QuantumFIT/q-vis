@@ -5,7 +5,7 @@ applied to it.
 
 [![CI](https://github.com/QuantumFIT/q-vis/actions/workflows/ci.yml/badge.svg)](https://github.com/QuantumFIT/q-vis/actions/workflows/ci.yml)
 
-**[Try it →](https://quantumfit.github.io/q-vis/)** — or download the single HTML file and
+**[Try it →](https://quantum.fit.vut.cz/q-vis/)** — or download the single HTML file and
 open it offline. No install, no server, no dependencies.
 
 ![The 3-qubit QFT mid-circuit: the diagram, the circuit as a score strip, and the exact amplitudes](docs/screenshot.png)
