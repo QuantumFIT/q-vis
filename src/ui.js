@@ -481,7 +481,11 @@ function drawFrame(f) {
   const nodesG = app.svg.querySelector('.nodes');
   const edgesG = app.svg.querySelector('.edges');
 
+  // What counts as a zero depends on the representation: the reduced diagram has a 0
+  // terminal to hide, while the edge-valued form has no zero node at all — a zero
+  // subfunction is a zero-weighted *edge*. One control covers both.
   const hidden = (node) => app.hideZero && node.zero;
+  const hiddenEdge = (e) => app.hideZero && (e.toZero || hidden(pos.get(e.to)));
   // Both edges of a node landing on the same target have to be drawn apart.
   const seenTarget = new Map();
   const parallel = new Set();
@@ -491,7 +495,7 @@ function drawFrame(f) {
   }
   const wantEdges = new Map();
   for (const e of f.edges) {
-    if (hidden(pos.get(e.to))) continue;
+    if (hiddenEdge(e)) continue;
     wantEdges.set(edgeKey(e), e);
   }
   for (const [k, el] of app.edgeEls) {
@@ -514,8 +518,12 @@ function drawFrame(f) {
     setEdgeLabel(k, e, pos, parallel.has(e.from));
   }
 
+  const reached = new Set([f.root]);
+  for (const e of wantEdges.values()) reached.add(e.to);
+  const visible = (node) => pos.has(node.id) && !hidden(node) && reached.has(node.id);
+
   for (const [id, el] of app.nodeEls) {
-    if ((pos.has(id) && !hidden(pos.get(id))) || app.exiting.has(id)) continue;
+    if ((pos.has(id) && visible(pos.get(id))) || app.exiting.has(id)) continue;
     el.classList.add('leaving');
     app.exiting.set(id, setTimeout(() => {
       el.remove();
@@ -542,7 +550,7 @@ function drawFrame(f) {
   app.rootWeight.textContent = f.rootWeight && f.rootWeight !== '1' ? f.rootWeight : '';
 
   for (const node of f.nodes) {
-    if (hidden(node)) continue;
+    if (!visible(node)) continue;
     let el = app.nodeEls.get(node.id);
     if (app.exiting.has(node.id)) {          // it came back before the fade finished
       clearTimeout(app.exiting.get(node.id));
