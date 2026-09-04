@@ -9,7 +9,7 @@ test('the bundle evaluates and the engine still works inside it', () => {
   const registry = new Function(`${code}\nreturn __m;`)();
 
   assert.deepEqual([...modules].sort(),
-    ['dd.js', 'examples.js', 'gates.js', 'layout.js', 'poly.js', 'qasm.js',
+    ['dd.js', 'evdd.js', 'examples.js', 'gates.js', 'layout.js', 'poly.js', 'qasm.js',
       'sim.js', 'state.js', 'ui.js', 'zomega.js'].sort());
   assert.equal(typeof registry['ui.js'].boot, 'function');
 

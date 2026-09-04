@@ -253,3 +253,112 @@ function layoutTrees(dd, frames, labels, show) {
 
   return { frames: out, xMin: -leaves / 2 + 0.5, xMax: leaves / 2 - 0.5, width: leaves, height: n + 1 };
 }
+
+/**
+ * Lay out the edge-valued form, where the amplitudes ride on the edges and there is a
+ * single terminal. Same coordinate conventions as the reduced diagram, so the renderer
+ * needs no special case beyond drawing the weights; what is new is that an edge carries
+ * a label, and the state's overall factor sits on the root edge rather than anywhere in
+ * the picture.
+ *
+ * @param {import('./evdd.js').EVDD} ev
+ * @param {{index:number, gate:?object, edge:object}[]} frames
+ * @param {string[]} labels qubit names
+ * @param {(v: any, frameIndex: number) => string} show
+ */
+export function layoutEdgeValued(ev, frames, labels, show) {
+  const out = [];
+  let prevRank = new Map();
+  let prevX = new Map();
+  let prevNodes = new Set();
+  let xMin = Infinity;
+  let xMax = -Infinity;
+
+  for (const frame of frames) {
+    const root = frame.edge;
+    // Scan order, low edge first, exactly as for the reduced diagram.
+    const scan = new Map();
+    const stack = [root.node];
+    while (stack.length) {
+      const id = stack.pop();
+      if (scan.has(id)) continue;
+      scan.set(id, scan.size);
+      if (!ev.isTerminal(id)) stack.push(ev.highOf(id).node, ev.lowOf(id).node);
+    }
+
+    const byLevel = new Map();
+    for (const id of scan.keys()) {
+      const lev = ev.levelOf(id);
+      if (!byLevel.has(lev)) byLevel.set(lev, []);
+      byLevel.get(lev).push(id);
+    }
+    for (const ids of byLevel.values()) ids.sort((a, b) => scan.get(a) - scan.get(b));
+
+    const rank = new Map();
+    const nextX = new Map();
+    const nodes = [];
+    for (const [lev, ids] of [...byLevel].sort((a, b) => a[0] - b[0])) {
+      const ordered = lev === ev.nvars ? ids : stableOrder(ids, prevRank);
+      const centred = (ordered.length - 1) / 2;
+      let offset = centred;
+      const anchors = ordered.map((id, i) => [id, i]).filter(([id]) => prevX.has(id));
+      if (anchors.length) {
+        const [id, i] = anchors[anchors.length >> 1];
+        offset = Math.max(centred - DRIFT_LIMIT, Math.min(centred + DRIFT_LIMIT, i - prevX.get(id)));
+      }
+      ordered.forEach((id, i) => {
+        rank.set(id, i);
+        const x = i - offset;
+        nextX.set(id, x);
+        xMin = Math.min(xMin, x);
+        xMax = Math.max(xMax, x);
+        const terminal = ev.isTerminal(id);
+        nodes.push({
+          id,
+          level: lev,
+          x,
+          y: lev,
+          terminal,
+          // Nothing is a zero node here: a zero subfunction is a zero *edge*, and never
+          // reaches a node at all.
+          zero: false,
+          label: terminal ? '1' : labels[lev],
+          fresh: frame.index > 0 && !prevNodes.has(id),
+        });
+      });
+    }
+
+    const edges = [];
+    for (const id of scan.keys()) {
+      if (ev.isTerminal(id)) continue;
+      for (const high of [false, true]) {
+        const e = high ? ev.highOf(id) : ev.lowOf(id);
+        const weight = show(e.w, frame.index);
+        edges.push({
+          from: id,
+          to: e.node,
+          high,
+          toZero: ev.ring.isZero(e.w),
+          // An unlabelled edge means a weight of 1, as decision diagrams are usually drawn.
+          label: weight === '1' ? '' : weight,
+        });
+      }
+    }
+
+    out.push({
+      index: frame.index,
+      gate: frame.gate,
+      root: root.node,
+      rootWeight: show(root.w, frame.index),
+      nodes,
+      edges,
+      size: nodes.length,
+      changed: nodes.filter((nd) => nd.fresh).length,
+    });
+    prevRank = rank;
+    prevX = nextX;
+    prevNodes = new Set(scan.keys());
+  }
+
+  return { frames: out, xMin, xMax, width: xMax - xMin + 1, height: ev.nvars + 1 };
+}
