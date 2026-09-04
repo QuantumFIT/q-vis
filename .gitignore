@@ -4,3 +4,5 @@ node_modules/
 /q-vis.html
 /out/
 _site/
+# git worktrees live here; they are checkouts, never content
+.claude/worktrees/
