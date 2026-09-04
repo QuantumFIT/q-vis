@@ -4,6 +4,9 @@ on:
   push:
     branches: [master]
   pull_request:
+  # So the site can be republished without an empty commit — after changing a Pages
+  # setting, for instance.
+  workflow_dispatch:
 
 # The project has no dependencies, so there is nothing to install and nothing to cache.
 
