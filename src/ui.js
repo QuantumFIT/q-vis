@@ -334,8 +334,13 @@ function resetCanvas() {
   const slotW = Math.max(GEO.slotW, Math.round(widest) + 14);
   // A one-node diagram would otherwise get a stub of ruling that looks truncated rather
   // than deliberate, so the staff is never narrower than this.
-  const contentW = Math.max(5, app.layout.width) * slotW;
-  const originX = gutter + slotW / 2;
+  const slots = Math.max(5, app.layout.width);
+  const contentW = slots * slotW;
+  // The staff is never narrower than five slots, so a two-slot diagram has spare room in
+  // it. Split that room evenly instead of leaving it all on the right, or a small diagram
+  // sits against the gutter with the empty half of the plate beside it.
+  const spare = (slots - app.layout.width) / 2;
+  const originX = gutter + slotW / 2 + spare * slotW;
   const W = gutter + contentW + GEO.pad;
   const H = GEO.padTop + n * GEO.levelH + GEO.levelH + GEO.pad;
   app.geom = { W, H, gutter, slotW, originX };
