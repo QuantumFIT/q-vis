@@ -1175,7 +1175,7 @@ function showSizes(example, size) {
   const sizes = example?.sizes ?? [];
   el.style.display = sizes.length > 1 ? '' : 'none';
   if (sizes.length < 2) return;
-  el.replaceChildren(...sizes.map((n) => new Option(`${n} qubit${n === 1 ? '' : 's'}`, String(n))));
+  el.replaceChildren(...sizes.map((n) => new Option(`${n}q`, String(n))));
   el.value = String(size ?? example.defaultSize);
 }
 

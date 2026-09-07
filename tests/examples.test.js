@@ -154,3 +154,47 @@ test('the sizes left out are left out for a reason', () => {
   assert.throws(() => parseQasm('OPENQASM 2.0;\nqreg q[1];\nu1(pi/3) q[0];\n'),
     /dyadic rational/);
 });
+
+test('the Toffoli chain really is a multi-controlled X', () => {
+  // On every basis input, not only the one the example starts from: the target has to
+  // flip exactly when every control is set, and the working qubits have to come back to
+  // |0> — the whole construction is worthless if they do not.
+  const mcx = EXAMPLES.find((ex) => ex.name === 'Multi-controlled X');
+  for (const n of mcx.sizes) {
+    const instance = instantiate(mcx, n);
+    const circuit = parseQasm(instance.qasm);
+    const total = circuit.nqubits;
+    const spare = '0'.repeat(total - n);
+    // The full sweep is 2^n circuits; past six qubits check the one input that matters.
+    const inputs = n <= 6
+      ? Array.from({ length: 2 ** n }, (_, b) => b.toString(2).padStart(n, '0'))
+      : ['1'.repeat(n - 1) + '0'];
+
+    for (const bits of inputs) {
+      const controls = bits.slice(0, n - 1);
+      const flips = controls === '1'.repeat(n - 1);
+      const target = flips ? (bits[n - 1] === '1' ? '0' : '1') : bits[n - 1];
+      const dd = new MTBDD(P.Ring, total);
+      const frames = simulate(dd, dd.basisState(bits + spare, P.one), circuit);
+      const root = frames[frames.length - 1].root;
+
+      assert.equal(P.format(dd.evaluate(root, controls + target + spare)), '1',
+        `${n} qubits: |${bits}> should become |${controls}${target}>`);
+      assert.ok(Math.abs(squaredNorm(dd, root) - 1) < 1e-12,
+        `${n} qubits on |${bits}>: the working qubits did not come home`);
+    }
+  }
+});
+
+test('a Toffoli chain costs what it says it costs', () => {
+  // The note quotes a T count, and a reader is entitled to check it against the strip.
+  const mcx = EXAMPLES.find((ex) => ex.name === 'Multi-controlled X');
+  for (const n of mcx.sizes) {
+    const instance = instantiate(mcx, n);
+    const circuit = parseQasm(instance.qasm);
+    const tGates = circuit.gates.filter((g) => g.name === 't' || g.name === 'tdg').length;
+    const toffolis = n === 3 ? 1 : 2 * n - 5;
+    assert.equal(tGates, 7 * toffolis, `${n} qubits: ${toffolis} Toffolis at seven T each`);
+    assert.match(instance.note, new RegExp(n === 3 ? 'Seven T gates' : `${7 * toffolis} T`));
+  }
+});

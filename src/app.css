@@ -199,7 +199,18 @@ select, button {
 select { font-size: 12px; max-width: 100%; }
 /* A flex item will not shrink below its content unless told it may. Without this the
    example names push the picker out past the edge of its panel. */
-#example { flex: 0 1 auto; min-width: 0; }
+/* A row of their own, because a panel this narrow cannot hold a heading, a button and a
+   name like "Uniform superposition" at once, and a truncated name is no name. The picker
+   takes what is left after the size, which needs only three characters. */
+.pickers {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+#example { flex: 1 1 auto; min-width: 0; }
+#size { flex: 0 0 auto; }
 
 button:hover:not(:disabled), select:hover { border-color: var(--ink-soft); }
 button:disabled { color: var(--ink-faint); cursor: default; }

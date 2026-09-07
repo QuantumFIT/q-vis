@@ -111,6 +111,48 @@ ${splits.join('\n\n')}
 `;
 }
 
+/**
+ * The textbook Toffoli: seven T gates, which is the known minimum, and eight Clifford
+ * gates around them. Written as a gate body so a chain of them can be counted.
+ */
+const TOFFOLI = [
+  'h tgt;', 'cx c1,tgt;', 'tdg tgt;', 'cx c0,tgt;', 't tgt;', 'cx c1,tgt;', 'tdg tgt;',
+  'cx c0,tgt;', 't c1;', 't tgt;', 'h tgt;', 'cx c0,c1;', 't c0;', 'tdg c1;', 'cx c0,c1;',
+];
+
+/** Working qubits a chain of Toffolis needs for n-1 controls: one per Toffoli past the first. */
+const chainSpare = (n) => Math.max(0, n - 3);
+
+/**
+ * An X controlled on every qubit but the last, out of Toffolis and nothing else. Three
+ * qubits is one Toffoli; beyond that the controls are folded together on working qubits,
+ * which the mirror image of the chain puts back to |0>.
+ */
+function multiControlX(n) {
+  const w = chainSpare(n);
+  const chain = w === 0
+    ? ['tof q[0],q[1],q[2];']
+    : (() => {
+      const up = ['tof q[0],q[1],a[0];',
+        ...range(1, w - 1).map((k) => `tof q[${k + 1}],a[${k - 1}],a[${k}];`)];
+      return [...up, `tof q[${n - 2}],a[${w - 1}],q[${n - 1}];`, ...[...up].reverse()];
+    })();
+  return `${HEADER}
+qreg q[${n}];${w ? `\nqreg a[${w}];   // working qubits, borrowed and given back` : ''}
+
+// Seven T gates is the known minimum for a Toffoli, and eight Clifford gates go round them.
+gate tof c0,c1,tgt {
+${TOFFOLI.map((line) => `  ${line}`).join('\n')}
+}
+
+// q[0..${n - 2}] control, q[${n - 1}] is the target.
+${chain.join('\n')}
+`;
+}
+
+/** How many Toffolis an X controlled on n-1 qubits costs. */
+const toffoliCount = (n) => (n === 3 ? 1 : 2 * n - 5);
+
 export const EXAMPLES = [
   {
     name: 'Bell pair',
@@ -210,32 +252,22 @@ h q[1];
     state: (n) => `|${'01'.repeat(n).slice(-n)}> : 1`,
   },
   {
-    name: 'Toffoli in Clifford+T',
-    note: 'Seven T gates and eight Clifford gates for one Toffoli. Every intermediate '
-      + 'phase is kept exactly, and they all cancel: the last diagram is the very node '
-      + 'ccx would have produced.',
-    qasm: `${HEADER}
-qreg q[3];
-
-// The textbook decomposition: q[0] and q[1] control, q[2] is the target. Seven T gates
-// is the known minimum for a Toffoli.
-h q[2];
-cx q[1],q[2];
-tdg q[2];
-cx q[0],q[2];
-t q[2];
-cx q[1],q[2];
-tdg q[2];
-cx q[0],q[2];
-t q[1];
-t q[2];
-h q[2];
-cx q[0],q[1];
-t q[0];
-tdg q[1];
-cx q[0],q[1];
-`,
-    state: '|110> : 1',
+    name: 'Multi-controlled X',
+    sizes: range(3, 8),
+    defaultSize: 3,
+    note: (n) => {
+      const tofs = toffoliCount(n);
+      const shape = n === 3
+        ? 'Seven T gates and eight Clifford gates for one Toffoli.'
+        : `An X controlled on ${n - 1} qubits costs ${tofs} Toffolis, so ${7 * tofs} T `
+          + `gates — folded together on ${chainSpare(n)} working qubits, the bottom rows, `
+          + 'which are borrowed and given back.';
+      return `${shape} Every intermediate phase is kept exactly, and they all cancel: the `
+        + 'last diagram is the very node the controlled gate would have produced.';
+    },
+    qasm: multiControlX,
+    // Every control set, the target clear: the one input the gate is supposed to act on.
+    state: (n) => `|${'1'.repeat(n - 1)}0${'0'.repeat(chainSpare(n))}> : 1`,
   },
   {
     name: 'Grover',
