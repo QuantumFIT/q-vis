@@ -10,6 +10,7 @@ import { parseState, buildState } from '../src/state.js';
 import { simulate } from '../src/sim.js';
 import { EXAMPLES } from '../src/examples.js';
 import { rng, randInt } from './helpers.js';
+import { pauliClassCount } from './oracle.js';
 
 const allBits = (n) => Array.from({ length: 1 << n }, (_, i) => i.toString(2).padStart(n, '0'));
 const make = (n, kind = 'low') => new LIMDD(P.Ring, n, unitNormaliser(P, Z, kind));
@@ -125,8 +126,7 @@ test('GHZ collapses to a tower', () => {
   }
 });
 
-test('every stabilizer state is a tower',
-  { todo: 'needs high determinism, which needs the stabilizer subgroups' }, () => {
+test('every stabilizer state is a tower', () => {
   // The paper's headline: Pauli-LIMDDs represent stabilizer states in linear size. Graph
   // states are stabilizer states, so each of these must come out as n + 1 nodes.
   for (const n of [3, 4, 5, 6]) {
@@ -134,6 +134,39 @@ test('every stabilizer state is a tower',
       const { li, edge } = build(qasm, zeros(n));
       assert.equal(li.size(edge), n + 1, `${name} graph state on ${n} qubits`);
     }
+  }
+});
+
+test('the diagram is as small as a Pauli-LIMDD can be', () => {
+  // The diagram's own merging, against a brute-force count of the equivalence classes it
+  // is meant to find. Anything less than canonical shows up here as a node too many.
+  for (const example of EXAMPLES) {
+    const circuit = parseQasm(example.qasm);
+    if (circuit.nqubits > 5) continue;
+    const { dd, root, li, edge, n } = build(example.qasm, example.state);
+    assert.equal(li.size(edge), pauliClassCount(dd, root, n, P.Ring),
+      `${example.name} could be smaller`);
+  }
+  for (const n of [3, 4, 5]) {
+    for (const [name, qasm] of [['GHZ', ghz(n)], ['line', line(n)], ['complete', complete(n)]]) {
+      const { dd, root, li, edge } = build(qasm, zeros(n));
+      assert.equal(li.size(edge), pauliClassCount(dd, root, n, P.Ring), `${name} on ${n} qubits`);
+    }
+  }
+});
+
+test('random states are reduced as far as they can be', () => {
+  const r = rng(83);
+  for (let iter = 0; iter < 25; iter++) {
+    const n = randInt(r, 2, 4);
+    const dd = new MTBDD(P.Ring, n);
+    const root = dd.fromAmplitudes(allBits(n)
+      .filter(() => r() < 0.7)
+      .map((b) => [b, P.fromZ(Z.omegaPow(randInt(r, 0, 7)))]));
+    const li = make(n);
+    const edge = li.fromMTBDD(dd, root);
+    assert.equal(li.size(edge), pauliClassCount(dd, root, n, P.Ring),
+      `iteration ${iter} on ${n} qubits`);
   }
 });
 

@@ -24,6 +24,7 @@
 // those are canonical here too. See docs/LIMDD.md.
 
 import * as Pauli from './pauli.js';
+import * as Stab from './stabilizer.js';
 
 export class LIMDD {
   /**
@@ -39,6 +40,8 @@ export class LIMDD {
     this.ring = ring;
     this.nvars = nvars;
     this.normalise = normalise;
+    this.tryInvert = ring.tryInvert ? (w) => ring.tryInvert(w) : () => null;
+    this.stabCache = new Map();
     /** @type {Array<{level:number, low:?object, high:?object}>} */
     this.nodes = [{ level: nvars, low: null, high: null }];   // node 0: the terminal, denoting 1
     this.unique = new Map();
@@ -97,7 +100,7 @@ export class LIMDD {
 
     // High determinism (rule 5): swap the high label for the canonical one among those
     // that describe an isomorphic node, taking back whatever that costs on the root.
-    const { high: chosen, root: broot } = this.highLabel(low, semi);
+    const { high: chosen, root: broot } = this.highLabel(level, low, semi);
 
     const k = `${level}:${this.edgeKey(low)}:${this.edgeKey(chosen)}`;
     let id = this.unique.get(k);
@@ -111,13 +114,144 @@ export class LIMDD {
     return Object.freeze({ ...Pauli.mul(R, lowLim, broot), node: id });
   }
 
+  // ---- high determinism ---------------------------------------------------
+
   /**
-   * Which of the eligible high labels to use (high determinism, rule 5), and the root LIM
-   * that keeps the state unchanged. Left alone here: the semi-reduced diagram takes the
-   * label that low factoring produced. Overridden in canonical.js.
+   * The canonical high label (rule 5), and the root LIM that pays for the change
+   * (GetLabels, Alg. 12).
+   *
+   * Every node isomorphic to this one has a high label of the form
+   * `(-1)^s * lambda^(+-1) * g0 * P * g1` with g0, g1 stabilising the two children
+   * (their Th. 14), so the canonical choice is the smallest of them. What that costs is
+   * given back on the root as `(X (x) A)^x (Z^s (x) g0^-1)`.
    */
-  highLabel(low, high) {
-    return { high, root: { w: this.ring.one, x: 0, z: 0 } };
+  highLabel(level, low, high) {
+    const R = this.ring;
+    const one = { w: R.one, x: 0, z: 0 };
+    if (R.isZero(high.w)) return { high, root: one };   // a zero edge has nothing to choose
+
+    const G0 = this.branchStabilizers(level, low);
+    const G1 = this.branchStabilizers(level, high);
+    const A = { w: high.w, x: high.x, z: high.z };
+    const { lim, g0 } = Stab.argLexMin(R, G0, G1, A, true);
+
+    let best = { lim, root: this.rootFor(level, g0, 0) };
+    const flipped = Pauli.negate(R, lim);
+    if (Pauli.compare(R, flipped, best.lim) < 0) {
+      best = { lim: flipped, root: this.rootFor(level, g0, 1) };
+    }
+
+    // When the two children are the same node the label may also be inverted, which needs
+    // the weight to have an inverse and the string to square to +1 — and, because this
+    // diagram cannot always empty the low edge, that edge to be bare. Skipping it costs a
+    // merge and never an amplitude, and the condition is a property of the values rather
+    // than of the order they were met in, so the diagram stays deterministic.
+    const invertible = Pauli.inverse(R, A, this.tryInvert);
+    if (low.node === high.node && invertible !== null
+        && R.eq(low.w, R.one) && Pauli.popcount(A.x & A.z) % 2 === 0) {
+      const back = Stab.argLexMin(R, G0, G1, invertible, true);
+      for (const s of [0, 1]) {
+        const candidate = s ? Pauli.negate(R, back.lim) : back.lim;
+        if (Pauli.compare(R, candidate, best.lim) < 0) {
+          // (X (x) A) on top of the s-and-g0 correction.
+          const root = Pauli.mul(R, { w: A.w, x: A.x | (1 << level), z: A.z },
+            this.rootFor(level, back.g0, s));
+          best = { lim: candidate, root };
+        }
+      }
+    }
+
+    return { high: { ...best.lim, node: high.node }, root: best.root };
+  }
+
+  /** `Z^s (x) g0^-1`, the root label that undoes a sign and a stabilizer of the low child. */
+  rootFor(level, g0, s) {
+    const R = this.ring;
+    const back = Pauli.inverse(R, g0, this.tryInvert) ?? g0;   // a stabilizer is its own inverse
+    return s ? Pauli.mul(R, Pauli.zOn(R, level), back) : back;
+  }
+
+  // ---- stabilizer subgroups ------------------------------------------------
+
+  /**
+   * The isomorphism taking the state on edge `a` to the state on edge `b`, or null when
+   * there is none this ring can name (GetIsomorphism, Alg. 16). Both nodes are already
+   * canonical, so the only question is whether they are the same node.
+   */
+  isomorphism(a, b) {
+    const R = this.ring;
+    if (a.node !== b.node || R.isZero(a.w) || R.isZero(b.w)) return null;
+    const back = Pauli.inverse(R, { w: a.w, x: a.x, z: a.z }, this.tryInvert);
+    return back === null ? null : Pauli.mul(R, { w: b.w, x: b.x, z: b.z }, back);
+  }
+
+  /**
+   * What stabilises the state an edge leads to, as seen from `level`. A level the diagram
+   * skips is a qubit the branch does not depend on, so that factor is |0> + |1>, which X
+   * stabilises; the rest comes from the node.
+   */
+  branchStabilizers(level, e) {
+    const out = [...this.stabilizers(e.node)];
+    for (let q = level + 1; q < this.levelOf(e.node); q++) out.push(Pauli.xOn(this.ring, q));
+    return out.length > 1 ? Stab.echelon(this.ring, out) : out;
+  }
+
+  /**
+   * A generating set for the Pauli stabilizer subgroup of a node's state
+   * (GetStabilizerGenSet, Alg. 13). A stabilizer is either the identity on this qubit —
+   * in which case it stabilises both branches at once — or one of X, Y, Z on it, each of
+   * which relates the two branches to each other in its own way.
+   */
+  stabilizers(id) {
+    if (this.isTerminal(id)) return [];
+    const hit = this.stabCache.get(id);
+    if (hit) return hit;
+
+    const R = this.ring;
+    const level = this.levelOf(id);
+    const e0 = this.lowOf(id);
+    const e1 = this.highOf(id);
+    const G0 = this.branchStabilizers(level, e0);
+
+    let out;
+    if (R.isZero(e1.w)) {
+      // |0> (x) (low branch): everything below still holds, and Z fixes the qubit itself.
+      out = Stab.echelon(R, [...G0, Pauli.zOn(R, level)]);
+    } else {
+      // Below the top qubit the high branch is seen through its own label, so its
+      // stabilizers are conjugated by it. Only the string matters: a scalar cancels.
+      const G1 = this.branchStabilizers(level, e1)
+        .map((g) => (Pauli.commute(e1, g) ? g : Pauli.negate(R, g)));
+
+      const one = { w: R.one, x: 0, z: 0 };
+      const found = [...Stab.meet(R, G0, G1).intersection];
+
+      // Z: fixes the low branch and flips the sign of the high one.
+      const push = (top, meeting) => {
+        if (meeting !== null) found.push(Pauli.mul(R, top, meeting.pi));
+      };
+      push(Pauli.zOn(R, level),
+        Stab.meetCosets(R, one, G0, Pauli.negate(R, one), G1, this.tryInvert));
+      // X exchanges the two branches; Y exchanges them with a quarter turn, so it is the
+      // same question asked of the high branch turned by -i. A ring with no square root
+      // of -1 has no Y to ask about.
+      const cases = [[Pauli.xOn(R, level), e1]];
+      if (R.i !== undefined) {
+        const turned = Pauli.mul(R, { w: R.neg(R.i), x: 0, z: 0 }, e1);
+        cases.push([{ w: R.i, x: 1 << level, z: 1 << level }, { ...turned, node: e1.node }]);
+      }
+      for (const [top, other] of cases) {
+        const pi0 = this.isomorphism(e0, other);
+        const pi1 = this.isomorphism(other, e0);
+        if (pi0 !== null && pi1 !== null) {
+          push(top, Stab.meetCosets(R, pi0, G0, pi1, G1, this.tryInvert));
+        }
+      }
+      out = Stab.echelon(R, found);
+    }
+
+    this.stabCache.set(id, out);
+    return out;
   }
 
   /**

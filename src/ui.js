@@ -855,6 +855,19 @@ function buildHelp() {
     ['// note', 'comment, as is /* ... */'],
   ]));
 
+  body.append(el('h3', null, 'The views'));
+  body.append(el('p', 'help-note',
+    'The same state, drawn with more and more taken off the nodes and put on the edges. '
+    + 'Each view shares a subfunction under a wider notion of sameness, so each is at '
+    + 'most as large as the one above it.'));
+  body.append(helpTable([
+    ['reduced diagram', 'amplitudes in the terminals; two subfunctions share a node when they are equal'],
+    ['full tree', 'the same, with nothing shared — one path per basis state'],
+    ['edge-valued', 'amplitudes on the edges; subfunctions share when they are equal up to a scalar'],
+    ['LIMDD', 'and up to a local Pauli: an edge reads w·XZI, meaning w times X on the first '
+      + 'qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
+  ]));
+
   body.append(el('h3', null, 'Refused, and why'));
   body.append(helpTable([
     ['rx(0.3) q[0];', 'an arbitrary rotation leaves the exact ring, so it cannot be represented'],
@@ -1153,6 +1166,13 @@ export function boot() {
   });
   $('view').addEventListener('change', (e) => {
     app.view = e.target.value;
+    // The Pauli rules assume the low edge has been emptied, which is what 'low edge'
+    // does as far as this ring allows. Any other rule leaves weights on the low edges
+    // that then have to match for two nodes to merge, and the diagram stops collapsing.
+    if (app.view === 'limdd' && app.canon !== 'low') {
+      app.canon = 'low';
+      $('canon').value = 'low';
+    }
     compile();
   });
   for (const [kind, rule] of Object.entries(NORMALISERS)) {

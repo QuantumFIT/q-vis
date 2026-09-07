@@ -190,4 +190,18 @@ function formatNumeric(p, mode, opts = {}) {
 }
 
 /** The ring interface consumed by the MTBDD manager. */
-export const Ring = { zero, one, add, mul, neg, isZero, eq, key, format, fromScalar: fromZ };
+/**
+ * The multiplicative inverse, or null when there is none — a symbolic polynomial never
+ * has one, and in this ring plenty of ordinary scalars have none either.
+ */
+export function tryInvert(p) {
+  const s = asScalar(p);
+  if (s === null) return null;
+  const inv = Z.tryInvert(s);
+  return inv === null ? null : fromZ(inv);
+}
+
+export const Ring = {
+  zero, one, add, mul, neg, isZero, eq, key, format, tryInvert, fromScalar: fromZ,
+  i: fromZ(Z.I),   // the Pauli labels of limdd.js need a square root of -1
+};

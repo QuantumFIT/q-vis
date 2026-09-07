@@ -13,8 +13,9 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
 - `node --test tests/*.test.js` must pass with **zero `node_modules`**. Tests import the
   exact same ES modules the browser loads. (Pass the glob, not the directory: since
   Node 24 a bare directory argument is resolved as a module and fails.)
-- Layer discipline: `zomega.js` → `poly.js` → `dd.js`/`evdd.js` → `sim.js`/`qasm.js` →
-  `layout.js` → `ui.js`. **Only `ui.js` may touch the DOM.** Everything else runs headless
+- Layer discipline: `zomega.js` → `poly.js` → `dd.js`/`evdd.js`/`limdd.js` →
+  `sim.js`/`qasm.js` → `layout.js` → `ui.js`, with `pauli.js` → `stabilizer.js` →
+  `limdd.js` off to the side. **Only `ui.js` may touch the DOM.** Everything else runs headless
   in Node, which is what makes the test suite possible.
 
 ## Domain conventions (fixed — do not silently change)
@@ -32,11 +33,14 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
 
 ## Representations
 
-A state can be drawn four ways, and `layout.js` produces all of them from one interface:
+A state can be drawn five ways, and `layout.js` produces all of them from one interface:
 shared (`dd.js`) or unreduced, with the amplitudes in the terminals or on the edges
-(`evdd.js`). The edge-valued forms need a normalisation rule, and since `Z[1/√2, i]` is
-not a field that rule is a **parameter**, not a constant — see `docs/EVDD.md` before
-changing it. Simulation always runs on `dd.js`; the edge-valued form is converted from it.
+(`evdd.js`), and with a Pauli string on each edge as well (`limdd.js`). The edge-valued
+forms need a normalisation rule, and since `Z[1/√2, i]` is not a field that rule is a
+**parameter**, not a constant — see `docs/EVDD.md` before changing it. The Pauli half of a
+LIMDD label needs no such rule, because a Pauli string inverts over any ring; that split
+is `docs/LIMDD.md`. Simulation always runs on `dd.js`; both other forms are converted
+from it.
 
 ## Amplitude algebra
 
