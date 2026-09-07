@@ -28,14 +28,27 @@ test('an archived page offers the way back, and only it does', () => {
   assert.equal(liveUrl(SITE, 'dev'), null);
 });
 
+test('a preview is not something a link can be pinned to', () => {
+  // A preview changes without warning and disappears when it is done, so there is nothing
+  // to pin to — which leaves a copied link on the preview itself, where it belongs.
+  assert.equal(archiveUrl(`${SITE}preview/`, 'preview'), null);
+  assert.equal(archiveUrl(SITE, 'preview'), null);
+  // And it offers the way back to the site the way an archived release does.
+  assert.equal(liveUrl(`${SITE}preview/#c=abc`, 'preview'), SITE);
+  assert.equal(liveUrl(`${SITE}preview/index.html`, 'preview'), SITE);
+  assert.equal(liveUrl(SITE, 'preview'), null, 'the root is not a preview');
+});
+
 test('the build stamps the version it was told, and refuses nonsense', () => {
   const stamp = (v) => buildHtml(v).html.match(/name="q-vis-version" content="([^"]*)"/)[1];
   assert.equal(stamp('v3'), 'v3');
+  assert.equal(stamp('preview'), 'preview');
   assert.equal(stamp(), 'dev', 'an ordinary build is not a release');
   // A bad version would be baked into a page that then points links at a directory the
   // release never created, so it fails at build time instead.
-  assert.throws(() => buildHtml('1.2.3'), /must be 'dev' or a release tag/);
-  assert.throws(() => buildHtml('v3; rm -rf /'), /must be 'dev' or a release tag/);
+  for (const bad of ['1.2.3', 'v3; rm -rf /', 'prev', 'previews', 'v', 'V3']) {
+    assert.throws(() => buildHtml(bad), /must be 'dev', 'preview' or a release tag/, bad);
+  }
 });
 
 test('a view is spelled in a link the way it always was', () => {

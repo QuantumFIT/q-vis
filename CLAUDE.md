@@ -18,6 +18,18 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
   `limdd.js` off to the side. **Only `ui.js` may touch the DOM.** Everything else runs headless
   in Node, which is what makes the test suite possible.
 
+## Previewing
+
+Push a branch to `preview` and it is published at `/preview/` for review; the site root
+keeps serving `master`, because the deploy job checks master out whatever ref started it.
+
+```
+git push -f origin HEAD:preview
+```
+
+Delete the branch when the change lands — `/preview/` goes on the next deploy. Details in
+`docs/VERSIONS.md`.
+
 ## Releasing
 
 **Tag every deploy worth linking to.** `copy link` in a released build points at the
@@ -28,6 +40,10 @@ it showed. An untagged build stamps itself `dev` and copies plain root links ins
 git tag -a v12 -m "One line saying what this release added"
 git push origin master --atomic --follow-tags
 ```
+
+**Nothing lands on master until Ondra has reviewed the preview and says to deploy**, and
+the release is tagged in the same push. Master is therefore always exactly at a tag — work
+in progress lives on `preview`, never on master.
 
 Tag the commit being deployed, and push both refs together: only `master` may deploy, so a
 tag push on its own is refused by the environment, and a root build that is not exactly at

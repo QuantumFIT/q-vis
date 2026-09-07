@@ -109,13 +109,13 @@ export function bundle(entry) {
 }
 
 /**
- * @param {string} version the tag being built, or 'dev'. It is stamped into the page so
- *   that a copied link can point at this exact build, which is archived under /v/<tag>/
- *   and never changes again. See docs/VERSIONS.md.
+ * @param {string} version the tag being built, 'preview', or 'dev'. It is stamped into
+ *   the page so that a copied link can point at this exact build, which is archived under
+ *   /v/<tag>/ and never changes again. See docs/VERSIONS.md.
  */
 export function buildHtml(version = 'dev') {
-  if (!/^(dev|v\d+)$/.test(version)) {
-    throw new Error(`version must be 'dev' or a release tag like v3, got '${version}'`);
+  if (!/^(dev|preview|v\d+)$/.test(version)) {
+    throw new Error(`version must be 'dev', 'preview' or a release tag like v3, got '${version}'`);
   }
   const { code, modules } = bundle('ui.js');
   const css = readFileSync(resolve(SRC, 'app.css'), 'utf8');

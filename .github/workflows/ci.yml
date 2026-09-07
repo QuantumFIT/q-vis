@@ -2,17 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    # preview publishes the draft at /preview/ and leaves the site root alone: the job
+    # below builds the root from master whatever ref started it.
+    branches: [master, preview]
   pull_request:
   # So the site can be republished without an empty commit — after changing a Pages
   # setting, or after tagging a commit that master has already moved past.
   workflow_dispatch:
 
-# A release tag deliberately does not trigger this. Only master may deploy to the
-# github-pages environment, so a tag push would fail the protection rule; and since a tag
-# is pushed with the commit it names, the branch push already republishes the archive.
-# Tagging an old commit on its own is the one case left, and that is what running the
-# workflow by hand is for.
+# A release tag deliberately does not trigger this. The github-pages environment admits
+# branches it has been told about and nothing else, so a tag push would fail the
+# protection rule; and since a tag is pushed with the commit it names, the branch push
+# already republishes the archive. Tagging an old commit on its own is the one case left,
+# and that is what running the workflow by hand is for.
 
 # The project has no dependencies, so there is nothing to install and nothing to cache.
 
@@ -31,8 +33,14 @@ jobs:
 
   pages:
     needs: test
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/preview'
     runs-on: ubuntu-latest
+    # Two branches can publish, so two runs can want the site at once. Queue rather than
+    # cancel: every deploy publishes the whole site, and the loser of a race would leave
+    # the newer one's work half done.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       contents: read
       pages: write
@@ -43,16 +51,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # Always publish master, whatever triggered the run: a tag push must add to the
-          # archive without dragging the root back to an older version.
+          # Always publish master, whatever triggered the run. This is what makes a push
+          # to preview safe: it cannot move the page the public sees, only /preview/.
           ref: master
-          # Every released tag is rebuilt from its own source on each deploy, so the
-          # archive under /v/ needs the whole history, not just the tip.
+          # Every released tag and the preview branch are rebuilt from their own source on
+          # each deploy, so this needs the whole history and every ref, not just the tip.
           fetch-depth: 0
+      # fetch-depth 0 already brings every branch; this is the belt to that braces, and
+      # it must not fail the run when there is no preview to fetch.
+      - name: Make sure the preview branch is here, if there is one
+        run: git fetch --no-tags origin +refs/heads/preview:refs/remotes/origin/preview || true
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - name: Build the current page and a frozen copy of every released version
+      - name: Build the site, the archive, and the preview if one is pushed
         run: node tools/release.mjs _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -47,12 +47,55 @@ past, add the tag and then run the workflow by hand (Actions → CI → Run work
 Tag the commit you are deploying, not one behind it. The root build stamps itself with the
 tag it is exactly at, and calls itself `dev` otherwise — an honest answer, since a build
 one commit past `v11` is not `v11` — but a `dev` root copies plain links to the site root
-instead of pinning them.
+instead of pinning them. Since every push to master is a release, this does not come up
+unless a release is pushed without its tag.
+
+## Previewing
+
+`/preview/` is the build of the `preview` branch, published so that a change can be
+clicked through before it is public.
+
+```
+git push -f origin HEAD:preview       # from a feature branch or worktree
+→ /preview/                           # refreshes within a minute
+```
+
+**The root does not move.** The deploy job checks out `master` whatever ref started it, so
+a push to `preview` rebuilds and republishes the whole site with the public page unchanged.
+That is a property of the workflow, not a habit to keep — `/preview/` is the only path a
+preview push can affect.
+
+It lives outside `/v/`, because everything in `/v/` is frozen forever and a preview is the
+opposite: it changes without warning, and it disappears from the site on the next deploy
+after the branch is deleted. Its pages carry `robots: noindex`, and `copy link` on a
+preview points at the preview rather than at the root — a link to a draft should show the
+draft. The masthead says `preview · open the current version`.
+
+It is a public URL, not a private staging area. Anyone with the link can open it.
+
+**Master only ever moves on a release.** Nothing lands there until Ondra has seen the
+preview and says to deploy it, and it is tagged in the same push. So master is always
+exactly at a tag, which is what keeps the root stamped with a version and its links
+pinned; a root that is merely *near* a tag would call itself `dev` and stop pinning.
+
+Promoting a preview is then the ordinary release: merge, tag, push, then delete the
+branch.
+
+```
+git switch master && git merge <branch>
+git tag -a v13 -m "One line saying what this release added"
+git push origin master --atomic --follow-tags
+git push origin --delete preview
+```
+
+A preview branch that does not build is survivable: the release script skips `/preview/`
+and says so, and the site and the archive go out regardless.
 
 ## How a build knows its own version
 
 `tools/build.mjs` stamps `Q_VIS_VERSION` into a meta tag, defaulting to `dev`;
-`tools/release.mjs` sets it from `git describe --tags --exact-match`. `ui.js` reads the
+`tools/release.mjs` sets it from `git describe --tags --exact-match`, or to `preview` for
+the preview branch. `ui.js` reads the
 tag at run time and decides where a copied link should point — `archiveUrl` and `liveUrl`,
 both pure functions of the current URL and the version, and both tested in
 `tests/version.test.js`.

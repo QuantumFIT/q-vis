@@ -999,6 +999,9 @@ function version() {
 /** A released version is archived under /v/<version>/ and never changes again. */
 const RELEASE = /^v\d+$/;
 
+/** Where a build that is not the current one lives, relative to the site root. */
+const elsewhere = (version) => (version === 'preview' ? 'preview/' : `v/${version}/`);
+
 /**
  * Where a copied link should point: the frozen copy of this build, so that a link keeps
  * showing what it showed when it was made, whatever the tool becomes later. Null when
@@ -1006,7 +1009,7 @@ const RELEASE = /^v\d+$/;
  * or a page that is already the archived copy.
  */
 export function archiveUrl(href, version) {
-  if (!RELEASE.test(version)) return null;
+  if (!RELEASE.test(version)) return null;      // 'preview' has no frozen copy either
   let url;
   try { url = new URL(href); } catch { return null; }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
@@ -1014,13 +1017,18 @@ export function archiveUrl(href, version) {
   return new URL(`v/${version}/`, url).href;
 }
 
-/** The way back from an archived copy to whatever is current; null when not archived. */
+/**
+ * The way back to whatever is current, from a page that is not it — an archived release
+ * or the preview. Null when this page is the current one, which is when there is nowhere
+ * to go.
+ */
 export function liveUrl(href, version) {
-  if (!RELEASE.test(version)) return null;
+  if (!RELEASE.test(version) && version !== 'preview') return null;
   let url;
   try { url = new URL(href); } catch { return null; }
-  if (!url.pathname.includes(`/v/${version}/`)) return null;
-  return new URL('../../', url).href;
+  const at = elsewhere(version);
+  if (!url.pathname.includes(`/${at}`)) return null;
+  return new URL('../'.repeat(at.split('/').length - 1), url).href;
 }
 
 /**
@@ -1154,7 +1162,9 @@ function showVersion() {
   const chip = $('version');
   chip.textContent = `${version()} · open the current version`;
   chip.href = back;
-  chip.title = 'this is a frozen copy, kept so that older links keep working';
+  chip.title = version() === 'preview'
+    ? 'this is a preview: it changes without warning and is not what the site serves'
+    : 'this is a frozen copy, kept so that older links keep working';
 }
 
 export function boot() {
