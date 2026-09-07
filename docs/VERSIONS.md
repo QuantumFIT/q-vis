@@ -35,12 +35,19 @@ copies plain links to the site root, which are as stable as the parameter format
 more — fine for a work in progress, not for anything shared.
 
 ```
-git tag -a v11 -m "One line saying what this release added"
-git push origin master --follow-tags
+git tag -a v12 -m "One line saying what this release added"
+git push origin master --atomic --follow-tags
 ```
 
-The tag message is the description shown on `/v/`. Pushing the tag republishes on its
-own, so a tag added after the fact still lands in the archive.
+The tag message is the description shown on `/v/`. Push the tag *with* the commit it
+names: only `master` may deploy, so a tag push of its own is refused by the environment,
+and the branch push is what rebuilds the archive. To tag a commit master has already moved
+past, add the tag and then run the workflow by hand (Actions → CI → Run workflow).
+
+Tag the commit you are deploying, not one behind it. The root build stamps itself with the
+tag it is exactly at, and calls itself `dev` otherwise — an honest answer, since a build
+one commit past `v11` is not `v11` — but a `dev` root copies plain links to the site root
+instead of pinning them.
 
 ## How a build knows its own version
 

@@ -25,9 +25,13 @@ frozen copy of that build under `/v/<tag>/`, which is how a shared link keeps sh
 it showed. An untagged build stamps itself `dev` and copies plain root links instead.
 
 ```
-git tag -a v11 -m "One line saying what this release added"
-git push origin master --follow-tags
+git tag -a v12 -m "One line saying what this release added"
+git push origin master --atomic --follow-tags
 ```
+
+Tag the commit being deployed, and push both refs together: only `master` may deploy, so a
+tag push on its own is refused by the environment, and a root build that is not exactly at
+a tag stamps itself `dev` and stops pinning links.
 
 `tools/release.mjs` rebuilds every tag from its own source on each deploy, so the archive
 is a function of the repository alone. See `docs/VERSIONS.md`.
