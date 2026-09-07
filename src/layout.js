@@ -322,7 +322,7 @@ function layoutTrees(dd, frames, labels, show, weighting) {
  * @param {string[]} labels qubit names
  * @param {(v: any, frameIndex: number) => string} show
  */
-export function layoutEdgeValued(ev, frames, labels, show) {
+export function layoutEdgeValued(ev, frames, labels, showEdge) {
   const out = [];
   let prevRank = new Map();
   let prevX = new Map();
@@ -389,7 +389,7 @@ export function layoutEdgeValued(ev, frames, labels, show) {
       if (ev.isTerminal(id)) continue;
       for (const high of [false, true]) {
         const e = high ? ev.highOf(id) : ev.lowOf(id);
-        const weight = show(e.w, frame.index);
+        const weight = showEdge(e, frame.index);
         edges.push({
           from: id,
           to: e.node,
@@ -405,7 +405,7 @@ export function layoutEdgeValued(ev, frames, labels, show) {
       index: frame.index,
       gate: frame.gate,
       root: root.node,
-      rootWeight: show(root.w, frame.index),
+      rootWeight: showEdge(root, frame.index),
       nodes,
       edges,
       size: nodes.length,

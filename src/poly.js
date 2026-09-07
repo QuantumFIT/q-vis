@@ -131,7 +131,7 @@ export function evaluate(p, env = {}) {
  * into it ("3a", "0.7071a"), but "-ω³a111" could be read several ways, so anything else
  * gets either brackets, when it already contains an operator, or a separator.
  */
-function attachCoefficient(num, mono) {
+export function attachCoefficient(num, mono) {
   if (num === '1') return mono;
   if (num === '-1') return `-${mono}`;
   if (/^\(.*\)$/.test(num)) return `${num}${mono}`;

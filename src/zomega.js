@@ -147,6 +147,15 @@ function log2Exact(n) {
  */
 export function invert(a) {
   if (isZero(a)) throw new Error('division by zero');
+  const inv = tryInvert(a);
+  if (inv === null) {
+    throw new Error(`${format(a)} is not invertible in Z[1/√2, i]: its norm ${norm(a)} is not a power of two`);
+  }
+  return inv;
+}
+
+/** The Galois norm, a rational integer. */
+function norm(a) {
   const p = normalize([...a.c], 0);
   let prod = ONE;
   for (const j of [3, 5, 7]) prod = mul(prod, sigma(p, j));
@@ -154,11 +163,23 @@ export function invert(a) {
   if (n.k !== 0 || n.c[1] !== B0 || n.c[2] !== B0 || n.c[3] !== B0) {
     throw new Error(`internal: norm of ${format(a)} is not a rational integer`);
   }
-  const negative = n.c[0] < B0;
-  const t = log2Exact(negative ? -n.c[0] : n.c[0]);
-  if (t < 0) {
-    throw new Error(`${format(a)} is not invertible in Z[1/√2, i]: its norm ${n.c[0]} is not a power of two`);
-  }
+  return n.c[0];
+}
+
+/**
+ * The same inverse, or null when there is none. Weights without an inverse are ordinary
+ * in this ring — 3/4 and 13/256 among them — so a diagram deciding whether it may divide
+ * needs to ask without being thrown at.
+ */
+export function tryInvert(a) {
+  if (isZero(a)) return null;
+  const c0 = norm(a);
+  const negative = c0 < B0;
+  const t = log2Exact(negative ? -c0 : c0);
+  if (t < 0) return null;
+  const p = normalize([...a.c], 0);
+  let prod = ONE;
+  for (const j of [3, 5, 7]) prod = mul(prod, sigma(p, j));
   // 1/p = prod / (+-2^t), then 1/a = sqrt(2)^k / p.
   let inv = normalize([...prod.c], 2 * t);
   if (negative) inv = neg(inv);
