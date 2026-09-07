@@ -325,33 +325,52 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 
 /* ---- diagram ---------------------------------------------------------- */
 
+/*
+ * Zooming in is for seeing the diagram bigger, not the furniture. `--unzoom` is 1/scale
+ * once the plate is magnified and 1 below that, so a rule stays a hairline and a gutter
+ * label stays the size it was, while the nodes and the amplitudes they carry grow.
+ *
+ * It only ever counters magnification. Freezing these at every scale would leave a
+ * 255-node diagram at 0.12x wearing 1px rules and 10px labels several times the size of
+ * the thing they annotate; zoomed out, everything shrinks together as before.
+ */
 .gutter-bg { fill: var(--plate); }
 .gutter-edge { stroke: none; }
-.sticky.floating .gutter-edge { stroke: var(--rule-soft); stroke-width: 1; }
+.sticky.floating .gutter-edge { stroke: var(--rule-soft); stroke-width: calc(1px * var(--unzoom, 1)); }
 
-.level-rule { stroke: var(--rule-soft); stroke-width: 1; stroke-dasharray: 1 5; transition: stroke .3s, opacity .3s; }
+.level-rule {
+  stroke: var(--rule-soft);
+  stroke-width: calc(1px * var(--unzoom, 1));
+  stroke-dasharray: calc(1px * var(--unzoom, 1)) calc(5px * var(--unzoom, 1));
+  transition: stroke .3s, opacity .3s;
+}
 /* The qubits the current gate acts on, so the score strip and the plate line up. */
 .level-rule.acting { stroke: var(--accent); opacity: 0.55; }
 .gutter.acting { fill: var(--accent); }
 .gutter.legend-cap { text-anchor: start; }
-.band-rule { stroke: var(--rule); stroke-width: 1; }
+.band-rule { stroke: var(--rule); stroke-width: calc(1px * var(--unzoom, 1)); }
 .gutter {
   fill: var(--ink-faint);
   transition: fill .3s;
   font: 10px/1 var(--mono);
+  font-size: calc(10px * var(--unzoom, 1));
   text-anchor: end;
   dominant-baseline: middle;
 }
-.gutter.band { font-family: var(--sans); letter-spacing: 0.1em; font-size: 9px; }
+.gutter.band {
+  font-family: var(--sans);
+  letter-spacing: 0.1em;
+  font-size: calc(9px * var(--unzoom, 1));
+}
 
 .edge {
   fill: none;
   stroke: var(--ink);
-  stroke-width: 1.1;
+  stroke-width: calc(1.1px * var(--unzoom, 1));
   opacity: 0.62;
   transition: opacity .25s, stroke .25s;
 }
-.edge.low { stroke-dasharray: 3.5 2.5; }
+.edge.low { stroke-dasharray: calc(3.5px * var(--unzoom, 1)) calc(2.5px * var(--unzoom, 1)); }
 .edge.to-zero { opacity: 0.34; }
 .edge.fresh { stroke: var(--accent); opacity: 0.9; }
 
@@ -359,7 +378,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .node .shape {
   fill: var(--plate);
   stroke: var(--ink);
-  stroke-width: 1.2;
+  stroke-width: calc(1.2px * var(--unzoom, 1));
   transition: stroke .3s, fill .3s;
 }
 .node .cap {
@@ -371,7 +390,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 }
 .node.terminal .cap { font: 12px/1 var(--serif); }
 .node.zero { opacity: 0.5; }
-.node.fresh .shape { stroke: var(--accent); stroke-width: 1.8; }
+.node.fresh .shape { stroke: var(--accent); stroke-width: calc(1.8px * var(--unzoom, 1)); }
 .node.fresh .cap { fill: var(--accent); }
 /* Opacity only. A CSS transform here would override the SVG transform attribute, so the
    node would be born at the origin and fly in from the corner of the plate. */
@@ -380,7 +399,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .node:hover .shape { fill: var(--accent-soft); }
 
 .root-marker { transition: transform .3s ease-out; }
-.root-marker .stem { fill: none; stroke: var(--ink-soft); stroke-width: 1.1; }
+.root-marker .stem { fill: none; stroke: var(--ink-soft); stroke-width: calc(1.1px * var(--unzoom, 1)); }
 .root-marker .head { fill: var(--ink-soft); stroke: none; }
 .root-marker text { fill: var(--ink-soft); font: 11px var(--serif); text-anchor: end; }
 

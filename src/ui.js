@@ -471,6 +471,9 @@ function fitCanvas() {
   app.scale = scale;
   app.svg.style.width = `${Math.round(W * scale)}px`;
   app.svg.style.height = `${Math.round(H * scale)}px`;
+  // Counter the magnification for the furniture — rules, gutter labels — so zooming in
+  // grows the diagram and not its annotations. Only above 1: see the note in app.css.
+  app.svg.style.setProperty('--unzoom', String(1 / Math.max(1, scale)));
   $('zoomLevel').textContent = app.zoom === 'fit' ? 'fit' : `${Math.round(scale * 100)}%`;
   // Fitting the frame rather than the plate means the plate can be wider than the view,
   // so the frame has to be brought into it.
@@ -1010,6 +1013,8 @@ function exportSvg() {
   clone.setAttribute('xmlns', SVG_NS);
   clone.setAttribute('width', app.geom.W);
   clone.setAttribute('height', app.geom.H);
+  // The figure is written at its natural size, so nothing is countering a magnification.
+  clone.style.setProperty('--unzoom', '1');
   for (const el of clone.querySelectorAll('.dimmed')) el.classList.remove('dimmed');
   // The exported figure is not scrolled, so the labels belong back in the gutter.
   clone.querySelector('.sticky')?.removeAttribute('transform');
