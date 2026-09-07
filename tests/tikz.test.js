@@ -198,6 +198,28 @@ test('a long circuit is broken into staves, and says why', () => {
   assert.equal(cellsOf(tex).length, parseQasm(grover.qasm).nqubits * staves);
 });
 
+test('a snippet carries the view it came from, when there is one to carry', () => {
+  // A figure in a paper that links back to the live thing is worth more than one that
+  // does not, and the link is pinned to a frozen build so it keeps showing this figure.
+  const instance = instantiate(EXAMPLES.find((ex) => ex.name === 'Bell pair'));
+  const { circuit, layout, qubitLabels } = laidOut(instance);
+  const link = 'https://quantum.fit.vut.cz/q-vis/v/v14/#c=abc&s=def&i=1';
+
+  for (const tex of [circuitTikz(circuit, { link }),
+    diagramTikz(layout, 1, { qubitLabels, link })]) {
+    assert.ok(tex.includes(link), 'the link is there, whole and on one line');
+    assert.match(tex, /% The live view this came from:/);
+    // Every line of the preamble is a comment; a bare URL would be a LaTeX error.
+    const head = tex.split('\\begin{')[0].trim().split('\n');
+    assert.ok(head.every((line) => line.startsWith('%')), 'and it is commented out');
+  }
+
+  // Without one, the snippet simply does not mention it.
+  const plain = circuitTikz(circuit);
+  assert.ok(!plain.includes('live view'), 'no empty promise of a link');
+  assert.match(plain, /^% Circuit, from q-vis\.\n%\n/, 'and no blank comment line either');
+});
+
 // ---- the diagram ---------------------------------------------------------
 
 test('the diagram draws every node once and no edge into thin air', () => {

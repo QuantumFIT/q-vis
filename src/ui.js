@@ -1005,12 +1005,16 @@ function exportSvg() {
  */
 function showTikz(what) {
   if (!app.layout || !app.circuit) return;
+  // The same link the copy-link button gives, so the figure carries the live view it came
+  // from — pinned to this build, so it keeps showing this figure.
+  const link = permalink();
   const text = what === 'circuit'
-    ? circuitTikz(app.circuit)
+    ? circuitTikz(app.circuit, { link })
     : diagramTikz(app.layout, app.index, {
       qubitLabels: app.circuit.qubits.map((q) => q.label),
       bandLabel: BAND_LABEL.toLowerCase(),
       hideZero: app.hideZero,
+      link,
     });
   app.tikz = text;
   $('tikzTitle').textContent = what === 'circuit'

@@ -98,10 +98,19 @@ export function qubitLatex(label) {
   return m ? `${toLatex(m[1])}_{${m[2]}}` : toLatex(label);
 }
 
-const header = (what, packages, classOptions = 'border=4pt') => [
+/**
+ * The comment block every snippet opens with.
+ *
+ * `link` is the permalink to the view the figure came from, which is worth carrying: a
+ * reader of the paper can open the thing and step through it, and the author can come
+ * back to the exact state months later. It points at the frozen copy of the build that
+ * made it, so it keeps showing this figure whatever the tool becomes.
+ */
+const header = (what, packages, { classOptions = 'border=4pt', link } = {}) => [
   `% ${what}, from q-vis.`,
-  `% Needs \\usepackage{${packages}} in the preamble.`,
+  ...(link ? ['% The live view this came from:', `%   ${link}`] : []),
   '%',
+  `% Needs \\usepackage{${packages}} in the preamble.`,
   '% To compile this file on its own, uncomment these four lines and the last one:',
   `% \\documentclass[${classOptions}]{standalone}`,
   `% \\usepackage{${packages}}`,
@@ -134,7 +143,7 @@ const CELL_BUDGET = 900;
  * One line through all the involved rows, whatever order the controls and targets are in,
  * and no special case for a gate with three of them.
  */
-export function circuitTikz(circuit) {
+export function circuitTikz(circuit, opts = {}) {
   const n = circuit.nqubits;
   const rows = Array.from({ length: n }, () => []);
 
@@ -193,7 +202,7 @@ export function circuitTikz(circuit) {
   return [
     // varwidth so that the staves below stack as paragraphs instead of queueing up in a
     // single line, which is what plain standalone would do with them.
-    ...header('Circuit', 'quantikz', 'border=4pt, varwidth'),
+    ...header('Circuit', 'quantikz', { classOptions: 'border=4pt, varwidth', link: opts.link }),
     ...(circuit.barriers.length
       ? ['%', '% Barriers are not drawn: quantikz\'s \\slice would restructure the columns.']
       : []),
@@ -234,11 +243,11 @@ const coord = (v) => (Math.round(v * 1000) / 1000).toString();
  *
  * @param {object} layout the whole layout, for its extent
  * @param {number} index which frame
- * @param {{qubitLabels: string[], bandLabel?: string, hideZero?: boolean}} opts
+ * @param {{qubitLabels: string[], bandLabel?: string, hideZero?: boolean, link?: string}} opts
  */
 export function diagramTikz(layout, index, opts = {}) {
   const frame = layout.frames[index];
-  const { qubitLabels = [], bandLabel = 'amplitude', hideZero = false } = opts;
+  const { qubitLabels = [], bandLabel = 'amplitude', hideZero = false, link } = opts;
 
   // What the plate is showing: with zeros hidden, a zero edge goes and so does anything
   // only reachable through one.
@@ -300,7 +309,7 @@ export function diagramTikz(layout, index, opts = {}) {
   }
 
   return [
-    ...header('Decision diagram', 'tikz'),
+    ...header('Decision diagram', 'tikz', { link }),
     '\\begin{tikzpicture}[x=1.15cm, y=-1.25cm,',
     ...STYLES,
     '  ]',
