@@ -27,6 +27,10 @@ keeps serving `master`, because the deploy job checks master out whatever ref st
 git push -f origin HEAD:preview
 ```
 
+Hand over the link — <https://quantum.fit.vut.cz/q-vis/preview/> — whenever a task is
+pushed there, so it can be clicked from the message rather than looked up. It refreshes
+about a minute after the push.
+
 Delete the branch when the change lands — `/preview/` goes on the next deploy. Details in
 `docs/VERSIONS.md`.
 
