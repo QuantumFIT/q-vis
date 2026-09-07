@@ -8,7 +8,7 @@ import { parseQasm } from '../src/qasm.js';
 import { parseState, buildState } from '../src/state.js';
 import { simulate } from '../src/sim.js';
 import { treeEdgeWeights } from '../src/layout.js';
-import { EXAMPLES } from '../src/examples.js';
+import { allInstances } from '../src/examples.js';
 import { rng, randInt } from './helpers.js';
 
 const allBits = (n) => Array.from({ length: 1 << n }, (_, i) => i.toString(2).padStart(n, '0'));
@@ -25,7 +25,7 @@ function bothWays(example) {
 }
 
 test('moving the amplitudes onto the edges changes no amplitude', () => {
-  for (const example of EXAMPLES) {
+  for (const example of allInstances()) {
     const { dd, ev, mtbdd, edge, n } = bothWays(example);
     if (n > 8) continue;
     for (const bits of allBits(n)) {
@@ -55,7 +55,7 @@ test('edge weights buy exactly the sharing they are meant to', () => {
   // The QFT is the case the terminal-valued diagram handles worst: every amplitude has a
   // different phase, so nothing can be shared. Those phases are units, and the amplitudes
   // factor over the bits, so with weights on the edges it is one node per level.
-  const qft = EXAMPLES.find((e) => e.name === 'QFT, 3 qubits');
+  const qft = allInstances().find((e) => e.name === 'QFT');
   const { dd, ev, mtbdd, edge } = bothWays(qft);
   assert.equal(dd.size(mtbdd), 15, '7 internal nodes and 8 distinct amplitudes');
   assert.equal(ev.size(edge), 4, 'one node per level and the single terminal');
@@ -101,7 +101,7 @@ test('a symbolic weight is left alone rather than guessed at', () => {
 test('the unreduced tree carries weights that multiply back to the amplitudes', () => {
   // Same normalisation as the shared diagram, but with nothing shared, so the tree keeps
   // its shape. The weights along a path, times the root weight, must be the amplitude.
-  for (const example of EXAMPLES) {
+  for (const example of allInstances()) {
     const circuit = parseQasm(example.qasm);
     const n = circuit.nqubits;
     if (n > 5) continue;
@@ -141,7 +141,7 @@ test('an all-zero subtree is reached by a zero edge, not by a weight of 1', () =
 
 test('every canonisation rule preserves every amplitude', () => {
   for (const kind of Object.keys(NORMALISERS)) {
-    for (const example of EXAMPLES) {
+    for (const example of allInstances()) {
       const circuit = parseQasm(example.qasm);
       const n = circuit.nqubits;
       if (n > 6) continue;

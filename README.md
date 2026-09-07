@@ -33,9 +33,10 @@ basis state and sharing captures exactly that — `13/256` on one shared termina
 The 5-qubit cluster state ends in **6 nodes** in the LIMDD view against 9 edge-valued: a
 tower, one node per qubit, which is what every stabilizer state looks like there.
 
-All of them are one click apart in the examples, and the view selector draws any state
-five ways — shared or unreduced, amplitudes in the terminals or on the edges, and shared
-up to a local Pauli.
+All of them are one click apart in the examples. The ones whose size is the whole point —
+GHZ, the cluster state, Grover, a uniform superposition — take a qubit count beside the
+picker and generate the circuit, so the growth can be watched rather than described. The
+view selector then draws whatever state that is three ways, each with or without sharing.
 
 ## Writing the input state
 

@@ -8,7 +8,7 @@ import * as Z from '../src/zomega.js';
 import { parseQasm } from '../src/qasm.js';
 import { parseState, buildState } from '../src/state.js';
 import { simulate } from '../src/sim.js';
-import { EXAMPLES } from '../src/examples.js';
+import { allInstances } from '../src/examples.js';
 import { rng, randInt } from './helpers.js';
 import { pauliClassCount } from './oracle.js';
 import { layoutEdgeValuedTree } from '../src/layout.js';
@@ -50,7 +50,7 @@ const complete = (n) => {
 // ---- tests ---------------------------------------------------------------
 
 test('moving the amplitudes onto the edges as LIMs changes no amplitude', () => {
-  for (const example of EXAMPLES) {
+  for (const example of allInstances()) {
     const circuit = parseQasm(example.qasm);
     if (circuit.nqubits > 8) continue;
     const { dd, root, li, edge, n } = build(example.qasm, example.state);
@@ -63,7 +63,7 @@ test('moving the amplitudes onto the edges as LIMs changes no amplitude', () => 
 
 test('every scalar rule preserves every amplitude', () => {
   for (const kind of Object.keys(NORMALISERS)) {
-    for (const example of EXAMPLES) {
+    for (const example of allInstances()) {
       const circuit = parseQasm(example.qasm);
       if (circuit.nqubits > 6) continue;
       const { dd, root, li, edge, n } = build(example.qasm, example.state, kind);
@@ -141,7 +141,7 @@ test('every stabilizer state is a tower', () => {
 test('the diagram is as small as a Pauli-LIMDD can be', () => {
   // The diagram's own merging, against a brute-force count of the equivalence classes it
   // is meant to find. Anything less than canonical shows up here as a node too many.
-  for (const example of EXAMPLES) {
+  for (const example of allInstances()) {
     const circuit = parseQasm(example.qasm);
     if (circuit.nqubits > 5) continue;
     const { dd, root, li, edge, n } = build(example.qasm, example.state);

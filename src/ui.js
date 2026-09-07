@@ -11,7 +11,7 @@ import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import { LIMDD } from './limdd.js';
 import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
-import { EXAMPLES } from './examples.js';
+import { EXAMPLES, instantiate, identify } from './examples.js';
 import { GATES } from './gates.js';
 
 const GEO = { gutter: 72, padTop: 46, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
@@ -1084,9 +1084,7 @@ function applyPermalink() {
   $('hideZero').checked = app.hideZero;
   $('ampFormat').value = app.ampFormat;
   app.index = Math.max(0, parseInt(p.get('i') || '0', 10) || 0);
-  const match = EXAMPLES.findIndex((ex) => ex.qasm === $('qasm').value && ex.state === $('stateText').value);
-  $('example').value = match >= 0 ? String(match) : '';
-  if (match >= 0) $('note').textContent = EXAMPLES[match].note;
+  showExample($('qasm').value, $('stateText').value);
   compile();
   setFrame(Math.min(app.index, app.layout.frames.length - 1));
   return true;
@@ -1143,13 +1141,36 @@ function load() {
   } catch { return null; }
 }
 
-function useExample(i) {
-  const ex = EXAMPLES[i];
+/**
+ * The size control, holding whatever sizes the chosen example can be built at. A family
+ * with one size has nothing to choose, so it shows nothing rather than a select with a
+ * single entry.
+ */
+function showSizes(example, size) {
+  const el = $('size');
+  const sizes = example?.sizes ?? [];
+  el.style.display = sizes.length > 1 ? '' : 'none';
+  if (sizes.length < 2) return;
+  el.replaceChildren(...sizes.map((n) => new Option(`${n} qubits`, String(n))));
+  el.value = String(size ?? example.defaultSize);
+}
+
+function useExample(i, size) {
+  const ex = instantiate(EXAMPLES[i], size);
   $('qasm').value = ex.qasm;
   $('stateText').value = ex.state;
   $('note').textContent = ex.note;
+  showSizes(EXAMPLES[i], ex.size);
   app.index = 0;
   compile();
+}
+
+/** Point the example and size controls at whatever the text in the boxes turns out to be. */
+function showExample(qasm, state) {
+  const hit = identify(qasm, state);
+  $('example').value = hit ? String(EXAMPLES.indexOf(hit.example)) : '';
+  $('note').textContent = hit ? hit.note : '';
+  showSizes(hit?.example, hit?.size);
 }
 
 /**
@@ -1177,6 +1198,9 @@ export function boot() {
   picker.append(new Option('custom', ''));
   EXAMPLES.forEach((ex, i) => picker.append(new Option(ex.name, String(i))));
   picker.addEventListener('change', () => { if (picker.value !== '') useExample(+picker.value); });
+  $('size').addEventListener('change', (e) => {
+    if (picker.value !== '') useExample(+picker.value, +e.target.value);
+  });
 
   let timer = null;
   const onEdit = () => {
@@ -1184,6 +1208,7 @@ export function boot() {
     stop();
     picker.value = '';
     $('note').textContent = '';
+    showSizes(null);
     timer = setTimeout(compile, 350);
   };
   $('qasm').addEventListener('input', onEdit);
@@ -1322,9 +1347,7 @@ export function boot() {
   if (saved) {
     $('qasm').value = saved.qasm;
     $('stateText').value = saved.state;
-    const match = EXAMPLES.findIndex((ex) => ex.qasm === saved.qasm && ex.state === saved.state);
-    picker.value = match >= 0 ? String(match) : '';
-    if (match >= 0) $('note').textContent = EXAMPLES[match].note;
+    showExample(saved.qasm, saved.state);
     compile();
   } else {
     picker.value = '0';
