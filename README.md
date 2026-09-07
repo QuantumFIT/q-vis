@@ -75,22 +75,28 @@ the ring, which would cost both exactness and the property that equal states hav
 diagrams. `measure`, `reset` and classical control are rejected for a related reason — this
 tool shows unitary evolution of a pure state.
 
-## Four ways to draw one state
+## Three ways to draw one state, times a toggle
 
-The selector switches between them, and each answers a different question.
+The selector chooses what the diagram puts on its edges. Each answers a different
+question, and each shares subfunctions under a wider notion of sameness than the one
+above it, so each is at most as large.
 
-| view | what it shows |
+| representation | what it shows |
 | --- | --- |
-| **reduced diagram** | the default: shared subfunctions, amplitudes in the terminals |
-| **full tree** | the same state unreduced, so the sharing can be seen for what it saves |
+| **reduced diagram** | the default: amplitudes in the terminals, and two subfunctions share a node when they are *equal* |
 | **edge-valued** | amplitudes on the edges and one terminal, so subfunctions equal *up to a scalar* are shared too |
-| **full tree, edge-valued** | the same weights with nothing shared |
 | **LIMDD** | a Pauli string on each edge as well, so subfunctions equal *up to a local Pauli* are shared |
 
-The 3-qubit QFT is the case that separates the first four: 15 nodes reduced, and **4**
+**full tree** then draws whichever of the three you are looking at with nothing shared, so
+the sharing can be seen for what it saves. For the first two it is the complete binary
+tree of the state; for the LIMDD it is the diagram unfolded, every shared node copied out
+along each path that reaches it.
+
+The 3-qubit QFT is the case that separates the first two: 15 nodes reduced, and **4**
 edge-valued, because its amplitudes differ only by phases and phases factor onto the
-edges. The cluster state separates the last: 9 edge-valued, 6 as a LIMDD, and a stabilizer
-state is a tower there whatever its graph. In the edge-valued views a second selector
+edges. The cluster state separates the third: 9 edge-valued, 6 as a LIMDD, and a
+stabilizer state is a tower there whatever its graph. Where there are edge weights, a
+second selector
 chooses which edge the normalisation factor is taken from — the choice Q-Sylvan calls
 `norm-low`, `norm-min` and `norm-max`. `docs/EVDD.md` maps those onto what is expressible
 here, and explains why the ring not being a field makes this a decision rather than a

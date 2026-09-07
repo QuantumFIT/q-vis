@@ -418,3 +418,109 @@ export function layoutEdgeValued(ev, frames, labels, showEdge) {
 
   return { frames: out, xMin, xMax, width: xMax - xMin + 1, height: ev.nvars + 1 };
 }
+
+/**
+ * The edge-valued diagram unfolded: the same edges carrying the same labels, with every
+ * shared node copied out once per path that reaches it. What the sharing was worth is
+ * then the difference between the two pictures.
+ *
+ * Unfolding rather than recomputing is what makes the two agree. The labels a LIMDD puts
+ * on its edges depend on the diagram it is building — which branch precedes which, which
+ * stabilizers the children have — so a tree computed from the amplitudes on its own would
+ * be a different diagram wearing the same name.
+ *
+ * The tree is complete, as the other tree views are: a level the diagram skips becomes a
+ * node whose two edges say nothing and lead to the same place, and a zero edge keeps its
+ * subtree as scaffolding rather than showing whatever the diagram happened to point the
+ * dead edge at.
+ *
+ * @param {{nvars:number, ring:object, zeroEdge:object}} ev an EVDD or a LIMDD
+ * @param {{index:number, gate:?object, edge:object}[]} frames
+ * @param {string[]} labels qubit names
+ * @param {(e: object, frameIndex: number) => string} showEdge
+ */
+export function layoutEdgeValuedTree(ev, frames, labels, showEdge) {
+  const n = ev.nvars;
+  const leaves = 2 ** n;
+  const idOf = (level, path) => 2 ** level - 1 + path;
+  const xOf = (level, path) => (path + 0.5) * 2 ** (n - level) - leaves / 2;
+  // Borrows the diagram's own edge shape, so this works for an EVDD and a LIMDD alike.
+  const saysNothing = (node) => ({ ...ev.zeroEdge, w: ev.ring.one, node });
+
+  const out = [];
+  let prev = null;
+
+  for (const frame of frames) {
+    const incoming = new Map();
+
+    const scaffold = (level, path) => {
+      incoming.set(idOf(level, path), ev.zeroEdge);
+      if (level === n) return;
+      scaffold(level + 1, path * 2);
+      scaffold(level + 1, path * 2 + 1);
+    };
+
+    const place = (level, path, edge) => {
+      incoming.set(idOf(level, path), edge);
+      if (level === n) return;
+      if (ev.ring.isZero(edge.w)) {
+        scaffold(level + 1, path * 2);
+        scaffold(level + 1, path * 2 + 1);
+      } else if (ev.levelOf(edge.node) > level) {
+        // A level the diagram skips: this qubit changes nothing, so both sides lead to
+        // the same node by an edge with nothing to say.
+        const pass = saysNothing(edge.node);
+        place(level + 1, path * 2, pass);
+        place(level + 1, path * 2 + 1, pass);
+      } else {
+        place(level + 1, path * 2, ev.lowOf(edge.node));
+        place(level + 1, path * 2 + 1, ev.highOf(edge.node));
+      }
+    };
+    place(0, 0, frame.edge);
+
+    const keyOf = (id) => ev.edgeKey(incoming.get(id));
+    const nodes = [];
+    const edges = [];
+    for (let level = 0; level <= n; level++) {
+      for (let path = 0; path < 2 ** level; path++) {
+        const id = idOf(level, path);
+        const terminal = level === n;
+        nodes.push({
+          id,
+          level,
+          x: xOf(level, path),
+          y: level,
+          terminal,
+          // As in the edge-valued diagram, a zero subfunction is a zero edge and there is
+          // no zero node; the subtree under such an edge goes when the edge goes.
+          zero: false,
+          label: terminal ? '1' : labels[level],
+          // The tree never changes shape, so a node is new when what leads into it is.
+          fresh: prev !== null && prev.get(id) !== keyOf(id),
+        });
+        if (terminal) continue;
+        for (const high of [false, true]) {
+          const to = idOf(level + 1, path * 2 + (high ? 1 : 0));
+          const e = incoming.get(to);
+          const text = showEdge(e, frame.index);
+          edges.push({ from: id, to, high, toZero: ev.ring.isZero(e.w), label: text === '1' ? '' : text });
+        }
+      }
+    }
+
+    out.push({
+      index: frame.index,
+      gate: frame.gate,
+      root: idOf(0, 0),
+      rootWeight: showEdge(frame.edge, frame.index),
+      nodes,
+      edges,
+      size: nodes.length,
+      changed: nodes.filter((nd) => nd.fresh).length,
+    });
+    prev = new Map([...incoming.keys()].map((id) => [id, keyOf(id)]));
+  }
+
+  return { frames: out, xMin: -leaves / 2 + 0.5, xMax: leaves / 2 - 0.5, width: leaves, height: n + 1 };
+}

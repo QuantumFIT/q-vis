@@ -5,8 +5,8 @@ to a scalar**; this one shares them when they are equal **up to a scalar and a l
 Pauli** — a label `w · P₁⊗…⊗Pₙ` with each `Pᵢ` one of `I, X, Y, Z`. Vinkhuijzen,
 Coopmans, Elkouss, Dunjko and Laarman, [arXiv:2108.00931](https://arxiv.org/abs/2108.00931).
 
-An edge reads `w·XZI`: `w` times X on the first qubit, Z on the second, nothing on the
-third. An unlabelled edge is the identity with weight 1, as usual.
+An edge reads `w·X⊗Z⊗I`: `w` times X on the first qubit, Z on the second, nothing on
+the third. An unlabelled edge is the identity with weight 1, as usual.
 
 ## What it buys
 
@@ -92,12 +92,34 @@ known to be `n+1`.
 The amplitudes are checked the same way as the edge-valued diagram: every basis state of
 every example, under every scalar rule.
 
+## The tree
+
+**full tree** applies to this representation like any other, and here it is the diagram
+*unfolded*: every shared node copied out once per path that reaches it, carrying the same
+labels. The difference between the two pictures is exactly what the sharing was worth.
+
+Unfolding rather than recomputing is what makes the two agree. Which label a LIMDD puts on
+an edge depends on the diagram it is building — which branch precedes which, what
+stabilises the children — so a tree derived from the amplitudes alone would be a different
+diagram wearing the same name. `layoutEdgeValuedTree` therefore walks the finished
+diagram, and the tests check that every slot in the tree holds the edge the diagram
+reaches by the same low/high steps.
+
+Two shortcuts the reduced diagram takes and the tree cannot, since a tree that skips
+levels is not a tree:
+
+- a level the diagram drops because nothing depends on it becomes a node whose two edges
+  say nothing and lead to the same place;
+- a zero edge keeps its subtree as scaffolding, rather than showing whatever the diagram
+  happened to point the dead edge at. It dims and hides with **hide zeros**, as elsewhere.
+
+One thing to read carefully: a Pauli label reroutes as well as scales — `X` on a qubit
+exchanges that qubit's branches — so a path down a LIMDD does not spell a basis state the
+way a path down the other two trees does. That is true of the reduced LIMDD as well; the
+tree only makes it easier to notice.
+
 ## What is not here
 
 Simulation still runs on the MTBDD and `LIMDD.fromMTBDD` converts each frame in one pass,
 exactly as `EVDD` does. The paper's gate algorithms (Alg. 6–10) are what would make this a
 faster *simulator*; they are not what makes it a clearer picture.
-
-There is no unreduced-tree counterpart to this view. A tree shares nothing by
-construction, and sharing is the whole of what a LIM label buys, so the tree would differ
-from the edge-valued one only in carrying labels nobody can act on.

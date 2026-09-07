@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { archiveUrl, liveUrl } from '../src/ui.js';
+import { archiveUrl, liveUrl, viewCode, viewFromCode } from '../src/ui.js';
 import { buildHtml } from '../tools/build.mjs';
 
 const SITE = 'https://quantum.fit.vut.cz/q-vis/';
@@ -36,4 +36,18 @@ test('the build stamps the version it was told, and refuses nonsense', () => {
   // release never created, so it fails at build time instead.
   assert.throws(() => buildHtml('1.2.3'), /must be 'dev' or a release tag/);
   assert.throws(() => buildHtml('v3; rm -rf /'), /must be 'dev' or a release tag/);
+});
+
+test('a view is spelled in a link the way it always was', () => {
+  // The codes predate the split into a representation and a tree toggle, and links
+  // already in the wild use them, so both directions have to keep agreeing.
+  const cases = [['reduced', false, ''], ['reduced', true, '1'],
+    ['edge-valued', false, 'e'], ['edge-valued', true, 'te'],
+    ['limdd', false, 'l'], ['limdd', true, 'tl']];
+  for (const [rep, tree, code] of cases) {
+    assert.equal(viewCode(rep, tree), code, `${rep}${tree ? ' as a tree' : ''}`);
+    if (code) assert.deepEqual(viewFromCode(code), [rep, tree], `t=${code}`);
+  }
+  assert.deepEqual(viewFromCode(undefined), ['reduced', false], 'a link with no view');
+  assert.deepEqual(viewFromCode('nonsense'), ['reduced', false], 'and one from the future');
 });

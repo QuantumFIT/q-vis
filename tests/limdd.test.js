@@ -11,6 +11,7 @@ import { simulate } from '../src/sim.js';
 import { EXAMPLES } from '../src/examples.js';
 import { rng, randInt } from './helpers.js';
 import { pauliClassCount } from './oracle.js';
+import { layoutEdgeValuedTree } from '../src/layout.js';
 
 const allBits = (n) => Array.from({ length: 1 << n }, (_, i) => i.toString(2).padStart(n, '0'));
 const make = (n, kind = 'low') => new LIMDD(P.Ring, n, unitNormaliser(P, Z, kind));
@@ -178,4 +179,68 @@ test('the diagram built twice is the same diagram', () => {
       : `${li.levelOf(id)}:${li.edgeKey(li.lowOf(id))}:${li.edgeKey(li.highOf(id))}`)).join(' ');
   };
   for (const kind of Object.keys(NORMALISERS)) assert.equal(once(kind), once(kind));
+});
+
+test('the unfolded tree is the diagram, with every shared node copied out', () => {
+  // A tower has no skipped levels, so the tree slot at (level, path) must hold exactly
+  // the edge the diagram reaches by taking the same low/high steps from the root.
+  const n = 4;
+  const { li, edge } = build(ghz(n), zeros(n));
+  const [frame] = layoutEdgeValuedTree(li, [{ index: 0, gate: null, edge }],
+    Array.from({ length: n }, (_, q) => `q${q}`), (e) => li.edgeKey(e)).frames;
+
+  const labelOf = new Map(frame.edges.map((e) => [e.to, e.label]));
+  for (let path = 0; path < 2 ** n; path++) {
+    let e = edge;
+    let dead = false;
+    for (let level = 0; level < n; level++) {
+      const high = (path >> (n - 1 - level)) & 1;
+      if (dead) {
+        // Past a zero edge the diagram may point anywhere, since nothing is there to
+        // find; the tree fills the space with the zero edge instead of following it.
+        e = li.zeroEdge;
+      } else {
+        e = high ? li.highOf(e.node) : li.lowOf(e.node);
+        dead = li.ring.isZero(e.w);
+      }
+      const slot = 2 ** (level + 1) - 1 + (path >> (n - 1 - level));
+      const shown = li.edgeKey(e);
+      assert.equal(labelOf.get(slot), shown === '1' ? '' : shown,
+        `slot ${slot} on path ${path.toString(2).padStart(n, '0')}`);
+    }
+  }
+  assert.equal(frame.nodes.length, 2 ** (n + 1) - 1, 'a complete tree');
+});
+
+test('the tree stays complete where the diagram takes shortcuts', () => {
+  // Two shortcuts the reduced diagram takes and a tree cannot: a level it skips because
+  // nothing depends on it, and a zero edge, which it points wherever it likes.
+  const n = 3;
+  const dd = new MTBDD(P.Ring, n);
+  // |000> + |010>: q1 is a don't-care, and everything under q0 = 1 is zero.
+  const root = dd.fromAmplitudes([['000', P.fromZ(Z.INV_SQRT2)], ['010', P.fromZ(Z.INV_SQRT2)]]);
+  const li = make(n);
+  const edge = li.fromMTBDD(dd, root);
+  assert.ok(li.size(edge) < n + 1, 'the diagram really does take a shortcut');
+
+  const [frame] = layoutEdgeValuedTree(li, [{ index: 0, gate: null, edge }],
+    ['q0', 'q1', 'q2'], (e) => (li.ring.isZero(e.w) ? '0' : li.edgeKey(e))).frames;
+  assert.equal(frame.nodes.length, 2 ** (n + 1) - 1, 'the tree is complete anyway');
+  assert.equal(frame.edges.length, 2 ** (n + 1) - 2);
+
+  // The skipped level says nothing on either side, and says the same thing on both.
+  const out = (id) => frame.edges.filter((e) => e.from === id);
+  const [low, high] = out(1);                       // the q1 node under q0 = 0
+  assert.ok(low.label.startsWith(`${P.key(P.one)}.0.0@`),
+    'a skipped level carries weight 1 and the identity Pauli');
+  assert.deepEqual([low.label, low.toZero], [high.label, high.toZero],
+    'both sides of a skipped level lead to the same thing');
+
+  // Everything under the zero edge is zero, rather than whatever the diagram pointed at.
+  // Edges come out level by level, so one pass marks the whole subtree.
+  const dead = new Set([2]);                        // the q1 node under q0 = 1
+  for (const e of frame.edges) if (dead.has(e.from)) dead.add(e.to);
+  assert.equal(dead.size, 2 ** n - 1, 'half the tree hangs off the dead edge');
+  assert.ok(frame.edges.filter((e) => dead.has(e.from)).every((e) => e.toZero),
+    'the dead branch is dead all the way down');
 });

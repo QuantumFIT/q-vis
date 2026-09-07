@@ -47,9 +47,11 @@ is a function of the repository alone. See `docs/VERSIONS.md`.
 
 ## Representations
 
-A state can be drawn five ways, and `layout.js` produces all of them from one interface:
-shared (`dd.js`) or unreduced, with the amplitudes in the terminals or on the edges
-(`evdd.js`), and with a Pauli string on each edge as well (`limdd.js`). The edge-valued
+A state can be drawn three ways — amplitudes in the terminals (`dd.js`), on the edges
+(`evdd.js`), or on the edges with a Pauli string beside them (`limdd.js`) — each with or
+without sharing, and `layout.js` produces all six from one interface. The unshared LIMDD
+is the diagram *unfolded* (`layoutEdgeValuedTree`) rather than rebuilt, because which
+labels it chooses depends on the diagram it is building. The edge-valued
 forms need a normalisation rule, and since `Z[1/√2, i]` is not a field that rule is a
 **parameter**, not a constant — see `docs/EVDD.md` before changing it. The Pauli half of a
 LIMDD label needs no such rule, because a Pauli string inverts over any ring; that split

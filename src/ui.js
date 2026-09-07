@@ -6,7 +6,7 @@ import * as P from './poly.js';
 import { simulate } from './sim.js';
 import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
-import { layoutFrames, layoutEdgeValued } from './layout.js';
+import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.js';
 import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import { LIMDD } from './limdd.js';
 import * as Pauli from './pauli.js';
@@ -38,7 +38,8 @@ const app = {
   playing: false,
   timer: null,
   hideZero: false,
-  view: 'reduced',   // reduced | tree | edge-valued | tree-edge-valued
+  rep: 'reduced',    // reduced | edge-valued | limdd — what goes on the edges
+  tree: false,       // the same representation with nothing shared
   canon: 'max',      // which edge an edge-valued diagram takes its factor from
   theme: 'auto',
   ampFormat: 'exact',
@@ -58,9 +59,6 @@ const svgEl = (name, attrs = {}) => {
 };
 
 // ---- compile ------------------------------------------------------------
-
-/** Views that put a weight on every edge, and so have a normalisation rule to choose. */
-const hasEdgeWeights = (view) => view.endsWith('edge-valued') || view === 'limdd';
 
 /**
  * An edge label in the LIMDD view: the weight, then the Pauli string. The string is kept
@@ -114,14 +112,24 @@ function compile() {
   const labels = circuit.qubits.map((q) => q.label);
   const show = (v, i) => P.format(v, app.ampFormat, { k: app.commonK[i] });
 
-  if (app.view === 'limdd') {
+  // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
+  // drawable nor informative.
+  const big = circuit.nqubits > 10;
+  const tree = app.tree && !big;
+
+  if (app.rep === 'limdd') {
     // The same states again, now shared up to a local Pauli as well as a scalar.
     const li = new LIMDD(P.Ring, circuit.nqubits, unitNormaliser(P, Z, app.canon));
     const memo = new Map();
-    app.layout = layoutEdgeValued(li,
-      frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) })),
-      labels, (e, i) => limLabel(e, i, circuit.nqubits, show));
-  } else if (app.view === 'edge-valued') {
+    const built = frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) }));
+    const label = (e, i) => limLabel(e, i, circuit.nqubits, show);
+    // The tree here is the diagram unfolded rather than rebuilt: which labels a LIMDD
+    // chooses depends on the diagram it is building, so a tree computed on its own would
+    // be a different thing wearing the same name. See layoutEdgeValuedTree.
+    app.layout = tree
+      ? layoutEdgeValuedTree(li, built, labels, label)
+      : layoutEdgeValued(li, built, labels, label);
+  } else if (app.rep === 'edge-valued' && !tree) {
     // Simulation stays on the MTBDD; this is the same states seen the other way, built
     // in one pass per frame. One manager for the whole run, so nodes shared between
     // frames stay the same nodes and the diagram morphs rather than being redrawn.
@@ -133,11 +141,11 @@ function compile() {
   } else {
     app.layout = layoutFrames(dd, frames, {
       qubitLabels: labels,
-      expand: app.view.startsWith('tree'),
+      expand: tree,
       formatValue: show,
       // The unreduced tree drawn the edge-valued way: the same normalisation, with
       // nothing shared, which is the comparison worth having.
-      weighting: app.view === 'tree-edge-valued'
+      weighting: app.rep === 'edge-valued'
         ? { ring: P.Ring, normalise: unitNormaliser(P, Z, app.canon) }
         : null,
     });
@@ -146,8 +154,6 @@ function compile() {
 
   $('error').textContent = '';
   app.zoom = 'fit';
-  // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
-  // drawable nor informative.
   // One unknown per basis state, so it is only offered while that is a sane number.
   const tooMany = 2 ** circuit.nqubits > 256;
   $('symbolic').disabled = tooMany;
@@ -155,12 +161,13 @@ function compile() {
     ? `${2 ** circuit.nqubits} basis states is too many to give each its own symbol`
     : 'give every basis state its own unknown amplitude';
 
-  const big = circuit.nqubits > 10;
-  for (const value of ['tree', 'tree-edge-valued']) {
-    $('view').querySelector(`option[value="${value}"]`).disabled = big;
-  }
+  $('tree').disabled = big;
+  $('tree').checked = tree;
+  $('tree').title = big
+    ? `a tree on ${circuit.nqubits} qubits is ${2 ** circuit.nqubits} leaves — too many to draw`
+    : 'draw the same thing with nothing shared, so the sharing can be seen for what it saves';
   // The canonisation rule only means anything where there are edge weights.
-  $('canon').style.display = hasEdgeWeights(app.view) ? '' : 'none';
+  $('canon').style.display = app.rep === 'reduced' ? 'none' : '';
   $('canon').title = NORMALISERS[app.canon].note;
   resetCanvas();
   renderCircuit();
@@ -763,14 +770,14 @@ function renderStats(f) {
   // Frame 0 is the state as given, so "+4 −0" there would be counting it against nothing.
   // No node churn count: which nodes this gate created is already on the plate, in the
   // only colour it uses.
-  if (f.index > 0 && app.view.startsWith('tree') && f.changed) {
+  if (f.index > 0 && app.tree && f.changed) {
     // An unreduced tree never changes shape, so the leaves are the only news.
-    const what = app.view === 'tree' ? 'amplitude' : 'node';
+    const what = app.rep === 'reduced' ? 'amplitude' : 'node';
     parts.push(`<span class="delta">${f.changed} ${what}${f.changed === 1 ? '' : 's'} changed</span>`);
   }
   parts.push(norm === null ? 'symbolic' : `‖ψ‖² = ${norm.toFixed(4).replace(/0+$/, '0')}`);
   $('stats').innerHTML = parts.join(' · ');
-  $('stats').title = app.view.startsWith('tree')
+  $('stats').title = app.tree
     ? 'Nodes in the tree, and how many amplitudes this gate changed. An unreduced tree '
       + 'never changes shape, so the leaves are the only thing that can differ.'
     : 'Nodes reachable from the root. The ones this gate created are marked on the plate.';
@@ -858,14 +865,14 @@ function buildHelp() {
   body.append(el('h3', null, 'The views'));
   body.append(el('p', 'help-note',
     'The same state, drawn with more and more taken off the nodes and put on the edges. '
-    + 'Each view shares a subfunction under a wider notion of sameness, so each is at '
-    + 'most as large as the one above it.'));
+    + 'Each shares a subfunction under a wider notion of sameness, so each is at most as '
+    + 'large as the one above it. "full tree" draws whichever you are looking at with '
+    + 'nothing shared, which is what the sharing saves.'));
   body.append(helpTable([
     ['reduced diagram', 'amplitudes in the terminals; two subfunctions share a node when they are equal'],
-    ['full tree', 'the same, with nothing shared — one path per basis state'],
     ['edge-valued', 'amplitudes on the edges; subfunctions share when they are equal up to a scalar'],
-    ['LIMDD', 'and up to a local Pauli: an edge reads w·XZI, meaning w times X on the first '
-      + 'qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
+    ['LIMDD', 'and up to a local Pauli: an edge reads w·X⊗Z⊗I, meaning w times X on the '
+      + 'first qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
   ]));
 
   body.append(el('h3', null, 'Refused, and why'));
@@ -1016,12 +1023,30 @@ export function liveUrl(href, version) {
   return new URL('../../', url).href;
 }
 
+/**
+ * How a view is spelled in a link. One code for the representation and whether it is
+ * drawn as a tree, spelled as it always was, so that a link written by an older build
+ * still says the same thing to this one and the other way round.
+ */
+const VIEW_CODES = { reduced: ['', '1'], 'edge-valued': ['e', 'te'], limdd: ['l', 'tl'] };
+
+export const viewCode = (rep, tree) => (VIEW_CODES[rep] || VIEW_CODES.reduced)[tree ? 1 : 0];
+
+export function viewFromCode(code) {
+  for (const [rep, codes] of Object.entries(VIEW_CODES)) {
+    const tree = codes.indexOf(code);
+    if (tree >= 0 && code !== '') return [rep, tree === 1];
+  }
+  return ['reduced', false];
+}
+
 function permalink() {
   const p = new URLSearchParams();
   p.set('c', encodeText($('qasm').value));
   p.set('s', encodeText($('stateText').value));
   if (app.index) p.set('i', String(app.index));
-  if (app.view !== 'reduced') p.set('t', { tree: '1', 'edge-valued': 'e', 'tree-edge-valued': 'te', limdd: 'l' }[app.view]);
+  const code = viewCode(app.rep, app.tree);
+  if (code) p.set('t', code);
   if (app.canon !== 'max') p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
@@ -1040,12 +1065,13 @@ function applyPermalink() {
   } catch {
     return false;   // a mangled link should not stop the app from starting
   }
-  app.view = { 1: 'tree', e: 'edge-valued', te: 'tree-edge-valued', l: 'limdd' }[p.get('t')] || 'reduced';
+  [app.rep, app.tree] = viewFromCode(p.get('t'));
   if (NORMALISERS[p.get('n')]) app.canon = p.get('n');
   app.hideZero = p.get('z') === '1';
   const f = normaliseFormat(p.get('f'));
   if (AMP_FORMATS.includes(f) && f !== 'exact') app.ampFormat = f;
-  $('view').value = app.view;
+  $('view').value = app.rep;
+  $('tree').checked = app.tree;
   $('canon').value = app.canon;
   $('hideZero').checked = app.hideZero;
   $('ampFormat').value = app.ampFormat;
@@ -1222,14 +1248,18 @@ export function boot() {
     applyTheme(THEMES[(THEMES.indexOf(app.theme) + 1) % THEMES.length]);
   });
   $('view').addEventListener('change', (e) => {
-    app.view = e.target.value;
+    app.rep = e.target.value;
     // The Pauli rules assume the low edge has been emptied, which is what 'low edge'
     // does as far as this ring allows. Any other rule leaves weights on the low edges
     // that then have to match for two nodes to merge, and the diagram stops collapsing.
-    if (app.view === 'limdd' && app.canon !== 'low') {
+    if (app.rep === 'limdd' && app.canon !== 'low') {
       app.canon = 'low';
       $('canon').value = 'low';
     }
+    compile();
+  });
+  $('tree').addEventListener('change', (e) => {
+    app.tree = e.target.checked;
     compile();
   });
   for (const [kind, rule] of Object.entries(NORMALISERS)) {
