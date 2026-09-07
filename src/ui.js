@@ -869,10 +869,10 @@ function buildHelp() {
     + 'large as the one above it. "full tree" draws whichever you are looking at with '
     + 'nothing shared, which is what the sharing saves.'));
   body.append(helpTable([
-    ['reduced diagram', 'amplitudes in the terminals; two subfunctions share a node when they are equal'],
-    ['edge-valued', 'amplitudes on the edges; subfunctions share when they are equal up to a scalar'],
-    ['LIMDD', 'and up to a local Pauli: an edge reads w·X⊗Z⊗I, meaning w times X on the '
-      + 'first qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
+    ['MTBDD', 'amplitudes in the terminals; two subfunctions share a node when they are equal'],
+    ['EVDD', 'amplitudes on the edges; subfunctions share when they are equal up to a scalar'],
+    ['Pauli-LIMDD', 'and up to a local Pauli: an edge reads w·X⊗Z⊗I, meaning w times X on '
+      + 'the first qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
   ]));
 
   body.append(el('h3', null, 'Refused, and why'));

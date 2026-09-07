@@ -83,9 +83,9 @@ above it, so each is at most as large.
 
 | representation | what it shows |
 | --- | --- |
-| **reduced diagram** | the default: amplitudes in the terminals, and two subfunctions share a node when they are *equal* |
-| **edge-valued** | amplitudes on the edges and one terminal, so subfunctions equal *up to a scalar* are shared too |
-| **LIMDD** | a Pauli string on each edge as well, so subfunctions equal *up to a local Pauli* are shared |
+| **MTBDD** | the default: amplitudes in the terminals, and two subfunctions share a node when they are *equal* |
+| **EVDD** | amplitudes on the edges and one terminal, so subfunctions equal *up to a scalar* are shared too |
+| **Pauli-LIMDD** | a Pauli string on each edge as well, so subfunctions equal *up to a local Pauli* are shared |
 
 **full tree** then draws whichever of the three you are looking at with nothing shared, so
 the sharing can be seen for what it saves. For the first two it is the complete binary
