@@ -420,6 +420,18 @@ dialog {
   flex-direction: column;
 }
 
+/* The generated LaTeX: shown before it is taken, so a Unicode-to-LaTeX pass cannot
+   surprise anyone downstream. */
+.code {
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  font: 11.5px/1.5 var(--mono);
+  color: var(--ink);
+  white-space: pre;
+  tab-size: 2;
+}
+
 dialog:not([open]) { display: none; }
 dialog::backdrop { background: var(--backdrop); }
 

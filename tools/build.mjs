@@ -121,15 +121,20 @@ export function buildHtml(version = 'dev') {
   const css = readFileSync(resolve(SRC, 'app.css'), 'utf8');
   let html = readFileSync(resolve(ROOT, 'dev.html'), 'utf8');
 
+  // Every replacement below passes a *function*, never a string: in a string replacement
+  // `$&`, `$'` and `$\`` are substitution patterns, so any source containing one would be
+  // silently spliced. src/tikz.js has `$: '\\$'` in its LaTeX escape table, which is
+  // exactly that, and it produced a bundle that parsed in Node and not in a browser.
   const stamped = html.replace('<meta name="q-vis-version" content="dev">',
-    `<meta name="q-vis-version" content="${version}">`);
+    () => `<meta name="q-vis-version" content="${version}">`);
   if (stamped === html && version !== 'dev') throw new Error('no version meta tag to stamp');
   html = stamped;
 
-  html = html.replace('<link rel="stylesheet" href="src/app.css">', `<style>\n${css}\n</style>`);
+  html = html.replace('<link rel="stylesheet" href="src/app.css">',
+    () => `<style>\n${css}\n</style>`);
   html = html.replace(
     /<script type="module">[\s\S]*?<\/script>/,
-    `<script>\n(function () {\n${code}\n__m['ui.js'].boot();\n})();\n</script>`,
+    () => `<script>\n(function () {\n${code}\n__m['ui.js'].boot();\n})();\n</script>`,
   );
 
   if (/(?:src|href)="(?!data:)(?:\.\/)?src\//.test(html)) {

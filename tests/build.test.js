@@ -10,7 +10,7 @@ test('the bundle evaluates and the engine still works inside it', () => {
 
   assert.deepEqual([...modules].sort(),
     ['dd.js', 'evdd.js', 'examples.js', 'gates.js', 'layout.js', 'limdd.js', 'pauli.js', 'stabilizer.js',
-      'poly.js', 'qasm.js', 'sim.js', 'state.js', 'ui.js', 'zomega.js'].sort());
+      'poly.js', 'qasm.js', 'sim.js', 'state.js', 'tikz.js', 'ui.js', 'zomega.js'].sort());
   assert.equal(typeof registry['ui.js'].boot, 'function');
 
   const { MTBDD } = registry['dd.js'];
@@ -39,6 +39,19 @@ test('dependencies are defined before the modules that import them', () => {
     assert.ok(at(dep) < at(user), `${dep} must be defined before ${user}`);
   }
   assert.equal(modules[modules.length - 1], 'ui.js', 'the entry point comes last');
+});
+
+test('the script the page actually carries is the script that was built', () => {
+  // The bundle evaluating is not enough: it still has to survive being spliced into the
+  // HTML. A string replacement treats `$&`, `$'` and `$\`` as substitution patterns, so a
+  // module containing one used to come out mangled — parsing in Node, failing in a
+  // browser. src/tikz.js contains `$: '\\$'`, which is one.
+  const { html } = buildHtml();
+  const script = html.match(/<script>\n\(function \(\) \{\n([\s\S]*?)\n\}\)\(\);\n<\/script>/);
+  assert.ok(script, 'the page has one inlined script block');
+  assert.doesNotThrow(() => new Function(script[1].replace(/__m\['ui\.js'\]\.boot\(\);$/, '')),
+    'and it parses');
+  assert.match(html, /\$: '\\\\\$'/, 'with the escape table intact, patterns and all');
 });
 
 test('the built page carries everything it needs', () => {

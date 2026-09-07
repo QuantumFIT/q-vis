@@ -89,6 +89,8 @@
     <button id="zoomIn" title="zoom in (+)">+</button>
     <button id="permalink" title="copy a link to this circuit, state and step">copy link</button>
     <button id="export" title="save the current diagram as an SVG file">export SVG</button>
+    <button id="tikzDiagram" title="the diagram as TikZ, for a paper">TikZ diagram</button>
+    <button id="tikzCircuit" title="the circuit as quantikz, for a paper">TikZ circuit</button>
   </footer>
 
   <dialog id="helpDialog" aria-labelledby="helpTitle">
@@ -98,6 +100,16 @@
       <button id="helpClose" type="button">close</button>
     </header>
     <div id="helpBody"></div>
+  </dialog>
+
+  <dialog id="tikzDialog" aria-labelledby="tikzTitle">
+    <header>
+      <span class="label" id="tikzTitle">TikZ</span>
+      <span class="spacer"></span>
+      <button id="tikzCopy" type="button">copy</button>
+      <button id="tikzClose" type="button">close</button>
+    </header>
+    <pre id="tikzBody" class="code"></pre>
   </dialog>
 </div>
 <script type="module">

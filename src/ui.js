@@ -9,6 +9,7 @@ import { parseState, buildState, squaredNorm, symbolicStateText } from './state.
 import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.js';
 import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import { LIMDD } from './limdd.js';
+import { circuitTikz, diagramTikz } from './tikz.js';
 import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
 import { EXAMPLES, instantiate, identify } from './examples.js';
@@ -899,6 +900,17 @@ function buildHelp() {
       + 'the first qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
   ]));
 
+  body.append(el('h3', null, 'Taking a figure away'));
+  body.append(helpTable([
+    ['copy link', 'the whole view in a URL: circuit, input, step and how it is drawn'],
+    ['export SVG', 'the diagram as it stands, for a slide'],
+    ['TikZ diagram', 'the same diagram as TikZ nodes and paths, for a paper — the styles '
+      + 'come with it, so every low edge or terminal can be restyled in one place'],
+    ['TikZ circuit', 'the circuit as quantikz. Amplitudes are translated to LaTeX on the '
+      + 'way (√2 becomes \\sqrt{2}, ω³ becomes \\omega^{3}), which is why the code is shown '
+      + 'before it is copied'],
+  ]));
+
   body.append(el('h3', null, 'Refused, and why'));
   body.append(helpTable([
     ['rx(0.3) q[0];', 'an arbitrary rotation leaves the exact ring, so it cannot be represented'],
@@ -984,6 +996,41 @@ function exportSvg() {
   a.download = `mtbdd-step-${app.index}.svg`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/**
+ * The current view as TikZ, in a dialog so it can be read before it is taken. An SVG is
+ * the wrong thing to put in a paper; this is the right one, and seeing it first matters
+ * because the amplitudes have been through a Unicode-to-LaTeX pass on the way.
+ */
+function showTikz(what) {
+  if (!app.layout || !app.circuit) return;
+  const text = what === 'circuit'
+    ? circuitTikz(app.circuit)
+    : diagramTikz(app.layout, app.index, {
+      qubitLabels: app.circuit.qubits.map((q) => q.label),
+      bandLabel: BAND_LABEL.toLowerCase(),
+      hideZero: app.hideZero,
+    });
+  app.tikz = text;
+  $('tikzTitle').textContent = what === 'circuit'
+    ? 'TikZ · circuit, as quantikz'
+    : `TikZ · diagram, step ${app.index} of ${app.layout.frames.length - 1}`;
+  $('tikzBody').textContent = text;
+  $('tikzBody').scrollTop = 0;
+  $('tikzDialog').showModal();
+}
+
+async function copyTikz() {
+  const button = $('tikzCopy');
+  let ok = true;
+  try {
+    await navigator.clipboard.writeText(app.tikz || '');
+  } catch {
+    ok = false;   // no permission, or an insecure context such as file://
+  }
+  button.textContent = ok ? 'copied' : 'select and copy';
+  setTimeout(() => { button.textContent = 'copy'; }, 1800);
 }
 
 // ---- wiring -------------------------------------------------------------
@@ -1242,6 +1289,13 @@ export function boot() {
   $('next').addEventListener('click', () => { stop(); step(1); });
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
+  $('tikzDiagram').addEventListener('click', () => showTikz('diagram'));
+  $('tikzCircuit').addEventListener('click', () => showTikz('circuit'));
+  $('tikzCopy').addEventListener('click', copyTikz);
+  $('tikzClose').addEventListener('click', () => $('tikzDialog').close());
+  $('tikzDialog').addEventListener('click', (e) => {
+    if (e.target === $('tikzDialog')) $('tikzDialog').close();
+  });
   $('permalink').addEventListener('click', copyPermalink);
   $('symbolic').addEventListener('click', () => {
     // From the circuit as currently typed, not the last one that compiled: after editing
