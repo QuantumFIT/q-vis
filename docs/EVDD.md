@@ -2,7 +2,8 @@
 
 A state can be drawn four ways in q-vis: shared or unreduced, with the amplitudes in the
 terminals or on the edges. This note records why the edge-valued pair exists and the one
-decision it turned on.
+decision it turned on. (A fifth view goes further and shares up to a local Pauli as well;
+that is `docs/LIMDD.md`.)
 
 ## What the edges buy
 

@@ -8,6 +8,8 @@ import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
 import { layoutFrames, layoutEdgeValued } from './layout.js';
 import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
+import { LIMDD } from './limdd.js';
+import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
 import { EXAMPLES } from './examples.js';
 import { GATES } from './gates.js';
@@ -57,6 +59,23 @@ const svgEl = (name, attrs = {}) => {
 
 // ---- compile ------------------------------------------------------------
 
+/** Views that put a weight on every edge, and so have a normalisation rule to choose. */
+const hasEdgeWeights = (view) => view.endsWith('edge-valued') || view === 'limdd';
+
+/**
+ * An edge label in the LIMDD view: the weight, then the Pauli string. The string is kept
+ * as X^x Z^z internally but printed with Y, which owes the weight a factor of (-i) for
+ * every Y — so the two are put back together before either is shown.
+ */
+function limLabel(e, i, n, show) {
+  const owed = Pauli.phaseShift(e);
+  const w = owed ? P.mul(e.w, P.fromZ(Z.omegaPow(-2 * owed))) : e.w;
+  const text = show(w, i);
+  if (Pauli.isIdentityString(e)) return text;
+  if (P.isZero(w)) return text;
+  return P.attachCoefficient(text, Pauli.formatString(e, n));
+}
+
 /** Parse both inputs, run the circuit, lay every frame out. Keeps the last good
  *  drawing on screen when the text is mid-edit and does not parse. */
 function compile() {
@@ -94,7 +113,15 @@ function compile() {
   });
   const labels = circuit.qubits.map((q) => q.label);
   const show = (v, i) => P.format(v, app.ampFormat, { k: app.commonK[i] });
-  if (app.view === 'edge-valued') {
+
+  if (app.view === 'limdd') {
+    // The same states again, now shared up to a local Pauli as well as a scalar.
+    const li = new LIMDD(P.Ring, circuit.nqubits, unitNormaliser(P, Z, app.canon));
+    const memo = new Map();
+    app.layout = layoutEdgeValued(li,
+      frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) })),
+      labels, (e, i) => limLabel(e, i, circuit.nqubits, show));
+  } else if (app.view === 'edge-valued') {
     // Simulation stays on the MTBDD; this is the same states seen the other way, built
     // in one pass per frame. One manager for the whole run, so nodes shared between
     // frames stay the same nodes and the diagram morphs rather than being redrawn.
@@ -102,7 +129,7 @@ function compile() {
     const memo = new Map();
     app.layout = layoutEdgeValued(ev,
       frames.map((f) => ({ index: f.index, gate: f.gate, edge: ev.fromMTBDD(dd, f.root, memo) })),
-      labels, show);
+      labels, (e, i) => show(e.w, i));
   } else {
     app.layout = layoutFrames(dd, frames, {
       qubitLabels: labels,
@@ -133,7 +160,7 @@ function compile() {
     $('view').querySelector(`option[value="${value}"]`).disabled = big;
   }
   // The canonisation rule only means anything where there are edge weights.
-  $('canon').style.display = app.view.endsWith('edge-valued') ? '' : 'none';
+  $('canon').style.display = hasEdgeWeights(app.view) ? '' : 'none';
   $('canon').title = NORMALISERS[app.canon].note;
   resetCanvas();
   renderCircuit();
@@ -828,6 +855,19 @@ function buildHelp() {
     ['// note', 'comment, as is /* ... */'],
   ]));
 
+  body.append(el('h3', null, 'The views'));
+  body.append(el('p', 'help-note',
+    'The same state, drawn with more and more taken off the nodes and put on the edges. '
+    + 'Each view shares a subfunction under a wider notion of sameness, so each is at '
+    + 'most as large as the one above it.'));
+  body.append(helpTable([
+    ['reduced diagram', 'amplitudes in the terminals; two subfunctions share a node when they are equal'],
+    ['full tree', 'the same, with nothing shared — one path per basis state'],
+    ['edge-valued', 'amplitudes on the edges; subfunctions share when they are equal up to a scalar'],
+    ['LIMDD', 'and up to a local Pauli: an edge reads w·XZI, meaning w times X on the first '
+      + 'qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
+  ]));
+
   body.append(el('h3', null, 'Refused, and why'));
   body.append(helpTable([
     ['rx(0.3) q[0];', 'an arbitrary rotation leaves the exact ring, so it cannot be represented'],
@@ -941,7 +981,7 @@ function permalink() {
   p.set('c', encodeText($('qasm').value));
   p.set('s', encodeText($('stateText').value));
   if (app.index) p.set('i', String(app.index));
-  if (app.view !== 'reduced') p.set('t', { tree: '1', 'edge-valued': 'e', 'tree-edge-valued': 'te' }[app.view]);
+  if (app.view !== 'reduced') p.set('t', { tree: '1', 'edge-valued': 'e', 'tree-edge-valued': 'te', limdd: 'l' }[app.view]);
   if (app.canon !== 'max') p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
@@ -959,7 +999,7 @@ function applyPermalink() {
   } catch {
     return false;   // a mangled link should not stop the app from starting
   }
-  app.view = { 1: 'tree', e: 'edge-valued', te: 'tree-edge-valued' }[p.get('t')] || 'reduced';
+  app.view = { 1: 'tree', e: 'edge-valued', te: 'tree-edge-valued', l: 'limdd' }[p.get('t')] || 'reduced';
   if (NORMALISERS[p.get('n')]) app.canon = p.get('n');
   app.hideZero = p.get('z') === '1';
   const f = normaliseFormat(p.get('f'));
@@ -1126,6 +1166,13 @@ export function boot() {
   });
   $('view').addEventListener('change', (e) => {
     app.view = e.target.value;
+    // The Pauli rules assume the low edge has been emptied, which is what 'low edge'
+    // does as far as this ring allows. Any other rule leaves weights on the low edges
+    // that then have to match for two nodes to merge, and the diagram stops collapsing.
+    if (app.view === 'limdd' && app.canon !== 'low') {
+      app.canon = 'low';
+      $('canon').value = 'low';
+    }
     compile();
   });
   for (const [kind, rule] of Object.entries(NORMALISERS)) {

@@ -30,6 +30,28 @@ cx q[3],q[4];
     state: '|00000> : 1',
   },
   {
+    name: 'Cluster state, 5 qubits',
+    note: 'A stabilizer state. In the LIMDD view it is a tower of one node per qubit, '
+      + 'whatever the graph — the edge-valued diagram needs nearly twice as many.',
+    qasm: `OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[5];
+
+// |+> everywhere, then a controlled-Z along a line: the graph state of a path.
+h q[0];
+h q[1];
+h q[2];
+h q[3];
+h q[4];
+
+cz q[0],q[1];
+cz q[1],q[2];
+cz q[2],q[3];
+cz q[3],q[4];
+`,
+    state: '|00000> : 1',
+  },
+  {
     name: 'W state, 4 qubits',
     note: 'Each splitter sends one excitation half onward, half sideways. Four qubits give '
       + 'amplitude 1/2, which the exact ring holds; W on three needs 1/√3, which it cannot.',

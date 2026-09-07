@@ -30,8 +30,12 @@ Grover on 4 qubits ends in **6 nodes**, because the state is symmetric in every 
 basis state and sharing captures exactly that — `13/256` on one shared terminal and
 `-251/256` on the marked path, exactly, where a float simulator would say 0.98.
 
+The 5-qubit cluster state ends in **6 nodes** in the LIMDD view against 9 edge-valued: a
+tower, one node per qubit, which is what every stabilizer state looks like there.
+
 All of them are one click apart in the examples, and the view selector draws any state
-four ways — shared or unreduced, amplitudes in the terminals or on the edges.
+five ways — shared or unreduced, amplitudes in the terminals or on the edges, and shared
+up to a local Pauli.
 
 ## Writing the input state
 
@@ -81,12 +85,17 @@ The selector switches between them, and each answers a different question.
 | **full tree** | the same state unreduced, so the sharing can be seen for what it saves |
 | **edge-valued** | amplitudes on the edges and one terminal, so subfunctions equal *up to a scalar* are shared too |
 | **full tree, edge-valued** | the same weights with nothing shared |
+| **LIMDD** | a Pauli string on each edge as well, so subfunctions equal *up to a local Pauli* are shared |
 
-The 3-qubit QFT is the case that separates them: 15 nodes reduced, and **4** edge-valued,
-because its amplitudes differ only by phases and phases factor onto the edges. In the edge-valued views a second selector chooses which edge the normalisation factor is
-taken from — the choice Q-Sylvan calls `norm-low`, `norm-min` and `norm-max`.
-`docs/EVDD.md` maps those onto what is expressible here, and explains why the ring not
-being a field makes this a decision rather than a formula.
+The 3-qubit QFT is the case that separates the first four: 15 nodes reduced, and **4**
+edge-valued, because its amplitudes differ only by phases and phases factor onto the
+edges. The cluster state separates the last: 9 edge-valued, 6 as a LIMDD, and a stabilizer
+state is a tower there whatever its graph. In the edge-valued views a second selector
+chooses which edge the normalisation factor is taken from — the choice Q-Sylvan calls
+`norm-low`, `norm-min` and `norm-max`. `docs/EVDD.md` maps those onto what is expressible
+here, and explains why the ring not being a field makes this a decision rather than a
+formula; `docs/LIMDD.md` does the same for the Pauli labels, where the ring turns out to
+matter much less.
 
 ## Reading the amplitudes
 
