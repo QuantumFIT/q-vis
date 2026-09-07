@@ -58,7 +58,14 @@ test('the built page carries everything it needs', () => {
   const { html } = buildHtml();
   assert.doesNotMatch(html, /(?:src|href)="(?!data:)(?:\.\/)?src\//, 'no references to src/');
   assert.doesNotMatch(html, /<script type="module">/, 'the module script is replaced');
-  assert.doesNotMatch(html, /https?:\/\/(?!www\.w3\.org)/, 'nothing is fetched from the network');
+  // A hyperlink is not a fetch. The contact note in the footer points at a home page, which
+  // is only loaded if the reader clicks it; what would break the promise that this one file
+  // works offline is a script, stylesheet, font, image or @import pulled from elsewhere. So
+  // every remote URL in the page has to be either the XML namespace or an anchor's target.
+  const remote = [...html.matchAll(/https?:\/\/[^"')\s]+/g)]
+    .filter((m) => !m[0].startsWith('http://www.w3.org/'))
+    .filter((m) => !/<a\s[^>]*href="$/.test(html.slice(0, m.index)));
+  assert.deepEqual(remote.map((m) => m[0]), [], 'nothing is fetched from the network');
   assert.match(html, /--accent:/, 'the stylesheet is inlined');
   assert.match(html, /class MTBDD/, 'the engine is inlined');
   assert.match(html, /__m\['ui\.js'\]\.boot\(\)/, 'and it is started');

@@ -126,6 +126,28 @@ a.version[href]:hover { text-decoration: underline; }
 
 .masthead .spacer { flex: 1; }
 
+/* A note rather than a control, so it is quiet and sits with the transport instead of in
+   the cluster of buttons at the other end. Opens in a new tab: following it in this one
+   would throw away whatever the reader had set up. */
+.footnote {
+  margin-left: 6px;
+  /* --ink-faint is only 2.2:1 on the light background, which is too thin to read at 11px;
+     the transport's own stats colour is what quiet-but-legible looks like here. */
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-decoration: none;
+  white-space: nowrap;
+  /* The buttons are all at their minimum width already, so on a narrow window something
+     has to give. It should be this: the note shrinks to an ellipsis rather than pushing a
+     control off the end, and the full address is in the tooltip either way. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footnote:hover { color: var(--accent); text-decoration: underline; }
+
 /* ---- panels ----------------------------------------------------------- */
 
 .inputs {
