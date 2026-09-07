@@ -65,6 +65,29 @@ ${each(groverIterations(n), () => step.join('\n')).split('\n').join('\n')}
 `;
 }
 
+/**
+ * The textbook QFT: a Hadamard on each qubit, then a controlled phase from every qubit
+ * below it, halving each step, and a reversal at the end.
+ *
+ * The halving is what limits the size. Qubit j takes a phase of pi/2^(k-j) from qubit k,
+ * so the finest angle an n-qubit transform needs is pi/2^(n-1) — and the ring holds no
+ * angle finer than pi/4. Three qubits fit exactly; a fourth would need pi/8, which is not
+ * a rotation this arithmetic can name at all.
+ */
+function qft(n) {
+  const body = [];
+  for (let j = 0; j < n; j++) {
+    body.push(`h q[${j}];`);
+    for (let k = j + 1; k < n; k++) body.push(`cu1(pi/${2 ** (k - j)}) q[${k}],q[${j}];`);
+  }
+  for (let i = 0; i < Math.floor(n / 2); i++) body.push(`swap q[${i}],q[${n - 1 - i}];`);
+  return `${HEADER}
+qreg q[${n}];
+
+${body.join('\n')}
+`;
+}
+
 const HALVINGS = [null, 'once', 'twice', 'three times'];
 
 function wState(n) {
@@ -169,23 +192,16 @@ h q[1];
   },
   {
     name: 'QFT',
-    // Level k needs a phase of pi/2^k, and the ring holds no angle finer than pi/4.
-    sizes: [3],
+    // Three is the ceiling, not a choice: see qft() above.
+    sizes: [1, 2, 3],
     defaultSize: 3,
     note: 'Every amplitude differs by a phase, so nothing can be shared: the worst case '
-      + 'for a diagram. A fourth qubit would need a phase of π/8, which leaves the ring.',
-    qasm: `${HEADER}
-qreg q[3];
-
-h q[0];
-cu1(pi/2) q[1],q[0];
-cu1(pi/4) q[2],q[0];
-h q[1];
-cu1(pi/2) q[2],q[1];
-h q[2];
-swap q[0],q[2];
-`,
-    state: '|101> : 1',
+      + 'for a diagram. It stops at three qubits — a fourth would need a phase of π/8, '
+      + 'which is not an angle this ring can name.',
+    qasm: qft,
+    // |1>, |01>, |101>: an odd number at every size, so it shares no factor with 2^n and
+    // every one of the 2^n phases comes out different — which is the case worth showing.
+    state: (n) => `|${'01'.repeat(n).slice(-n)}> : 1`,
   },
   {
     name: 'Toffoli in Clifford+T',

@@ -55,7 +55,7 @@ test('edge weights buy exactly the sharing they are meant to', () => {
   // The QFT is the case the terminal-valued diagram handles worst: every amplitude has a
   // different phase, so nothing can be shared. Those phases are units, and the amplitudes
   // factor over the bits, so with weights on the edges it is one node per level.
-  const qft = allInstances().find((e) => e.name === 'QFT');
+  const qft = allInstances().find((e) => e.name === 'QFT' && e.size === 3);
   const { dd, ev, mtbdd, edge } = bothWays(qft);
   assert.equal(dd.size(mtbdd), 15, '7 internal nodes and 8 distinct amplitudes');
   assert.equal(ev.size(edge), 4, 'one node per level and the single terminal');

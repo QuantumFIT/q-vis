@@ -84,6 +84,28 @@ test('GHZ is two nodes per qubit at every size', () => {
   }
 });
 
+test('the QFT is the real transform, and the worst case at every size', () => {
+  // Nothing can be shared: the input is odd, so it shares no factor with 2^n and all 2^n
+  // phases come out different. The diagram is then the whole state vector, which is the
+  // point of having the example at all.
+  const qft = EXAMPLES.find((ex) => ex.name === 'QFT');
+  for (const n of qft.sizes) {
+    const instance = instantiate(qft, n);
+    const { dd, root } = run(instance);
+    assert.equal(dd.size(root), 2 ** (n + 1) - 1, `QFT on ${n}: no sharing to be had`);
+
+    // e^(2*pi*i*x*y/N)/sqrt(N), against the circuit rather than against itself.
+    const x = parseInt(instance.state.match(/\|([01]+)>/)[1], 2);
+    const N = 2 ** n;
+    for (let y = 0; y < N; y++) {
+      const { re, im } = Z.toComplex(P.asScalar(dd.evaluate(root, y.toString(2).padStart(n, '0'))));
+      const angle = (2 * Math.PI * x * y) / N;
+      assert.ok(Math.hypot(re - Math.cos(angle) / Math.sqrt(N), im - Math.sin(angle) / Math.sqrt(N)) < 1e-12,
+        `QFT on ${n}: amplitude ${y} is not the transform`);
+    }
+  }
+});
+
 test('a uniform superposition is one node however wide it is', () => {
   const uniform = EXAMPLES.find((ex) => ex.name === 'Uniform superposition');
   for (const n of uniform.sizes) {
@@ -124,7 +146,7 @@ test('the sizes left out are left out for a reason', () => {
     'there is no sqrt(3) in this ring to divide by');
 
   const qft = EXAMPLES.find((ex) => ex.name === 'QFT');
-  assert.deepEqual(qft.sizes, [3]);
+  assert.deepEqual(qft.sizes, [1, 2, 3], 'as far as pi/4 reaches');
   assert.throws(() => parseQasm('OPENQASM 2.0;\nqreg q[2];\ncu1(pi/8) q[1],q[0];\n'),
     /pi\/4|multiple/, 'the phase a fourth QFT qubit needs');
 });
