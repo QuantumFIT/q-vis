@@ -124,14 +124,15 @@ export function apply(ring, a, vec) {
 const LETTERS = [['I', 'Z'], ['X', 'Y']];
 
 /**
- * The string as letters, most significant qubit first. X^x Z^z is -i Y when both bits
+ * The string as letters joined by the tensor product, qubit 0 first — the same order as
+ * the ket, so `X⊗Z⊗I` reads off the diagram top to bottom. X^x Z^z is -i Y when both bits
  * are set, so printing Y means the caller owes the weight a factor of (-i)^|x&z|; that
  * is what `phaseShift` reports.
  */
 export function formatString(a, n) {
-  let out = '';
-  for (let q = 0; q < n; q++) out += LETTERS[(a.x >> q) & 1][(a.z >> q) & 1];
-  return out;
+  const letters = [];
+  for (let q = 0; q < n; q++) letters.push(LETTERS[(a.x >> q) & 1][(a.z >> q) & 1]);
+  return letters.join('⊗');
 }
 
 /** The power of -i owed to the weight when the string is printed with Y in it. */

@@ -145,9 +145,10 @@ test('the order puts the identity first and is total', () => {
   }
 });
 
-test('a string prints as letters, with Y where X and Z meet', () => {
-  assert.equal(Pauli.formatString({ x: 0b011, z: 0b110 }, 3), 'XYZ');
-  assert.equal(Pauli.formatString({ x: 0, z: 0 }, 4), 'IIII');
+test('a string prints as a tensor product, with Y where X and Z meet', () => {
+  assert.equal(Pauli.formatString({ x: 0b011, z: 0b110 }, 3), 'X⊗Y⊗Z');
+  assert.equal(Pauli.formatString({ x: 0, z: 0 }, 4), 'I⊗I⊗I⊗I');
+  assert.equal(Pauli.formatString({ x: 1, z: 0 }, 1), 'X', 'one qubit needs no operator');
   // XZ is -i*Y, so printing that Y owes the weight a factor of -i.
   assert.equal(Pauli.phaseShift({ x: 0b011, z: 0b110 }), 1);
   assert.equal(Pauli.phaseShift({ x: 0b011, z: 0b011 }), 2);
