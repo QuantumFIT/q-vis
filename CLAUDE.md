@@ -28,8 +28,9 @@ git push -f origin HEAD:preview
 ```
 
 Hand over the link — <https://quantum.fit.vut.cz/q-vis/preview/> — whenever a task is
-pushed there, so it can be clicked from the message rather than looked up. It refreshes
-about a minute after the push.
+pushed there, so it can be clicked from the message rather than looked up. Give it **last**,
+as the final line after everything else, and only once the deploy has landed and nothing
+is still running. A link promised ahead of the deploy is a message with nothing to click.
 
 Delete the branch when the change lands — `/preview/` goes on the next deploy. Details in
 `docs/VERSIONS.md`.
