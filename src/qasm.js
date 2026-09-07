@@ -99,16 +99,24 @@ function parseAngle(p) {
   return expr();
 }
 
-/** An angle is usable iff it is a multiple of pi/4; returns that multiple. */
-function quarterTurns(theta, name, line) {
-  const m = theta / (Math.PI / 4);
-  const r = Math.round(m);
-  if (Math.abs(m - r) > 1e-9) {
-    throw new QasmError(
-      `${name}(${theta.toFixed(6)}) is not expressible in Z[1/sqrt(2), i]: the angle must be a ` +
-      `multiple of pi/4 (this tool keeps amplitudes exact, so arbitrary rotations are not supported)`, line);
+/** The finest phase the ring is asked to hold: pi/512, which is level 512. */
+const FINEST_LEVEL = 512;
+
+/**
+ * An angle is usable iff it is pi times a dyadic rational — pi/4, pi/8, pi/256. Returns
+ * it as `{ j, d }` meaning pi*j/d with d a power of two, which is exactly the level of
+ * the ring that holds it. An angle like pi/3 has no form here at any level.
+ */
+function dyadicTurns(theta, name, line) {
+  for (let d = 4; d <= FINEST_LEVEL; d *= 2) {
+    const j = (theta * d) / Math.PI;
+    const r = Math.round(j);
+    if (Math.abs(j - r) < 1e-9 * Math.max(1, Math.abs(j))) return { j: r, d };
   }
-  return r;
+  throw new QasmError(
+    `${name}(${theta.toFixed(6)}) is not expressible exactly: the angle must be pi times a ` +
+    `dyadic rational — pi/4, pi/8, pi/16 and so on down to pi/${FINEST_LEVEL} (this tool keeps ` +
+    `amplitudes exact, so an angle like pi/3 is not supported at all)`, line);
 }
 
 const REJECTED = {
@@ -177,21 +185,21 @@ export function parseQasm(src) {
     if (ROTATIONS.has(name)) {
       // The only rotations in the ring are phases by a multiple of pi/4.
       if ((name === 'u1' || name === 'p') && angles.length === 1) {
-        const m = quarterTurns(angles[0], name, line);
-        emit(name, phaseGate(m), phaseLabel(m, ''), args, line,
-          { controls: 0, target: 'box', symbol: phaseLabel(m, '') });
+        const { j, d } = dyadicTurns(angles[0], name, line);
+        emit(name, phaseGate(j, d), phaseLabel(j, d, ''), args, line,
+          { controls: 0, target: 'box', symbol: phaseLabel(j, d, '') });
         return;
       }
       if ((name === 'cu1' || name === 'cp') && angles.length === 1) {
-        const m = quarterTurns(angles[0], name, line);
-        emit(name, controlled(phaseGate(m)), phaseLabel(m, 'C'), args, line,
-          { controls: 1, target: 'box', symbol: phaseLabel(m, '') });
+        const { j, d } = dyadicTurns(angles[0], name, line);
+        emit(name, controlled(phaseGate(j, d)), phaseLabel(j, d, 'C'), args, line,
+          { controls: 1, target: 'box', symbol: phaseLabel(j, d, '') });
         return;
       }
       throw new QasmError(
         `'${name}' is a parametrised rotation and is not supported: its matrix entries leave ` +
-        `Z[1/sqrt(2), i]. Use the exact gates (h, s, sdg, t, tdg, z, ...) or a phase u1/p with ` +
-        `an angle that is a multiple of pi/4`, line);
+        `the ring whatever its level. Use the exact gates (h, s, sdg, t, tdg, z, ...) or a ` +
+        `phase u1/p with an angle that is pi times a dyadic rational`, line);
     }
 
     const g = GATES[name];
@@ -312,8 +320,16 @@ export function parseQasm(src) {
   return { nqubits: qubits.length, qubits, gates, barriers, registers: [...qregs], source: src };
 }
 
-function phaseLabel(m, prefix) {
-  const r = ((m % 8) + 8) % 8;
-  const names = { 0: 'I', 2: 'S', 4: 'Z', 6: 'S†', 1: 'T', 7: 'T†' };
-  return prefix + (names[r] !== undefined ? names[r] : `P(${m}π/4)`);
+/** The phases with names of their own, as the reduced fraction num/den of pi. */
+const PHASE_NAMES = { '0/1': 'I', '1/1': 'Z', '1/2': 'S', '3/2': 'S†', '1/4': 'T', '7/4': 'T†' };
+
+function phaseLabel(j, d, prefix) {
+  // Reduce pi*j/d to lowest terms first, so that a phase written as 4*pi/8 is still S.
+  let num = ((j % (2 * d)) + 2 * d) % (2 * d);
+  let den = d;
+  while (num % 2 === 0 && den % 2 === 0) { num /= 2; den /= 2; }
+  if (num === 0) den = 1;
+  const named = PHASE_NAMES[`${num}/${den}`];
+  if (named !== undefined) return prefix + named;
+  return `${prefix}P(${num === 1 ? '' : num}π/${den})`;
 }

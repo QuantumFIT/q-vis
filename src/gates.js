@@ -1,4 +1,4 @@
-// Gate matrices, exact in Z[1/sqrt(2), i].
+// Gate matrices, exact in Z[zeta, 1/sqrt(2)].
 //
 // A k-qubit gate is a 2^k x 2^k matrix of ring scalars. Row/column indices are read
 // with the *first* qubit passed to the gate as the most significant bit: for a CX
@@ -98,10 +98,12 @@ for (const [name, g] of Object.entries(GATES)) {
 export const omegaPow = Z.omegaPow;   // e^{i*m*pi/4}
 
 /**
- * The phase gate diag(1, e^{i*m*pi/4}). This is how `u1`/`p` from qelib1 enters the
- * ring: an angle that is a multiple of pi/4 is exactly representable, any other is not.
+ * The phase gate diag(1, e^{i*pi*j/d}). This is how `u1`/`p` from qelib1 enters the ring:
+ * an angle that is pi times a dyadic rational is exactly representable at level d, any
+ * other angle is not representable at all. Called with one argument it is the quarter
+ * turn it always was, diag(1, w^m).
  */
-export function phaseGate(m) { return [[L, O], [O, omegaPow(m)]]; }
+export function phaseGate(j, d = Z.BASE_LEVEL) { return [[L, O], [O, Z.rootPow(j, d)]]; }
 
 /** Numeric matrix, for the floating-point oracle. */
 export function toComplexMatrix(m) {

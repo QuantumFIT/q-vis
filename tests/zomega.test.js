@@ -142,3 +142,128 @@ test('the unit part factors exactly, and a unit reduces to 1', () => {
     assert.equal(Z.key(Z.unitPart(a).rest), Z.key(Z.unitPart(scaled).rest));
   }
 });
+
+// ---- the tower of levels -------------------------------------------------
+
+const LEVELS = [4, 8, 16];
+
+const randAt = (r, d) => Z.zeta(Array.from({ length: d }, () => randInt(r, -3, 3)), randInt(r, 0, 3));
+
+test('each level is the ring it claims to be', () => {
+  for (const d of LEVELS) {
+    const z = Z.rootPow(1, d);
+    assertClose(Z.toComplex(z), { re: Math.cos(Math.PI / d), im: Math.sin(Math.PI / d) },
+      `the root at level ${d} is e^(i pi/${d})`);
+
+    // z^d = -1 and z^2d = 1, which is what makes x^d + 1 the right modulus.
+    let acc = Z.ONE;
+    for (let i = 0; i < d; i++) acc = Z.mul(acc, z);
+    assert.ok(Z.eq(acc, Z.MINUS_ONE), `z^${d} = -1 at level ${d}`);
+    assert.ok(Z.eq(Z.mul(acc, acc), Z.ONE), `z^${2 * d} = 1 at level ${d}`);
+
+    // sqrt(2) is the same element at every level, and still squares to 2.
+    assert.ok(Z.eq(Z.mul(Z.SQRT2, Z.SQRT2), Z.fromInt(2)));
+    assert.ok(Z.eq(Z.mul(Z.rootPow(d / 4, d), Z.OMEGA_INV), Z.ONE),
+      `the quarter turn at level ${d} is the base level's omega`);
+  }
+});
+
+test('a value keeps its key whatever level it is written at', () => {
+  // This is what hash-consing rests on: the same amplitude reached through a pi/16 phase
+  // and through a T gate has to be the same terminal.
+  const r = rng(77);
+  for (let i = 0; i < 200; i++) {
+    const low = randAt(r, 4);
+    let raised = low;
+    for (const d of [8, 16, 32]) {
+      // Multiplying by 1 written at level d promotes and then demotes again.
+      raised = Z.mul(raised, Z.rootPow(0, d));
+      assert.equal(Z.key(raised), Z.key(low), `level ${d} did not come back down`);
+      assert.equal(Z.levelOf(raised), Z.levelOf(low));
+    }
+  }
+});
+
+test('a value that needs a finer phase stays up, and says so', () => {
+  const eighth = Z.rootPow(1, 8);                       // e^(i pi/8)
+  assert.equal(Z.levelOf(eighth), 8);
+  assert.equal(Z.levelOf(Z.mul(eighth, eighth)), 4, 'two eighth turns make a quarter');
+  assert.ok(Z.eq(Z.mul(eighth, eighth), Z.OMEGA));
+
+  // And it is a genuinely new number: not expressible at the base level.
+  assert.notEqual(Z.key(eighth), Z.key(Z.OMEGA));
+  assert.equal(Z.levelOf(Z.add(eighth, Z.ONE)), 8, 'a sum that needs the level keeps it');
+  assert.equal(Z.levelOf(Z.sub(eighth, eighth)), 4, 'zero is at the floor');
+});
+
+test('ring laws hold at every level, and across levels', () => {
+  const r = rng(78);
+  for (const d of LEVELS) {
+    for (let i = 0; i < 60; i++) {
+      const a = randAt(r, d);
+      const b = randAt(r, d);
+      // Mixed levels on purpose: the promotion has to be a ring homomorphism.
+      const c = randAt(r, LEVELS[randInt(r, 0, LEVELS.length - 1)]);
+      assert.ok(Z.eq(Z.mul(Z.mul(a, b), c), Z.mul(a, Z.mul(b, c))), 'associative');
+      assert.ok(Z.eq(Z.mul(a, b), Z.mul(b, a)), 'commutative');
+      assert.ok(Z.eq(Z.mul(a, Z.add(b, c)), Z.add(Z.mul(a, b), Z.mul(a, c))), 'distributive');
+      assert.ok(Z.eq(Z.add(a, Z.neg(a)), Z.ZERO), 'additive inverse');
+      assertClose(Z.toComplex(Z.mul(a, b)), cx.mul(Z.toComplex(a), Z.toComplex(b)),
+        'the numeric value follows the algebra');
+    }
+  }
+});
+
+test('conjugation and inversion work at every level', () => {
+  const r = rng(79);
+  for (const d of LEVELS) {
+    for (let i = 0; i < 40; i++) {
+      const a = randAt(r, d);
+      assert.ok(Z.eq(Z.conj(Z.conj(a)), a), 'conjugation is an involution');
+      const sq = Z.mul(a, Z.conj(a));
+      const { im } = Z.toComplex(sq);
+      assert.ok(Math.abs(im) < 1e-9, 'a times its conjugate is real');
+      assert.ok(Z.toComplex(sq).re > -1e-9, 'and not negative');
+
+      const inv = Z.tryInvert(a);
+      if (inv !== null) assert.ok(Z.eq(Z.mul(a, inv), Z.ONE), `1/a at level ${d}`);
+    }
+    // The root itself is a unit at every level, and 3 is invertible at none of them.
+    assert.ok(Z.eq(Z.mul(Z.rootPow(1, d), Z.tryInvert(Z.rootPow(1, d))), Z.ONE));
+  }
+  assert.equal(Z.tryInvert(Z.fromInt(3)), null, '3 has no inverse anywhere in the tower');
+  assert.equal(Z.tryInvert(Z.add(Z.rootPow(1, 8), Z.fromInt(3))), null);
+});
+
+test('the unit part factors exactly at every level', () => {
+  const r = rng(80);
+  for (const d of LEVELS) {
+    for (let i = 0; i < 40; i++) {
+      const a = randAt(r, d);
+      const { unit, rest } = Z.unitPart(a);
+      assert.ok(Z.eq(Z.mul(unit, rest), a), `unit * rest = a at level ${d}`);
+      if (Z.isZero(a)) continue;
+      // A rotation at this level is a unit, so it must leave the rest alone.
+      const turned = Z.mul(a, Z.rootPow(randInt(r, 1, 2 * d - 1), d));
+      assert.equal(Z.key(Z.unitPart(turned).rest), Z.key(rest),
+        `a rotation at level ${d} changes the unit, not the rest`);
+    }
+    assert.ok(Z.eq(Z.unitPart(Z.rootPow(3, d)).rest, Z.ONE), 'a unit reduces to 1');
+  }
+});
+
+test('formatting names the root of the level it is at', () => {
+  assert.equal(Z.format(Z.OMEGA), 'ω');
+  assert.equal(Z.format(Z.rootPow(1, 8)), 'ω');
+  assert.equal(Z.format(Z.rootPow(3, 8)), 'ω³');
+  assert.equal(Z.format(Z.rootPow(4, 8)), 'i', 'the quarter turn is still i');
+  assert.equal(Z.format(Z.rootPow(9, 16)), 'ω⁹');
+  // The value is what the string says, whatever the level.
+  for (const d of LEVELS) {
+    for (let j = 0; j < 2 * d; j++) {
+      const z = Z.rootPow(j, d);
+      assertClose(Z.toComplex(z), { re: Math.cos((Math.PI * j) / d), im: Math.sin((Math.PI * j) / d) },
+        `level ${d}, power ${j}`);
+    }
+  }
+});

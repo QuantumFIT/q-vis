@@ -69,10 +69,11 @@ ${each(groverIterations(n), () => step.join('\n')).split('\n').join('\n')}
  * The textbook QFT: a Hadamard on each qubit, then a controlled phase from every qubit
  * below it, halving each step, and a reversal at the end.
  *
- * The halving is what limits the size. Qubit j takes a phase of pi/2^(k-j) from qubit k,
- * so the finest angle an n-qubit transform needs is pi/2^(n-1) — and the ring holds no
- * angle finer than pi/4. Three qubits fit exactly; a fourth would need pi/8, which is not
- * a rotation this arithmetic can name at all.
+ * The halving is what sets the level. Qubit j takes a phase of pi/2^(k-j) from qubit k,
+ * so the finest angle an n-qubit transform needs is pi/2^(n-1), and the ring climbs a
+ * level for every qubit: pi/8 at four, pi/16 at five. Still exact, still canonical — see
+ * zomega.js. What stops it now is speed, not arithmetic: the edge-valued conversion is
+ * where the cost lands, and past seven qubits it stops being interactive.
  */
 function qft(n) {
   const body = [];
@@ -192,12 +193,17 @@ h q[1];
   },
   {
     name: 'QFT',
-    // Three is the ceiling, not a choice: see qft() above.
-    sizes: [1, 2, 3],
+    // Seven is where the edge-valued conversion stops being interactive; see qft() above.
+    sizes: range(1, 7),
     defaultSize: 3,
-    note: 'Every amplitude differs by a phase, so nothing can be shared: the worst case '
-      + 'for a diagram. It stops at three qubits — a fourth would need a phase of π/8, '
-      + 'which is not an angle this ring can name.',
+    note: (n) => 'Every amplitude differs by a phase, so nothing can be shared: the worst '
+      + `case for a diagram, and here the whole state vector — ${2 ** (n + 1) - 1} nodes. `
+      + `The edge-valued view collapses it to ${n + 1}, because a phase is exactly what an `
+      + 'edge weight holds.'
+      + (n >= 4
+        ? ` Each qubit needs a phase twice as fine as the last, so ω is e^(iπ/${2 ** (n - 1)}) `
+          + 'here rather than the π/4 of Clifford+T — a level further up the same exact ring.'
+        : ''),
     qasm: qft,
     // |1>, |01>, |101>: an odd number at every size, so it shares no factor with 2^n and
     // every one of the 2^n phases comes out different — which is the case worth showing.

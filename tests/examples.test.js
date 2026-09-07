@@ -145,8 +145,12 @@ test('the sizes left out are left out for a reason', () => {
   assert.throws(() => parseState('|000> : 1/sqrt(3)', 3), /only sqrt\(2\)/,
     'there is no sqrt(3) in this ring to divide by');
 
+  // The QFT's own ceiling is no longer the ring: pi/8 and pi/128 are exact, one level up.
   const qft = EXAMPLES.find((ex) => ex.name === 'QFT');
-  assert.deepEqual(qft.sizes, [1, 2, 3], 'as far as pi/4 reaches');
-  assert.throws(() => parseQasm('OPENQASM 2.0;\nqreg q[2];\ncu1(pi/8) q[1],q[0];\n'),
-    /pi\/4|multiple/, 'the phase a fourth QFT qubit needs');
+  assert.deepEqual(qft.sizes, [1, 2, 3, 4, 5, 6, 7]);
+  assert.doesNotThrow(() => parseQasm('OPENQASM 2.0;\nqreg q[2];\ncu1(pi/8) q[1],q[0];\n'),
+    'the phase a fourth QFT qubit needs');
+  // What is still refused is an angle that is not pi times a dyadic rational at all.
+  assert.throws(() => parseQasm('OPENQASM 2.0;\nqreg q[1];\nu1(pi/3) q[0];\n'),
+    /dyadic rational/);
 });

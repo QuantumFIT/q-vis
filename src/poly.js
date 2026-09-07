@@ -103,6 +103,13 @@ export function denominatorPower(p) {
   return k;
 }
 
+/** The finest root of unity any coefficient here needs — the level of the ring in play. */
+export function ringLevel(p) {
+  let d = Z.BASE_LEVEL;
+  for (const { coef } of p.t.values()) d = Math.max(d, Z.levelOf(coef));
+  return d;
+}
+
 export function symbols(p) {
   const s = new Set();
   for (const { mono } of p.t.values()) for (const [n] of mono) s.add(n);
@@ -151,10 +158,13 @@ function monoString(mono) {
  *   polar in the requested angle unit; tuple is the algebraic (a,b,c,d) form over a
  *   common denominator. Symbolic terms keep their monomials in every mode — only the
  *   coefficient in front of them changes. 'polar' is accepted as 'polar-deg'.
- * @param {{k?: number}} [opts] the common power of sqrt(2) to write tuples over
+ * @param {{k?: number, level?: number}} [opts] the common power of sqrt(2) and the common
+ *   ring level to write tuples over, so that every tuple of one state is the same width
  */
 export function format(p, mode = 'exact', opts = {}) {
-  if (p.t.size === 0) return mode === 'tuple' ? Z.formatTuple(Z.ZERO, opts.k || 0) : '0';
+  if (p.t.size === 0) {
+    return mode === 'tuple' ? Z.formatTuple(Z.ZERO, opts.k || 0, opts.level || Z.BASE_LEVEL) : '0';
+  }
   if (mode !== 'exact') return formatNumeric(p, mode, opts);
   const parts = [];
   for (const k of [...p.t.keys()].sort()) {
@@ -172,7 +182,10 @@ export function format(p, mode = 'exact', opts = {}) {
 /** @returns {(z: any) => string} */
 function numberFormatter(mode, opts) {
   if (mode === 'rect') return Z.formatRect;
-  if (mode === 'tuple') return (z) => Z.formatTuple(z, Math.max(opts.k || 0, z.k));
+  if (mode === 'tuple') {
+    return (z) => Z.formatTuple(z, Math.max(opts.k || 0, z.k),
+      Math.max(opts.level || Z.BASE_LEVEL, Z.levelOf(z)));
+  }
   const unit = { 'polar-rad': 'rad', 'polar-pi': 'pi' }[mode] || 'deg';
   return (z) => Z.formatPolar(z, unit);
 }

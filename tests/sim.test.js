@@ -4,8 +4,8 @@ import { MTBDD } from '../src/dd.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
 import { applyGate, applyNamed, simulate } from '../src/sim.js';
-import { GATES, dagger, matMul, identity } from '../src/gates.js';
-import { applyNamedDense, basisString } from './oracle.js';
+import { GATES, dagger, matMul, identity, phaseGate, controlled } from '../src/gates.js';
+import { applyNamedDense, applyGateDense, basisString } from './oracle.js';
 import { rng, randInt, assertClose } from './helpers.js';
 
 const NAMES = Object.keys(GATES);
@@ -48,6 +48,51 @@ test('differential oracle: random circuits match a dense state-vector simulator'
       vec = applyNamedDense(vec, n, g.name, g.qubits);
       assertMatches(m, root, vec, {}, `after gate ${i} (${g.name} on ${g.qubits})`);
     });
+  }
+});
+
+test('differential oracle: phases finer than pi/4 match the dense simulator too', () => {
+  // A phase below pi/4 pushes the ring up a level, where the arithmetic is new code. It
+  // gets the same treatment as the rest of the engine: checked against floating point
+  // after every gate, with the fine phases interleaved among ordinary ones so that the
+  // levels have to mix.
+  const r = rng(33);
+  const LEVELS = [4, 8, 16, 32, 64];
+  for (let iter = 0; iter < 15; iter++) {
+    const n = randInt(r, 1, 4);
+    const m = new MTBDD(P.Ring, n);
+    const start = basisString(randInt(r, 0, (1 << n) - 1), n);
+    let root = m.basisState(start, P.one);
+    let vec = allBits(n).map((b) => (b === start ? { re: 1, im: 0 } : { re: 0, im: 0 }));
+
+    for (let step = 0; step < 12; step++) {
+      const pool = [...Array(n).keys()];
+      const take = (howMany) => Array.from({ length: howMany },
+        () => pool.splice(randInt(r, 0, pool.length - 1), 1)[0]);
+
+      let qubits;
+      let matrix;
+      let what;
+      if (r() < 0.5) {
+        const names = NAMES.filter((g) => GATES[g].arity <= n);
+        const name = names[randInt(r, 0, names.length - 1)];
+        qubits = take(GATES[name].arity);
+        matrix = GATES[name].matrix;
+        what = name;
+      } else {
+        const d = LEVELS[randInt(r, 0, LEVELS.length - 1)];
+        const j = randInt(r, 1, 2 * d - 1);
+        const gate = phaseGate(j, d);
+        const twoQubit = n >= 2 && r() < 0.5;
+        qubits = take(twoQubit ? 2 : 1);
+        matrix = twoQubit ? controlled(gate) : gate;
+        what = `${twoQubit ? 'c' : ''}u1(${j}pi/${d})`;
+      }
+
+      root = applyGate(m, root, qubits, matrix);
+      vec = applyGateDense(vec, n, qubits, matrix);
+      assertMatches(m, root, vec, {}, `after ${what} on ${qubits}`);
+    }
   }
 });
 

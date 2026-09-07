@@ -85,18 +85,25 @@ from it.
 
 ## Amplitude algebra
 
-Amplitudes live in `Z[1/sqrt2, i]`, extended to polynomials in free symbols for symbolic input.
+Amplitudes live in a tower of rings `Z[zeta_2d, 1/sqrt2]`, `d` a power of two from 4 up,
+extended to polynomials in free symbols for symbolic input. `d = 4` is `Z[1/sqrt2, i]`, the
+Clifford+T amplitudes, and is the floor and the default.
 
-- `zomega.js`: exact scalar `(c0 + c1*w + c2*w^2 + c3*w^3) / sqrt(2)^k` with `w = e^{i*pi/4}`,
-  `w^4 = -1`, integer coefficients as **BigInt**, `k >= 0` and minimal.
-  This is the MEDUSA/SliQSim encoding written in the `w`-power basis; the classic
-  `(a,b,c,d,k)` tuple is `(c3,c2,c1,c0,k)`.
-  Canonical: `sqrt2 = w - w^3` is prime in `Z[w]`, so the minimal-`k` form is unique.
+- `zomega.js`: exact scalar `(c_0 + c_1*z + ... + c_{d-1}*z^{d-1}) / sqrt(2)^k` with
+  `z = e^{i*pi/d}`, `z^d = -1`, integer coefficients as **BigInt**, `k >= 0` and minimal.
+  **An element carries its own `d`**: operations promote to the larger of two, and the
+  canonical form takes the smallest `d` that holds the value, never below 4. So a `pi/16`
+  phase and a T gate compose with no special case, nothing has to select a mode, and every
+  key expressible at `d = 4` is exactly what it was.
+  At `d = 4` this is the MEDUSA/SliQSim encoding written in the `w`-power basis; the
+  classic `(a,b,c,d,k)` tuple is `(c3,c2,c1,c0,k)`.
+  Canonical: `sqrt2 = z^{d/4} - z^{3d/4}` is prime, so the minimal-`k` form is unique.
 - `poly.js`: multivariate polynomials over that scalar ring, canonical normal form
   (zero coefficients dropped, monomials sorted). Gates are linear, so in practice
   amplitudes stay linear in the input symbols — but the implementation is general.
-- Supported gate set is therefore **Clifford+T** (plus controlled/multi-controlled versions,
-  SWAP, and any gate whose matrix entries lie in the ring). Arbitrary `rx/ry/rz(theta)`
+- Supported gate set is **Clifford+T and finer phases** (plus controlled/multi-controlled versions,
+  SWAP, and any gate whose matrix entries lie in the ring): a phase is exact when its
+  angle is `pi` times a dyadic rational. Arbitrary `rx/ry/rz(theta)`
   is deliberately **out of scope**: it would break exactness and canonicity.
 
 ## Style

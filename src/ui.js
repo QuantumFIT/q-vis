@@ -109,8 +109,18 @@ function compile() {
     }
     return k;
   });
+  // Which root of unity this frame's amplitudes need. It is a footnote on the plate and
+  // the width of a tuple, and it grows when the circuit asks for a phase finer than pi/4.
+  app.commonLevel = frames.map((f) => {
+    let d = 4;
+    for (const id of dd.reachable(f.root)) {
+      if (dd.isTerminal(id)) d = Math.max(d, P.ringLevel(dd.valueOf(id)));
+    }
+    return d;
+  });
   const labels = circuit.qubits.map((q) => q.label);
-  const show = (v, i) => P.format(v, app.ampFormat, { k: app.commonK[i] });
+  const show = (v, i) => P.format(v, app.ampFormat,
+    { k: app.commonK[i], level: app.commonLevel[i] });
 
   // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
   // drawable nor informative.
@@ -371,13 +381,11 @@ function resetCanvas() {
     lx += 48;
   }
 
-  // Most amplitudes print in a familiar form, but a genuine eighth root of unity has to
-  // be shown as a power of w, and nothing else on screen says what w is. Shown only on
-  // the frames where it actually appears, so it is a footnote rather than clutter.
+  // Most amplitudes print in a familiar form, but a genuine root of unity has to be shown
+  // as a power of w, and nothing else on screen says what w is — and w is not always the
+  // same thing: a circuit with a pi/16 phase needs a finer root than a Clifford+T one.
+  // Shown only on the frames where it appears, so it is a footnote rather than clutter.
   const omega = svgEl('text', { class: 'gutter legend-cap', x: lx + 16, y: ly });
-  const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
-  sup.textContent = 'iπ/4';
-  omega.append('ω = e', sup);
   sticky.append(omega);
   app.omegaNote = omega;
 
@@ -601,12 +609,24 @@ function drawFrame(f) {
     }, 300));
   }
 
-  app.omegaNote.style.display =
-    f.nodes.some((nd) => nd.terminal && nd.label.includes('ω')) ? '' : 'none';
+  const level = app.commonLevel[f.index];
+  const showsOmega = f.nodes.some((nd) => nd.terminal && nd.label.includes('ω'))
+    || f.edges?.some((e) => e.label?.includes('ω'));
+  app.omegaNote.style.display = showsOmega ? '' : 'none';
+  if (showsOmega) {
+    const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
+    sup.textContent = `iπ/${level}`;
+    app.omegaNote.replaceChildren('ω = e', sup);
+  }
+
   const tupleMode = app.ampFormat === 'tuple';
   app.tupleNote.style.display = tupleMode ? '' : 'none';
   if (tupleMode) {
-    app.tupleNote.replaceChildren(`(a,b,c,d) = aω³+bω²+cω+d, over √2`);
+    // At the base level the tuple has the four names the literature gives it; above that
+    // it is as wide as the level and only an index will do.
+    app.tupleNote.replaceChildren(level === 4
+      ? '(a,b,c,d) = aω³+bω²+cω+d, over √2'
+      : `(c${level - 1}…c0) = Σ cjωʲ, over √2`);
     const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
     sup.textContent = String(app.commonK[f.index]);
     app.tupleNote.append(sup);
@@ -741,7 +761,8 @@ function renderReadout(f) {
     line.className = 'amp-line';
     const coef = document.createElement('span');
     coef.className = 'amp-coef';
-    coef.textContent = P.format(value, app.ampFormat, { k: app.commonK[f.index] });
+    coef.textContent = P.format(value, app.ampFormat,
+      { k: app.commonK[f.index], level: app.commonLevel[f.index] });
     const ket = document.createElement('span');
     ket.className = 'amp-ket';
     ket.textContent = `|${path}⟩`;
@@ -833,7 +854,10 @@ function buildHelp() {
 
   body.append(el('h3', null, 'Phases'));
   body.append(el('p', 'help-note',
-    'Only angles that are multiples of π/4, which is exactly when the phase stays exact. '
+    'Any angle that is π times a dyadic rational — π/4, π/8, π/256 — which is exactly when '
+    + 'the phase stays exact. A finer phase moves the amplitude ring up a level rather than '
+    + 'rounding it, so ω means e^(iπ/4) in a Clifford+T circuit and e^(iπ/16) in one that '
+    + 'asked for π/16. The plate says which. '
     + 'Enough to write a QFT.'));
   body.append(helpTable([
     ['u1(pi/4) q[0];', 'multiplies |1> by e^(iπ/4); p is a synonym'],
@@ -878,7 +902,7 @@ function buildHelp() {
   body.append(el('h3', null, 'Refused, and why'));
   body.append(helpTable([
     ['rx(0.3) q[0];', 'an arbitrary rotation leaves the exact ring, so it cannot be represented'],
-    ['u1(pi/3) q[0];', 'the same reason: π/3 is not a multiple of π/4'],
+    ['u1(pi/3) q[0];', 'the same reason: π/3 is not π times a dyadic rational, at any level'],
     ['measure q -> c;', 'not unitary; this tool shows unitary evolution of a pure state'],
     ['reset q[0];', 'likewise not unitary'],
     ['if (c==1) x q[0];', 'classical control needs a measurement to control on'],

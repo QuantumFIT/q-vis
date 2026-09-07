@@ -4,6 +4,7 @@ import { parseQasm, QasmError } from '../src/qasm.js';
 import { MTBDD } from '../src/dd.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
+import { assertClose } from './helpers.js';
 import { simulate } from '../src/sim.js';
 import { GATES, omegaPow } from '../src/gates.js';
 
@@ -42,7 +43,7 @@ test('barriers are recorded as dividers, not as gates', () => {
   assert.deepEqual(c.barriers, [1, 2]);
 });
 
-test('phases by a multiple of pi/4 are exact; other angles are refused', () => {
+test('phases by a dyadic multiple of pi are exact; other angles are refused', () => {
   const c = parseQasm(`${HEAD}qreg q[2];\nu1(pi/4) q[0];\np(pi) q[1];\ncu1(pi/2) q[0],q[1];\ncp(-pi/4) q[1],q[0];\n`);
   assert.deepEqual(c.gates.map((g) => g.label), ['T', 'Z', 'CS', 'CT†']);
   // cu1(pi/2) must be exactly the tabulated CS gate.
@@ -50,9 +51,24 @@ test('phases by a multiple of pi/4 are exact; other angles are refused', () => {
   assert.ok(c.gates[2].matrix.every((row, i) => row.every((v, j) => Z.eq(v, cs[i][j]))));
   assert.ok(Z.eq(c.gates[0].matrix[1][1], omegaPow(1)));
 
-  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/3) q[0];\n`), /multiple of pi\/4/);
+  // Past pi/4 the ring goes up a level rather than giving up. The named gates keep their
+  // names — a phase of 4*pi/8 is the S gate, however it was written.
+  const fine = parseQasm(`${HEAD}qreg q[2];\nu1(pi/8) q[0];\nu1(pi/2) q[1];\nu1(4*pi/8) q[1];\ncu1(pi/16) q[0],q[1];\n`);
+  assert.deepEqual(fine.gates.map((g) => g.label), ['P(π/8)', 'S', 'S', 'CP(π/16)']);
+  assert.equal(Z.levelOf(fine.gates[0].matrix[1][1]), 8, 'pi/8 needs the level above');
+  assert.equal(Z.levelOf(fine.gates[1].matrix[1][1]), 4, 'pi/2 does not');
+  assertClose(Z.toComplex(fine.gates[0].matrix[1][1]),
+    { re: Math.cos(Math.PI / 8), im: Math.sin(Math.PI / 8) });
+
+  // Two eighth turns are a quarter turn, exactly, whatever level each was written at.
+  const eighth = fine.gates[0].matrix[1][1];
+  assert.ok(Z.eq(Z.mul(eighth, eighth), omegaPow(1)));
+
+  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/3) q[0];\n`), /dyadic rational/);
+  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/1024) q[0];\n`), /dyadic rational/,
+    'finer than the tool is willing to go is still refused');
   assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrz(pi/2) q[0];\n`), /parametrised rotation/);
-  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrx(pi) q[0];\n`), /leave\s+Z\[1\/sqrt\(2\), i\]/);
+  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrx(pi) q[0];\n`), /leave\s+the ring/);
 });
 
 test('non-unitary and unsupported constructs are refused with a reason', () => {

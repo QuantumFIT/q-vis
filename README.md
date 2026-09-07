@@ -17,7 +17,8 @@ open it offline. No install, no server, no dependencies.
 - The circuit itself is drawn in standard notation above the diagram, and doubles as the
   scrubber: click a column to jump to that step.
 
-Amplitudes are **exact**, in the ring `Z[1/√2, i]` extended with free symbols. Nothing is
+Amplitudes are **exact**, in a tower of rings `Z[ζ, 1/√2]` extended with free symbols —
+`Z[1/√2, i]` for a Clifford+T circuit, one level finer for every halving of a phase. Nothing is
 rounded, and two states are equal precisely when their diagrams are the same node.
 
 ## Why a decision diagram
@@ -66,7 +67,9 @@ combined with `+ - * / ^`. Division must stay exact: `1/2` and `1/(1+i)` are fin
 
 Clifford+T and anything else whose matrix entries lie in the ring: `x y z h s sdg t tdg
 sx sxdg`, controlled forms `cx cy cz ch cs csdg csx ct ctdg`, `swap iswap ccx ccz cswap`,
-and `u1`/`p`/`cu1`/`cp` when the angle is a multiple of π/4 — enough for QFT.
+and `u1`/`p`/`cu1`/`cp` when the angle is π times a dyadic rational — π/4, π/8, π/256.
+A finer phase moves the ring up a level instead of rounding, so a QFT is exact at any
+width; `π/3` is refused at every level.
 
 `barrier` is accepted and drawn as a divider between steps in the circuit strip. It has
 no effect on the state, since there is no compiler here for it to constrain.
@@ -120,7 +123,8 @@ eight signed unit tuples.
 
 Polar is the one to reach for when a circuit only moves phase around — the 3-qubit QFT
 prints as eight amplitudes of identical magnitude and eight different angles. Every angle
-in this ring is a multiple of π/4, so the π form stays exact where the other two round.
+in this ring is π times a dyadic rational, so the π form stays exact where the other two
+round.
 
 ## Sharing a view
 
