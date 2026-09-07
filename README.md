@@ -123,6 +123,12 @@ that link reproduces exactly what you were looking at, which is what you want wh
 pointing at one step from lecture notes, an issue, or a paper. **export SVG** saves the
 current diagram as a standalone figure, legend included.
 
+A copied link points at a frozen copy of the version that made it — `…/q-vis/v/v10/#…` —
+so it keeps showing what it showed even after the settings it encodes change meaning.
+Every release is kept at [`/v/`](https://quantum.fit.vut.cz/q-vis/v/), and the archived
+page links back to the current one. `docs/VERSIONS.md` says how that is built, and how to
+cut a release.
+
 ## Conventions
 
 Qubit *q* is decided at level *q*, so **qubit 0 is the top of the diagram and the leftmost

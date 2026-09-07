@@ -3,6 +3,9 @@ name: CI
 on:
   push:
     branches: [master]
+    # A new release tag has to republish too: the archive under /v/ is rebuilt from the
+    # tags, so a tag pushed on its own would otherwise not appear until the next commit.
+    tags: ['v*']
   pull_request:
   # So the site can be republished without an empty commit — after changing a Pages
   # setting, for instance.
@@ -25,7 +28,7 @@ jobs:
 
   pages:
     needs: test
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,14 +39,18 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Always publish master, whatever triggered the run: a tag push must add to the
+          # archive without dragging the root back to an older version.
+          ref: master
+          # Every released tag is rebuilt from its own source on each deploy, so the
+          # archive under /v/ needs the whole history, not just the tip.
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - name: Build the self-contained page and serve it as the site root
-        run: |
-          node tools/build.mjs
-          mkdir -p _site
-          cp q-vis.html _site/index.html
+      - name: Build the current page and a frozen copy of every released version
+        run: node tools/release.mjs _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

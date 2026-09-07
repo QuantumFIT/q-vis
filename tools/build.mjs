@@ -108,10 +108,23 @@ export function bundle(entry) {
   return { code, modules: mods.map((m) => m.name) };
 }
 
-export function buildHtml() {
+/**
+ * @param {string} version the tag being built, or 'dev'. It is stamped into the page so
+ *   that a copied link can point at this exact build, which is archived under /v/<tag>/
+ *   and never changes again. See docs/VERSIONS.md.
+ */
+export function buildHtml(version = 'dev') {
+  if (!/^(dev|v\d+)$/.test(version)) {
+    throw new Error(`version must be 'dev' or a release tag like v3, got '${version}'`);
+  }
   const { code, modules } = bundle('ui.js');
   const css = readFileSync(resolve(SRC, 'app.css'), 'utf8');
   let html = readFileSync(resolve(ROOT, 'dev.html'), 'utf8');
+
+  const stamped = html.replace('<meta name="q-vis-version" content="dev">',
+    `<meta name="q-vis-version" content="${version}">`);
+  if (stamped === html && version !== 'dev') throw new Error('no version meta tag to stamp');
+  html = stamped;
 
   html = html.replace('<link rel="stylesheet" href="src/app.css">', `<style>\n${css}\n</style>`);
   html = html.replace(
@@ -127,8 +140,9 @@ export function buildHtml() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const out = resolve(ROOT, 'q-vis.html');
-  const { html, modules } = buildHtml();
+  const version = process.env.Q_VIS_VERSION || 'dev';
+  const { html, modules } = buildHtml(version);
   writeFileSync(out, html);
   const kb = (Buffer.byteLength(html) / 1024).toFixed(1);
-  console.log(`${out}  ${kb} kB  (${modules.length} modules: ${modules.join(' ')})`);
+  console.log(`${out}  ${version}  ${kb} kB  (${modules.length} modules: ${modules.join(' ')})`);
 }

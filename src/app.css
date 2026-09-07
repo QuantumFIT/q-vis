@@ -104,6 +104,21 @@ body {
 
 .wordmark span { color: var(--ink-faint); }
 
+/* The build this page was made from. Silent on an unreleased build; on an archived one
+   it is the way back to the current version, so there it is a link and says so. */
+.version {
+  color: var(--ink-faint);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.version:empty { display: none; }
+
+a.version[href] { color: var(--accent); }
+
+a.version[href]:hover { text-decoration: underline; }
+
 .tagline {
   color: var(--ink-soft);
   font-size: 12px;

@@ -18,6 +18,20 @@ gate by gate, as a unitary circuit (OpenQASM) is applied to it. Teaching/demo to
   `limdd.js` off to the side. **Only `ui.js` may touch the DOM.** Everything else runs headless
   in Node, which is what makes the test suite possible.
 
+## Releasing
+
+**Tag every deploy worth linking to.** `copy link` in a released build points at the
+frozen copy of that build under `/v/<tag>/`, which is how a shared link keeps showing what
+it showed. An untagged build stamps itself `dev` and copies plain root links instead.
+
+```
+git tag -a v11 -m "One line saying what this release added"
+git push origin master --follow-tags
+```
+
+`tools/release.mjs` rebuilds every tag from its own source on each deploy, so the archive
+is a function of the repository alone. See `docs/VERSIONS.md`.
+
 ## Domain conventions (fixed — do not silently change)
 
 - **Qubit *q* lives at DD level *q*.** Qubit 0 is the *top* of the diagram and the

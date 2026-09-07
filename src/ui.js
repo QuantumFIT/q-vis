@@ -976,6 +976,46 @@ function decodeText(code) {
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 }
 
+/**
+ * Which build this is. Injected by tools/build.mjs into the meta tag; 'dev' in the dev
+ * loop and in any build made outside the release workflow. Read on demand, so that this
+ * module still evaluates outside a browser.
+ */
+let versionSeen = '';
+function version() {
+  if (!versionSeen) {
+    versionSeen = document.querySelector('meta[name="q-vis-version"]')?.content || 'dev';
+  }
+  return versionSeen;
+}
+
+/** A released version is archived under /v/<version>/ and never changes again. */
+const RELEASE = /^v\d+$/;
+
+/**
+ * Where a copied link should point: the frozen copy of this build, so that a link keeps
+ * showing what it showed when it was made, whatever the tool becomes later. Null when
+ * there is nothing frozen to point at — an unreleased build, a page opened from a file,
+ * or a page that is already the archived copy.
+ */
+export function archiveUrl(href, version) {
+  if (!RELEASE.test(version)) return null;
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.pathname.includes(`/v/${version}/`)) return null;
+  return new URL(`v/${version}/`, url).href;
+}
+
+/** The way back from an archived copy to whatever is current; null when not archived. */
+export function liveUrl(href, version) {
+  if (!RELEASE.test(version)) return null;
+  let url;
+  try { url = new URL(href); } catch { return null; }
+  if (!url.pathname.includes(`/v/${version}/`)) return null;
+  return new URL('../../', url).href;
+}
+
 function permalink() {
   const p = new URLSearchParams();
   p.set('c', encodeText($('qasm').value));
@@ -985,7 +1025,8 @@ function permalink() {
   if (app.canon !== 'max') p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
-  return `${location.href.split('#')[0]}#${p}`;
+  const base = archiveUrl(location.href, version()) || location.href.split('#')[0];
+  return `${base}#${p}`;
 }
 
 /** @returns {boolean} whether a link was found and applied */
@@ -1019,7 +1060,9 @@ function applyPermalink() {
 
 async function copyPermalink() {
   const url = permalink();
-  history.replaceState(null, '', url);   // so the address bar can be copied from too
+  // The address bar keeps this page and gains only the settings: pointing it at the
+  // archived copy would mean a reload quietly left the current version behind.
+  history.replaceState(null, '', `#${url.split('#')[1] || ''}`);
   const button = $('permalink');
   let ok = true;
   try {
@@ -1075,7 +1118,21 @@ function useExample(i) {
   compile();
 }
 
+/**
+ * The version chip in the masthead. An archived copy says which one it is and offers the
+ * way back; the current build says nothing, because there is nowhere to go.
+ */
+function showVersion() {
+  const back = liveUrl(location.href, version());
+  if (!back) return;
+  const chip = $('version');
+  chip.textContent = `${version()} · open the current version`;
+  chip.href = back;
+  chip.title = 'this is a frozen copy, kept so that older links keep working';
+}
+
 export function boot() {
+  showVersion();
   new ResizeObserver(fitCanvas).observe($('canvas'));
   $('canvas').addEventListener('scroll', updateSticky, { passive: true });
   const picker = $('example');
