@@ -18,7 +18,14 @@ import { GATES } from './gates.js';
 const GEO = { gutter: 72, padTop: 46, levelH: 64, slotW: 82, r: 9, termH: 23, pad: 30 };
 // "Fit" really fits, however wide the diagram: it is the overview, and zooming is how the
 // detail is read. The ceiling stops a two-node diagram from being blown up absurdly.
-const SCALE_RANGE = [0.12, 1.5];
+/**
+ * How far `fit` may scale. The floor stops a diagram of a few hundred nodes shrinking to
+ * illegibility — past it, it scrolls instead. The ceiling is expressed as the widest a
+ * node may be drawn: a two-qubit diagram on a large screen would otherwise be scaled up
+ * until its strokes looked like a magnified screenshot.
+ */
+const MAX_NODE_PX = 44;
+const MIN_FIT_SCALE = 0.12;
 const ZOOM_RANGE = [0.15, 8];
 const ZOOM_STEP = 1.25;
 const BAND_LABEL = 'AMPLITUDE';
@@ -419,12 +426,36 @@ function resetCanvas() {
   fitCanvas();
 }
 
-/** The scale at which the whole diagram is visible at once. */
+/**
+ * The slots the current frame actually occupies. The plate is as wide as the widest frame
+ * of the whole run — that is what keeps a node in the same place as the diagram grows —
+ * but fitting to *that* draws a nine-node opening frame at the scale a 255-node closing
+ * one needs. So `fit` fits the frame in front of you.
+ */
+function frameSpan() {
+  const all = app.layout?.frames[app.index]?.nodes ?? [];
+  // A hidden zero subtree should not hold the view open around empty space.
+  const nodes = app.hideZero ? all.filter((nd) => !nd.zero) : all;
+  if (!nodes.length) return { from: app.layout?.xMin ?? 0, to: app.layout?.xMax ?? 0 };
+  let from = Infinity;
+  let to = -Infinity;
+  for (const nd of nodes) {
+    const half = (nd.terminal ? termWidth(nd.label) / 2 : GEO.r) / app.geom.slotW;
+    from = Math.min(from, nd.x - half);
+    to = Math.max(to, nd.x + half);
+  }
+  return { from, to };
+}
+
+/** The scale at which the current frame is visible at once. */
 function fitScale() {
   const box = $('canvas');
-  const { W, H } = app.geom;
-  const raw = Math.min((box.clientWidth - 16) / W, (box.clientHeight - 16) / H);
-  return Math.max(SCALE_RANGE[0], Math.min(raw || 1, SCALE_RANGE[1]));
+  const { H, gutter, slotW } = app.geom;
+  const { from, to } = frameSpan();
+  const need = gutter + (to - from) * slotW + slotW + GEO.pad;
+  const raw = Math.min((box.clientWidth - 16) / need, (box.clientHeight - 16) / H);
+  const ceiling = MAX_NODE_PX / (2 * GEO.r);
+  return Math.max(MIN_FIT_SCALE, Math.min(raw || 1, ceiling));
 }
 
 /** Apply the current zoom — either the fitted scale or an explicit one. */
@@ -436,6 +467,20 @@ function fitCanvas() {
   app.svg.style.width = `${Math.round(W * scale)}px`;
   app.svg.style.height = `${Math.round(H * scale)}px`;
   $('zoomLevel').textContent = app.zoom === 'fit' ? 'fit' : `${Math.round(scale * 100)}%`;
+  // Fitting the frame rather than the plate means the plate can be wider than the view,
+  // so the frame has to be brought into it.
+  if (app.zoom === 'fit') {
+    const box = $('canvas');
+    const { from, to } = frameSpan();
+    // Plate coordinates, the same mapping the nodes get: the grid is anchored at the
+    // layout's leftmost slot, not at zero.
+    const middle = app.geom.originX
+      + ((from + to) / 2 - app.layout.xMin) * app.geom.slotW;
+    // The gutter labels ride along the left edge, so the room to centre in is what is
+    // left beside them.
+    const occluded = app.geom.gutter * scale;
+    box.scrollLeft = Math.max(0, middle * scale - occluded - (box.clientWidth - occluded) / 2);
+  }
   updateSticky();
 }
 
@@ -541,6 +586,9 @@ function setFrame(i) {
   } else {
     if (!app.svg || !app.svg.isConnected) resetCanvas();
     drawFrame(f);
+    // In fit mode the scale follows the frame, so it has to be recomputed as the diagram
+    // grows and shrinks under it.
+    if (app.zoom === 'fit') fitCanvas();
   }
   renderReadout(f);
   renderStats(f);
