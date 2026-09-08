@@ -3,22 +3,29 @@
  * One rule governs the palette: the only colour on the page marks what changed in the
  * current step. Everything else is ink on paper, so a glance at the plate answers
  * "what did this gate do" before anything is read.
+ *
+ * Three greys carry the structure and they have to be told apart: --paper is the ground
+ * the whole thing sits on, --plate is the surface the diagram is drawn on, --panel is a
+ * card resting on the paper. Keeping them within a few percent of each other, as an
+ * earlier palette did, makes the page read as one flat sheet and throws away the only
+ * depth cue there is. The dark theme is a slate rather than a near-black for the same
+ * reason: at #0d1418 the thin rules and the faint ink had nothing to sit against.
  */
 
 :root {
   color-scheme: light dark;
 
-  --paper: #e9edef;
-  --plate: #f8fafb;
-  --panel: #f2f5f6;
-  --ink: #14202a;
-  --ink-soft: #5a6c78;
-  --ink-faint: #93a3ad;
-  --rule: #c2ccd3;
-  --rule-soft: #d8e0e4;
-  --accent: #a8175f;
-  --accent-soft: #f6dbe8;
-  --backdrop: rgba(20, 32, 42, 0.4);
+  --paper: #dde4e9;
+  --plate: #ffffff;
+  --panel: #eef2f5;
+  --ink: #0b1620;
+  --ink-soft: #46596a;
+  --ink-faint: #7b8e9b;
+  --rule: #aab9c3;
+  --rule-soft: #cad6dd;
+  --accent: #a1155b;
+  --accent-soft: #fbdcea;
+  --backdrop: rgba(11, 22, 32, 0.4);
 
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -32,32 +39,32 @@
  * prefers-color-scheme, data-theme pins it. The same tokens serve both overrides. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #0d1418;
-    --plate: #131c22;
-    --panel: #111a1f;
-    --ink: #dbe5ea;
-    --ink-soft: #8ea0ab;
-    --ink-faint: #5d6f7a;
-    --rule: #33454f;
-    --rule-soft: #29373f;
-    --accent: #ff74b1;
-    --accent-soft: #3d1a2b;
-    --backdrop: rgba(0, 0, 0, 0.6);
+    --paper: #202c35;
+    --plate: #2b3a44;
+    --panel: #26333d;
+    --ink: #f2f8fb;
+    --ink-soft: #adbfca;
+    --ink-faint: #83959f;
+    --rule: #557084;
+    --rule-soft: #3d5361;
+    --accent: #ffa6ce;
+    --accent-soft: #5c2b3f;
+    --backdrop: rgba(0, 0, 0, 0.55);
   }
 }
 
 :root[data-theme="dark"] {
-    --paper: #0d1418;
-    --plate: #131c22;
-    --panel: #111a1f;
-    --ink: #dbe5ea;
-    --ink-soft: #8ea0ab;
-    --ink-faint: #5d6f7a;
-    --rule: #33454f;
-    --rule-soft: #29373f;
-    --accent: #ff74b1;
-    --accent-soft: #3d1a2b;
-    --backdrop: rgba(0, 0, 0, 0.6);
+    --paper: #202c35;
+    --plate: #2b3a44;
+    --panel: #26333d;
+    --ink: #f2f8fb;
+    --ink-soft: #adbfca;
+    --ink-faint: #83959f;
+    --rule: #557084;
+    --rule-soft: #3d5361;
+    --accent: #ffa6ce;
+    --accent-soft: #5c2b3f;
+    --backdrop: rgba(0, 0, 0, 0.55);
   color-scheme: dark;
 }
 
