@@ -452,50 +452,64 @@ function frameSpan() {
   return { from, to };
 }
 
-/** The scale at which the current frame is visible at once. */
-function fitScale() {
-  const box = $('canvas');
-  const { H, gutter, slotW } = app.geom;
+/**
+ * The part of the plate `fit` shows: the current frame, with room on the left for the
+ * gutter strip that overlays it and a margin either side.
+ *
+ * Fitting the frame while still *sizing the element* to the whole plate is what the
+ * previous version did, and it meant a narrow opening frame was drawn at a scale whose
+ * plate was half again wider than the window — a scrollbar, on a diagram that was
+ * entirely visible. Worse, the horizontal scrollbar it produced took height away from
+ * the box, which fed back into the scale, which changed the width: at the size where
+ * that flips back and forth, the plate flickers. Windowing the viewBox instead means the
+ * fitted view is exactly as wide as it needs to be, so there is nothing to scroll.
+ */
+function frameWindow() {
+  const { W, H, gutter, slotW, originX } = app.geom;
   const { from, to } = frameSpan();
-  const need = gutter + (to - from) * slotW + slotW + GEO.pad;
-  const raw = Math.min((box.clientWidth - 16) / need, (box.clientHeight - 16) / H);
-  const ceiling = MAX_NODE_PX / (2 * GEO.r);
-  return Math.max(MIN_FIT_SCALE, Math.min(raw || 1, ceiling));
+  const left = originX + (from - app.layout.xMin) * slotW;
+  const right = originX + (to - app.layout.xMin) * slotW;
+  const width = Math.min(W, gutter + (right - left) + 2 * GEO.pad);
+  const x = Math.max(0, Math.min(left - gutter - GEO.pad, W - width));
+  return { x, width, height: H };
 }
 
 /** Apply the current zoom — either the fitted scale or an explicit one. */
 function fitCanvas() {
   if (!app.svg || !app.geom) return;
+  const box = $('canvas');
   const { W, H } = app.geom;
-  const scale = app.zoom === 'fit' ? fitScale() : app.zoom;
+  // In `fit` the viewBox is a window on the plate and the element is that window, drawn
+  // as large as the box allows. At an explicit zoom it is the whole plate, and the box
+  // scrolls over it.
+  const view = app.zoom === 'fit' ? frameWindow() : { x: 0, width: W, height: H };
+  let scale;
+  if (app.zoom === 'fit') {
+    const raw = Math.min((box.clientWidth - 16) / view.width, (box.clientHeight - 16) / H);
+    scale = Math.max(MIN_FIT_SCALE, Math.min(raw || 1, MAX_NODE_PX / (2 * GEO.r)));
+  } else {
+    scale = app.zoom;
+  }
   app.scale = scale;
-  app.svg.style.width = `${Math.round(W * scale)}px`;
-  app.svg.style.height = `${Math.round(H * scale)}px`;
+  app.viewX = view.x;
+  app.svg.setAttribute('viewBox', `${view.x} 0 ${view.width} ${view.height}`);
+  app.svg.style.width = `${Math.round(view.width * scale)}px`;
+  app.svg.style.height = `${Math.round(view.height * scale)}px`;
   // Counter the magnification for the furniture — rules, gutter labels — so zooming in
   // grows the diagram and not its annotations. Only above 1: see the note in app.css.
   app.svg.style.setProperty('--unzoom', String(1 / Math.max(1, scale)));
   $('zoomLevel').textContent = app.zoom === 'fit' ? 'fit' : `${Math.round(scale * 100)}%`;
-  // Fitting the frame rather than the plate means the plate can be wider than the view,
-  // so the frame has to be brought into it.
-  if (app.zoom === 'fit') {
-    const box = $('canvas');
-    const { from, to } = frameSpan();
-    // Plate coordinates, the same mapping the nodes get: the grid is anchored at the
-    // layout's leftmost slot, not at zero.
-    const middle = app.geom.originX
-      + ((from + to) / 2 - app.layout.xMin) * app.geom.slotW;
-    // The gutter labels ride along the left edge, so the room to centre in is what is
-    // left beside them.
-    const occluded = app.geom.gutter * scale;
-    box.scrollLeft = Math.max(0, middle * scale - occluded - (box.clientWidth - occluded) / 2);
-  }
+  if (app.zoom === 'fit') box.scrollLeft = 0;
   updateSticky();
 }
 
 /** Hold the gutter labels at the left edge of the view while the plate scrolls under them. */
 function updateSticky() {
   if (!app.sticky) return;
-  const dx = $('canvas').scrollLeft / (app.scale || 1);
+  // Two ways the view can sit away from the plate's left edge: a windowed viewBox when
+  // fitted, a scroll offset when zoomed. Only one is ever non-zero, but adding them costs
+  // nothing and says plainly that the labels track the view, not the scrollbar.
+  const dx = (app.viewX || 0) + $('canvas').scrollLeft / (app.scale || 1);
   app.sticky.setAttribute('transform', `translate(${dx},0)`);
   app.sticky.classList.toggle('floating', dx > 0.5);
 }
@@ -508,16 +522,25 @@ function updateSticky() {
 function setZoom(next, clientX, clientY) {
   if (!app.svg) return;
   const box = $('canvas');
-  const before = app.scale;
-  app.zoom = next === 'fit' ? 'fit' : Math.max(ZOOM_RANGE[0], Math.min(next, ZOOM_RANGE[1]));
+  // Both measured before the view changes under us.
   const rect = app.svg.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+  const before = app.scale;
+  const beforeX = app.viewX || 0;
   const ax = clientX === undefined ? rect.left + rect.width / 2 : clientX;
   const ay = clientY === undefined ? rect.top + rect.height / 2 : clientY;
-  const contentX = (ax - rect.left) / before;
-  const contentY = (ay - rect.top) / before;
+  // The point of the plate under the pointer, in plate coordinates — which is what has to
+  // be put back under the pointer, however the view is expressed. Leaving `fit` swaps a
+  // windowed viewBox for a scroll offset, so a delta on scrollLeft is not enough.
+  const plateX = beforeX + (ax - rect.left) / before;
+  const plateY = (ay - rect.top) / before;
+  app.zoom = next === 'fit' ? 'fit' : Math.max(ZOOM_RANGE[0], Math.min(next, ZOOM_RANGE[1]));
   fitCanvas();
-  box.scrollLeft += contentX * (app.scale - before);
-  box.scrollTop += contentY * (app.scale - before);
+  if (app.zoom !== 'fit') {
+    box.scrollLeft = plateX * app.scale - (ax - boxRect.left);
+    box.scrollTop = plateY * app.scale - (ay - boxRect.top);
+    updateSticky();
+  }
 }
 
 const zoomBy = (factor) => setZoom(app.scale * factor);
@@ -1013,6 +1036,8 @@ function exportSvg() {
   clone.setAttribute('xmlns', SVG_NS);
   clone.setAttribute('width', app.geom.W);
   clone.setAttribute('height', app.geom.H);
+  // `fit` leaves a window on the plate in the viewBox; a figure is the whole plate.
+  clone.setAttribute('viewBox', `0 0 ${app.geom.W} ${app.geom.H}`);
   // The figure is written at its natural size, so nothing is countering a magnification.
   clone.style.setProperty('--unzoom', '1');
   for (const el of clone.querySelectorAll('.dimmed')) el.classList.remove('dimmed');
