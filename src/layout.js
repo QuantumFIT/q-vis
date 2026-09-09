@@ -371,6 +371,11 @@ export function layoutEdgeValued(ev, frames, labels, showEdge) {
         const terminal = ev.isTerminal(id);
         nodes.push({
           id,
+          // The diagram's own node, which here is the id itself. Named separately because
+          // the unfolded tree numbers its nodes by position instead, and a caller wanting
+          // to ask the diagram about a node — for its stabilizers, say — needs the id the
+          // diagram knows it by. See layoutEdgeValuedTree.
+          src: id,
           level: lev,
           x,
           y: lev,
@@ -486,8 +491,13 @@ export function layoutEdgeValuedTree(ev, frames, labels, showEdge) {
       for (let path = 0; path < 2 ** level; path++) {
         const id = idOf(level, path);
         const terminal = level === n;
+        const into = incoming.get(id);
         nodes.push({
           id,
+          // Positions are numbered by where they sit, so the diagram's own node is a
+          // separate thing: the target of the edge leading here. One node stands in many
+          // places, and under a zero edge there is no node at all.
+          src: ev.ring.isZero(into.w) ? null : into.node,
           level,
           x: xOf(level, path),
           y: level,

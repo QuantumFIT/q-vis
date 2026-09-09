@@ -10,6 +10,7 @@ import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.j
 import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
+import { tableauText } from './tableau.js';
 import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
 import { EXAMPLES, instantiate, identify } from './examples.js';
@@ -54,6 +55,9 @@ const app = {
   zoom: 'fit',
   scale: 1,
   nodeEls: new Map(),
+  // The Pauli-LIMDD of the current build, when that is the view: it holds the cached
+  // stabilizer groups the tableau reads.
+  limdd: null,
   edgeEls: new Map(),
   edgeLabels: new Map(),
   exiting: new Map(),
@@ -129,6 +133,8 @@ function compile() {
   const labels = circuit.qubits.map((q) => q.label);
   const show = (v, i) => P.format(v, app.ampFormat,
     { k: app.commonK[i], level: app.commonLevel[i] });
+  // Kept so the tableau can format a weight the same way the diagram does.
+  app.showAmp = show;
 
   // The unreduced tree has 2^(n+1)-1 nodes, so past a handful of qubits it is neither
   // drawable nor informative.
@@ -138,6 +144,10 @@ function compile() {
   if (app.rep === 'limdd') {
     // The same states again, now shared up to a local Pauli as well as a scalar.
     const li = new LIMDD(P.Ring, circuit.nqubits, unitNormaliser(P, Z, app.canon));
+    // Held on to: the stabilizer groups it computed while choosing labels are what the
+    // tableau shows, and they are cached on the manager. Cleared in the other views so a
+    // stale manager can never be read against a layout it did not build.
+    app.limdd = li;
     const memo = new Map();
     const built = frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) }));
     const label = (e, i) => limLabel(e, i, circuit.nqubits, show);
@@ -148,6 +158,7 @@ function compile() {
       ? layoutEdgeValuedTree(li, built, labels, label)
       : layoutEdgeValued(li, built, labels, label);
   } else if (app.rep === 'edge-valued' && !tree) {
+    app.limdd = null;
     // Simulation stays on the MTBDD; this is the same states seen the other way, built
     // in one pass per frame. One manager for the whole run, so nodes shared between
     // frames stay the same nodes and the diagram morphs rather than being redrawn.
@@ -157,6 +168,7 @@ function compile() {
       frames.map((f) => ({ index: f.index, gate: f.gate, edge: ev.fromMTBDD(dd, f.root, memo) })),
       labels, (e, i) => show(e.w, i));
   } else {
+    app.limdd = null;
     app.layout = layoutFrames(dd, frames, {
       qubitLabels: labels,
       expand: tree,
@@ -186,6 +198,9 @@ function compile() {
     : 'draw the same thing with nothing shared, so the sharing can be seen for what it saves';
   // The canonisation rule only means anything where there are edge weights.
   $('canon').style.display = app.rep === 'reduced' ? 'none' : '';
+  // A stabilizer group is a property of the state, but it is the Pauli-LIMDD that uses
+  // one, so that is the only view where offering it says anything.
+  $('tableau').style.display = app.rep === 'limdd' ? '' : 'none';
   $('canon').title = NORMALISERS[app.canon].note;
   resetCanvas();
   renderCircuit();
@@ -988,6 +1003,9 @@ function buildHelp() {
     ['TikZ circuit', 'the circuit as quantikz. Amplitudes are translated to LaTeX on the '
       + 'way (√2 becomes \\sqrt{2}, ω³ becomes \\omega^{3}), which is why the code is shown '
       + 'before it is copied'],
+    ['tableau', 'Pauli-LIMDD only: the stabilizer group of every node in this step, as '
+      + 'signed check vectors. A node whose rank matches the qubits below it is a '
+      + 'stabilizer state, which is why the diagram is a tower there'],
   ]));
 
   body.append(el('h3', null, 'Refused, and why'));
@@ -1090,7 +1108,7 @@ function showTikz(what) {
   if (!app.layout || !app.circuit) return;
   // The same link the copy-link button gives, so the figure carries the live view it came
   // from — pinned to this build, so it keeps showing this figure.
-  const link = permalink();
+  const link = permalinkPair();
   const text = what === 'circuit'
     ? circuitTikz(app.circuit, { link })
     : diagramTikz(app.layout, app.index, {
@@ -1099,20 +1117,41 @@ function showTikz(what) {
       hideZero: app.hideZero,
       link,
     });
-  app.tikz = text;
-  $('tikzTitle').textContent = what === 'circuit'
+  showCode(what === 'circuit'
     ? 'TikZ · circuit, as quantikz'
-    : `TikZ · diagram, step ${app.index} of ${app.layout.frames.length - 1}`;
-  $('tikzBody').textContent = text;
-  $('tikzBody').scrollTop = 0;
-  $('tikzDialog').showModal();
+    : `TikZ · diagram, step ${app.index} of ${app.layout.frames.length - 1}`, text);
 }
 
-async function copyTikz() {
-  const button = $('tikzCopy');
+/**
+ * The stabilizer group of every node in the current frame. The diagram already computed
+ * these to choose its labels; the tableau is where a reader can check them, and where the
+ * rank says why the diagram has the shape it has — full rank is a stabilizer state, which
+ * is a tower, which is the whole point of the representation.
+ */
+function showTableau() {
+  if (!app.limdd || !app.layout || !app.circuit) return;
+  showCode(`Pauli-LIMDD · stabilizers, step ${app.index}`,
+    tableauText(app.limdd, app.layout, app.index, {
+      qubitLabels: app.circuit.qubits.map((q) => q.label),
+      formatWeight: (w) => app.showAmp(w, app.index),
+      link: permalinkPair(),
+    }));
+}
+
+/** Text worth reading before it is taken, in the one dialog both such things share. */
+function showCode(title, text) {
+  app.code = text;
+  $('codeTitle').textContent = title;
+  $('codeBody').textContent = text;
+  $('codeBody').scrollTop = 0;
+  $('codeDialog').showModal();
+}
+
+async function copyCode() {
+  const button = $('codeCopy');
   let ok = true;
   try {
-    await navigator.clipboard.writeText(app.tikz || '');
+    await navigator.clipboard.writeText(app.code || '');
   } catch {
     ok = false;   // no permission, or an insecure context such as file://
   }
@@ -1216,8 +1255,28 @@ function permalink() {
   if (app.canon !== 'max') p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
-  const base = archiveUrl(location.href, version()) || location.href.split('#')[0];
+  const here = location.href.split('#')[0];
+  const base = archiveUrl(location.href, version()) || here;
   return `${base}#${p}`;
+}
+
+/**
+ * The same view as two links, for anything that embeds one in text rather than putting it
+ * on the clipboard.
+ *
+ * `pinned` is what `permalink` gives: the frozen copy of this build, so the link keeps
+ * meaning what it meant. `current` is the same view on whatever the site serves now — the
+ * thing a pinned link can never tell you about, because by construction it does not know
+ * a newer version exists. On an archived page the two swap roles, and on an unreleased
+ * build there is only one, so it is reported once.
+ */
+function permalinkPair() {
+  const pinned = permalink();
+  const fragment = pinned.slice(pinned.indexOf('#'));
+  const here = location.href.split('#')[0];
+  const live = liveUrl(location.href, version()) || here;
+  const current = `${live}${fragment}`;
+  return { pinned, current: current === pinned ? null : current };
 }
 
 /** @returns {boolean} whether a link was found and applied */
@@ -1378,10 +1437,11 @@ export function boot() {
   $('export').addEventListener('click', exportSvg);
   $('tikzDiagram').addEventListener('click', () => showTikz('diagram'));
   $('tikzCircuit').addEventListener('click', () => showTikz('circuit'));
-  $('tikzCopy').addEventListener('click', copyTikz);
-  $('tikzClose').addEventListener('click', () => $('tikzDialog').close());
-  $('tikzDialog').addEventListener('click', (e) => {
-    if (e.target === $('tikzDialog')) $('tikzDialog').close();
+  $('tableau').addEventListener('click', showTableau);
+  $('codeCopy').addEventListener('click', copyCode);
+  $('codeClose').addEventListener('click', () => $('codeDialog').close());
+  $('codeDialog').addEventListener('click', (e) => {
+    if (e.target === $('codeDialog')) $('codeDialog').close();
   });
   $('permalink').addEventListener('click', copyPermalink);
   $('symbolic').addEventListener('click', () => {

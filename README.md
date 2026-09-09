@@ -141,8 +141,16 @@ to `\omega^{3}`), and the TikZ styles come with the picture, so every low edge o
 can be restyled in one place. That is what belongs in a paper: text in the document's own
 fonts, editable afterwards, rather than an SVG at a size nobody chose.
 
+**tableau**, in the Pauli-LIMDD view only, gives the stabilizer group of every node in the
+current step — a sign, the two check-vector blocks, and the string of `I/X/Y/Z`. The
+diagram computes these groups anyway, to choose its edge labels; the button is where you
+can read them. A node whose rank matches the number of qubits below it is a stabilizer
+state, which is why the diagram is a tower there. See `docs/LIMDD.md`.
+
 A copied link points at a frozen copy of the version that made it — `…/q-vis/v/v10/#…` —
-so it keeps showing what it showed even after the settings it encodes change meaning.
+so it keeps showing what it showed even after the settings it encodes change meaning. An
+exported snippet carries both that link and the current page, since a pinned link cannot
+tell a reader that a newer version exists.
 Every release is kept at [`/v/`](https://quantum.fit.vut.cz/q-vis/v/), and the archived
 page links back to the current one. `docs/VERSIONS.md` says how that is built, and how to
 cut a release.

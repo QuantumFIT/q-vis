@@ -61,14 +61,31 @@ selectable, and what they cost is worth seeing once.
 | Alg. 14, 15, 17 | `stabilizer.js`: `meetCosets`, `meet`, `argLexMin` |
 | Alg. 16 | `LIMDD.isomorphism` — O(1), since both nodes are already canonical |
 
-Two deliberate gaps, both of which cost a merge and never an amplitude, and both decided
-by the values rather than by the order they were met in, so the diagram stays
+Three gaps, all of which cost a merge or a generator and never an amplitude, and all
+decided by the values rather than by the order they were met in, so the diagram stays
 deterministic:
 
 - Anywhere a weight would have to be inverted and cannot be, that case is skipped: the
   isomorphism between two branches, and `π₁⁻¹` in Alg. 14.
 - The `x = 1` branch of Alg. 12, which inverts the label when the two children coincide,
   additionally needs the low edge to be bare and the string to square to `+I`.
+- **`LIMDD.isomorphism` does not see through a skipped level.** It is `O(1)` because it
+  compares two already-canonical nodes, and a branch that reaches a node directly and one
+  that reaches it past a level the diagram dropped are the same state held by different
+  nodes. The X and Y cases of Alg. 13 go through it, so where that happens the stabilizer
+  group comes back a proper subgroup — the line cluster state is short one generator per
+  node, which is what the **tableau** button's closing note is about.
+
+One thing that was a bug rather than a gap, fixed: **`Pauli.compare` now puts the identity
+weight first.** Alg. 14 asks whether the *minimum* of a set of LIMs is the identity as its
+way of asking whether the identity is *in* it, which is sound under the paper's order —
+the weight as `(r, θ)`, so `+1` at `θ = 0` precedes `-1` at `θ = π`. The ring's exact key
+is a string, `":1,0,0,0/0"` against `":-1,0,0,0/0"`, and `'-'` sorts first, so a set
+holding both signs of the identity answered with `-I` and the caller concluded the
+identity was absent. Every stabilizer with support on a node's own qubit was being missed:
+GHZ on four qubits reported rank 2 where the group has rank 4. No node count changed when
+this was fixed — the oracle test checks every example — so it had been costing generators
+rather than merges.
 
 Two details the paper does not have to deal with:
 
@@ -91,6 +108,34 @@ known to be `n+1`.
 
 The amplitudes are checked the same way as the edge-valued diagram: every basis state of
 every example, under every scalar rule.
+
+## The tableau
+
+**tableau**, beside the TikZ buttons and shown only in this view, gives the stabilizer
+group of every node in the current step: the generators the diagram found, each as a sign,
+the two check-vector blocks, and the string of `I/X/Y/Z`.
+
+It is there because the group is why the diagram has the shape it has. A state on `m`
+qubits is a stabilizer state exactly when its group has `m` independent generators, so a
+node whose rank matches the qubits below it is the reason the diagram does not branch
+there — Theorem 1, read off the plate. GHZ on four qubits gives `X⊗X⊗X⊗X`, `Z⊗Z⊗I⊗I`,
+`I⊗Z⊗Z⊗I`, `I⊗I⊗Z⊗Z` at the root and one fewer at each level down.
+
+Two things it is careful about:
+
+- **The sign is a sign.** Strings are held as `X^x Z^z` and `Y = i·X·Z`, so a generator
+  with a `Y` in it carries an `i` in its weight to mean what it says. That is paid back
+  before printing, exactly as `limLabel` does for edge labels; printing an `i` in a
+  tableau column would be wrong. Anything that then fails to be `±1` is printed as itself
+  rather than dressed up as a sign.
+- **Full rank proves a stabilizer state; short of it proves nothing.** Every generator
+  shown really does fix its node — `tests/tableau.test.js` checks `P|v⟩ = |v⟩` against
+  dense vectors — but the search can miss some, per the skipped-level gap above. The text
+  says so whenever any node comes up short.
+
+In the unfolded tree the same node stands in many places and the listing collapses them,
+saying how many positions it collapsed: the group is a property of the node, not of where
+it sits.
 
 ## The tree
 

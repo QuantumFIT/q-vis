@@ -101,14 +101,37 @@ export function qubitLatex(label) {
 /**
  * The comment block every snippet opens with.
  *
- * `link` is the permalink to the view the figure came from, which is worth carrying: a
- * reader of the paper can open the thing and step through it, and the author can come
- * back to the exact state months later. It points at the frozen copy of the build that
- * made it, so it keeps showing this figure whatever the tool becomes.
+ * `link` is where the figure came from, which is worth carrying: a reader of the paper can
+ * open the thing and step through it, and the author can come back to the exact state
+ * months later. Two URLs, because they answer different questions and neither substitutes
+ * for the other:
+ *
+ *   - `pinned` is the frozen copy of the build that made the figure. It keeps showing
+ *     *this* figure whatever the tool becomes, which is what a printed citation needs.
+ *   - `current` is the same view on whatever is current. A reader years later wants the
+ *     tool as it is now, and the pinned link alone would never tell them a newer one
+ *     exists. Its meaning can drift as the parameter format grows — which is exactly why
+ *     the pinned one is there too.
  */
+/**
+ * The link block. Accepts either of the two URLs on their own, or a plain string, which is
+ * read as the pinned one — the only kind that existed before.
+ */
+function linkLines(link) {
+  if (!link) return [];
+  const { pinned, current } = typeof link === 'string' ? { pinned: link } : link;
+  const out = [];
+  if (pinned) out.push('% The view this came from, in the build that made it:', `%   ${pinned}`);
+  if (current && current !== pinned) {
+    out.push(pinned ? '% The same view in the current version of the tool:' : '% The tool:',
+      `%   ${current}`);
+  }
+  return out;
+}
+
 const header = (what, packages, { classOptions = 'border=4pt', link } = {}) => [
   `% ${what}, from q-vis.`,
-  ...(link ? ['% The live view this came from:', `%   ${link}`] : []),
+  ...linkLines(link),
   '%',
   `% Needs \\usepackage{${packages}} in the preamble.`,
   '% To compile this file on its own, uncomment these four lines and the last one:',

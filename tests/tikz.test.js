@@ -208,15 +208,30 @@ test('a snippet carries the view it came from, when there is one to carry', () =
   for (const tex of [circuitTikz(circuit, { link }),
     diagramTikz(layout, 1, { qubitLabels, link })]) {
     assert.ok(tex.includes(link), 'the link is there, whole and on one line');
-    assert.match(tex, /% The live view this came from:/);
+    assert.match(tex, /% The view this came from, in the build that made it:/);
     // Every line of the preamble is a comment; a bare URL would be a LaTeX error.
     const head = tex.split('\\begin{')[0].trim().split('\n');
     assert.ok(head.every((line) => line.startsWith('%')), 'and it is commented out');
   }
 
+  // A pinned link cannot tell a reader that a newer version exists, so the snippet also
+  // carries the current page — both, because neither answers the other's question.
+  const current = 'https://quantum.fit.vut.cz/q-vis/#c=abc&s=def&i=1';
+  const both = circuitTikz(circuit, { link: { pinned: link, current } });
+  assert.ok(both.includes(link), 'the pinned link survives');
+  assert.ok(both.includes(current), 'and so does the current one');
+  assert.match(both, /% The same view in the current version of the tool:/);
+  const bothHead = both.split('\\begin{')[0].trim().split('\n');
+  assert.ok(bothHead.every((line) => line.startsWith('%')), 'both still commented out');
+
+  // Nothing is repeated when the page is its own current version.
+  const same = circuitTikz(circuit, { link: { pinned: link, current: null } });
+  assert.equal(same.split(link).length - 1, 1, 'one link, mentioned once');
+  assert.doesNotMatch(same, /current version of the tool/);
+
   // Without one, the snippet simply does not mention it.
   const plain = circuitTikz(circuit);
-  assert.ok(!plain.includes('live view'), 'no empty promise of a link');
+  assert.ok(!plain.includes('this came from'), 'no empty promise of a link');
   assert.match(plain, /^% Circuit, from q-vis\.\n%\n/, 'and no blank comment line either');
 });
 
