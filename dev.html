@@ -36,7 +36,7 @@
   </header>
 
   <section class="inputs" id="inputs">
-    <div class="panel" id="panelCircuit" style="flex:1 1 auto">
+    <div class="panel" id="panelCircuit" data-flex="1 1 auto" style="flex:1 1 auto">
       <header>
         <span class="label">Circuit</span>
         <span class="spacer"></span>
@@ -95,7 +95,11 @@
     aria-label="resize the input column" title="drag to resize · double-click to reset"></div>
 
   <main class="plate">
-    <nav class="circuit" id="circuit" aria-label="circuit; click a column to jump to that step"></nav>
+    <nav class="circuit" id="circuit" data-min="36"
+      aria-label="circuit; click a column to jump to that step"></nav>
+    <div class="psplit" id="psplit" role="separator" aria-orientation="horizontal" tabindex="0"
+      aria-label="resize the circuit against the diagram"
+      title="drag to resize · double-click to fit the circuit"></div>
     <div class="canvas" id="canvas"></div>
   </main>
 

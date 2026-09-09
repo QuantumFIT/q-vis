@@ -141,6 +141,11 @@ to `\omega^{3}`), and the TikZ styles come with the picture, so every low edge o
 can be restyled in one place. That is what belongs in a paper: text in the document's own
 fonts, editable afterwards, rather than an SVG at a size nobody chose.
 
+**Every boundary can be dragged.** The input column against the plate, each panel against
+the next, and the circuit against the diagram. Double-click a boundary to put it back, or
+focus it and use the arrow keys; **Amplitudes** folds away by its own header. Sizes and
+folds are remembered, so a layout you set once stays set.
+
 **order** decides which qubit each level of the diagram decides — *as written*, *reversed*,
 *paired*, or any permutation typed in, top level first in the circuit's own names —
 `q[0] q[2] q[1] b[0]`, which is what several registers flattened into one run makes of

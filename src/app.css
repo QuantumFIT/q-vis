@@ -184,9 +184,24 @@ a.version[href]:hover { text-decoration: underline; }
   cursor: row-resize;
 }
 
+/*
+ * The boundary inside the plate, between the circuit and the diagram. There is no gap
+ * here — the two share a border — so the handle straddles that border instead, its
+ * negative margins cancelling its height so the line does not move to make room.
+ */
+.psplit {
+  position: relative;
+  z-index: 2;
+  height: 7px;
+  margin: -4px 0 -3px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
 /* The hairline, inset so it never touches the panel corners. */
 .vsplit::after,
-.hsplit::after {
+.hsplit::after,
+.psplit::after {
   content: '';
   position: absolute;
   border-radius: 1px;
@@ -196,16 +211,22 @@ a.version[href]:hover { text-decoration: underline; }
 }
 .vsplit::after { inset: 12px calc(50% - 1px); }
 .hsplit::after { inset: calc(50% - 1px) 12px; }
+/* Over a border that is already drawn, so it inks rather than adds. */
+.psplit::after { inset: calc(50% - 1px) 12px; background: var(--ink-faint); }
 
 .vsplit:hover::after,
 .hsplit:hover::after,
+.psplit:hover::after,
 .dragging .vsplit::after,
-.dragging .hsplit::after { opacity: 1; }
+.dragging .hsplit::after,
+.dragging .psplit::after { opacity: 1; }
 
 .vsplit:focus-visible::after,
-.hsplit:focus-visible::after { opacity: 1; background: var(--accent); }
+.hsplit:focus-visible::after,
+.psplit:focus-visible::after { opacity: 1; background: var(--accent); }
 .vsplit:focus-visible,
-.hsplit:focus-visible { outline: none; }
+.hsplit:focus-visible,
+.psplit:focus-visible { outline: none; }
 
 /* While a splitter is being dragged the pointer owns the whole window: without this a
    fast drag selects the text it passes over and the panels flicker. */

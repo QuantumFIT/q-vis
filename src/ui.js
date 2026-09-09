@@ -379,8 +379,12 @@ function setColumn(px) {
 }
 
 function setPanelHeight(panel, px) {
-  const h = Math.round(Math.max(PANEL_MIN, px));
+  const min = Number(panel.dataset.min) || PANEL_MIN;
+  const h = Math.round(Math.max(min, px));
   panel.style.flex = `0 0 ${h}px`;
+  // The circuit strip is capped by a max-height until someone drags it. An explicit
+  // height has to beat that cap or the drag would stop dead at 190px.
+  panel.style.maxHeight = 'none';
   return h;
 }
 
@@ -388,7 +392,7 @@ function setPanelHeight(panel, px) {
 function layoutState() {
   const col = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--col'), 10);
   const heights = {};
-  for (const id of ['panelCircuit', 'panelState']) {
+  for (const id of ['panelCircuit', 'panelState', 'circuit']) {
     const m = /0 0 (\d+)px/.exec($(id).style.flex || '');
     if (m) heights[id] = +m[1];
   }
@@ -414,15 +418,18 @@ function loadLayout() {
   }
 }
 
-/** Put a boundary back the way it started. */
+/**
+ * Put a boundary back the way it started. What "the way it started" is belongs to the
+ * element rather than to this function, so each one that had a flex of its own says so in
+ * `data-flex` and the rest go back to being sized by their content.
+ */
 function resetSplit(el) {
   if (el.id === 'vsplit') {
     document.documentElement.style.removeProperty('--col');
   } else {
-    // Even out: the panel above goes back to sharing the column by flex rather than
-    // holding a height of its own.
-    const panel = el.previousElementSibling;
-    panel.style.flex = panel.id === 'panelState' ? '' : '1 1 auto';
+    const target = el.previousElementSibling;
+    target.style.flex = target.dataset.flex || '';
+    target.style.maxHeight = '';
   }
   saveLayout();
   fitCanvas();
@@ -1288,6 +1295,15 @@ function buildHelp() {
       + 'the first qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
   ]));
 
+  body.append(el('h3', null, 'The layout'));
+  body.append(helpTable([
+    ['drag a boundary', 'the input column against the plate, one panel against the next, '
+      + 'or the circuit against the diagram. Double-click to put it back; focus it and the '
+      + 'arrow keys move it, Home resets it'],
+    ['Amplitudes', 'folds away by its own header, and gives its space back to the circuit'],
+    ['', 'sizes and folds are remembered, so a layout you set once stays set'],
+  ]));
+
   body.append(el('h3', null, 'The qubit order'));
   body.append(helpTable([
     ['order', 'which qubit each level of the diagram decides. The single biggest lever on '
@@ -1918,7 +1934,7 @@ export function boot() {
   });
   $('sift').addEventListener('click', sift);
 
-  for (const el of document.querySelectorAll('.vsplit, .hsplit')) armSplitter(el);
+  for (const el of document.querySelectorAll('.vsplit, .hsplit, .psplit')) armSplitter(el);
   for (const el of document.querySelectorAll('.panel.foldable')) {
     el.addEventListener('toggle', saveLayout);
   }
