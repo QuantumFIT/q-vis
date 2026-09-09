@@ -137,6 +137,15 @@ In the unfolded tree the same node stands in many places and the listing collaps
 saying how many positions it collapsed: the group is a property of the node, not of where
 it sits.
 
+It is drawn as a table, with the 1s of each check vector inked and the 0s left faint, so a
+generator reads as a shape before it is read as digits, and with the qubit index over each
+column. The **copy** button hands over the same thing as aligned text, since that is what a
+paper or a test fixture wants. `tableauFrame` in `src/tableau.js` is the structure both are
+made from, which is also what the tests assert against.
+
+No link, unlike the figure exports: a tableau is about a node, and where the view came from
+belongs to **copy link** and to the TikZ snippets.
+
 ## The tree
 
 **full tree** applies to this representation like any other, and here it is the diagram

@@ -10,7 +10,7 @@ import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.j
 import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
-import { tableauText } from './tableau.js';
+import { tableauFrame, tableauText } from './tableau.js';
 import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
 import { EXAMPLES, instantiate, identify } from './examples.js';
@@ -1127,15 +1127,112 @@ function showTikz(what) {
  * these to choose its labels; the tableau is where a reader can check them, and where the
  * rank says why the diagram has the shape it has — full rank is a stabilizer state, which
  * is a tower, which is the whole point of the representation.
+ *
+ * Drawn as a table rather than dumped as text, since that is what it is; the copy button
+ * still hands over the aligned text, which is what a paper or a test fixture wants.
  */
 function showTableau() {
   if (!app.limdd || !app.layout || !app.circuit) return;
-  showCode(`Pauli-LIMDD · stabilizers, step ${app.index}`,
-    tableauText(app.limdd, app.layout, app.index, {
-      qubitLabels: app.circuit.qubits.map((q) => q.label),
-      formatWeight: (w) => app.showAmp(w, app.index),
-      link: permalinkPair(),
-    }));
+  const opts = {
+    qubitLabels: app.circuit.qubits.map((q) => q.label),
+    formatWeight: (w) => app.showAmp(w, app.index),
+  };
+  const f = tableauFrame(app.limdd, app.layout, app.index, opts);
+  showRich(`Pauli-LIMDD · stabilizers, step ${f.step} of ${f.last}`,
+    tableauDom(f, opts.formatWeight),
+    tableauText(app.limdd, app.layout, app.index, opts));
+}
+
+/** The tableau as elements. Pure over the structure `tableauFrame` returns. */
+function tableauDom(f, formatWeight) {
+  const box = el('div');
+
+  const lead = el('div', 'tab-lead');
+  lead.append(el('b', null, f.distinct === f.positions
+    ? `${f.distinct} node${f.distinct === 1 ? '' : 's'}`
+    : `${f.distinct} distinct nodes`));
+  lead.append(document.createTextNode(f.distinct === f.positions
+    ? `, on ${f.qubits} qubits — ${f.qubitLabels.join(', ')}, qubit 0 first.`
+    : `, standing in ${f.positions} places in the tree. The group belongs to the node, not to where it sits.`));
+  box.append(lead);
+
+  // The bits are the point, so they are drawn rather than written: an inked 1 against a
+  // faint 0 makes each generator a shape before it is a number.
+  const bits = (s) => {
+    const span = el('span', 'tab-bits');
+    for (const c of s) span.append(el('span', c === '1' ? 'on' : 'off', c));
+    return span;
+  };
+  const letters = (list) => {
+    const span = el('span', 'tab-string');
+    list.forEach((ch, i) => {
+      if (i) span.append(document.createTextNode('⊗'));
+      span.append(el('span', ch === 'I' ? 'i' : null, ch));
+    });
+    return span;
+  };
+
+  for (const t of f.nodes) {
+    const head = el('div', 'tab-head');
+    head.append(el('span', 'tab-id', `node ${t.id}`), el('span', 'tab-where', t.where));
+    const rank = el('span', 'tab-rank');
+    rank.append(document.createTextNode('rank '), el('b', null, String(t.rank)),
+      document.createTextNode(` of ${t.span}`));
+    head.append(rank);
+    if (t.terminal) head.append(el('span', 'tab-badge quiet', 'trivial'));
+    else if (t.full) head.append(el('span', 'tab-badge', 'stabilizer state'));
+    box.append(head);
+
+    if (!t.rows.length) {
+      box.append(el('p', 'tab-empty', 'The identity alone.'));
+      continue;
+    }
+    const table = el('table', 'tab-grid');
+    const hr = el('tr');
+    for (const h of ['sign', 'x', 'z', 'generator']) hr.append(el('th', null, h));
+    table.append(hr);
+    // Which column is which qubit. Single digits only: past ten the indices would need
+    // two characters and would no longer line up with the bits above them, and the
+    // generator column spells the qubits out in any case.
+    if (f.qubits <= 10) {
+      const ruler = el('tr', 'tab-ruler');
+      const digits = () => {
+        const span = el('span', 'tab-bits');
+        for (let q = 0; q < f.qubits; q++) span.append(el('span', 'off', String(q)));
+        return span;
+      };
+      const blank = el('td');
+      const rx = el('td');
+      rx.append(digits());
+      const rz = el('td');
+      rz.append(digits());
+      ruler.append(blank, rx, rz, el('td'));
+      table.append(ruler);
+    }
+    for (const r of t.rows) {
+      const tr = el('tr');
+      tr.append(el('td', 'tab-sign', r.sign ?? formatWeight(r.weight)));
+      const tx = el('td');
+      tx.append(bits(r.x));
+      const tz = el('td');
+      tz.append(bits(r.z));
+      const tg = el('td');
+      tg.append(letters(r.letters));
+      tr.append(tx, tz, tg);
+      table.append(tr);
+    }
+    box.append(table);
+  }
+
+  if (f.omitted) {
+    box.append(el('p', 'tab-note', `… and ${f.omitted} more nodes, not listed.`));
+  }
+  if (f.short) {
+    box.append(el('p', 'tab-note', 'Every generator above fixes its node. The search can '
+      + 'still miss some, so full rank proves a stabilizer state and less than full rank '
+      + 'proves nothing.'));
+  }
+  return box;
 }
 
 /** Text worth reading before it is taken, in the one dialog both such things share. */
@@ -1143,7 +1240,21 @@ function showCode(title, text) {
   app.code = text;
   $('codeTitle').textContent = title;
   $('codeBody').textContent = text;
+  $('codeBody').hidden = false;
+  $('codeRich').hidden = true;
   $('codeBody').scrollTop = 0;
+  $('codeDialog').showModal();
+}
+
+/** The same dialog, showing something drawn. `text` is what the copy button takes. */
+function showRich(title, node, text) {
+  app.code = text;
+  $('codeTitle').textContent = title;
+  $('codeBody').hidden = true;
+  const rich = $('codeRich');
+  rich.hidden = false;
+  rich.replaceChildren(node);
+  rich.scrollTop = 0;
   $('codeDialog').showModal();
 }
 

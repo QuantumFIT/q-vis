@@ -10,7 +10,7 @@ import { parseQasm } from '../src/qasm.js';
 import { parseState, buildState } from '../src/state.js';
 import { simulate } from '../src/sim.js';
 import { layoutEdgeValued, layoutEdgeValuedTree } from '../src/layout.js';
-import { blockBits, generatorRow, nodeTableau, frameNodes, tableauText } from '../src/tableau.js';
+import { blockBits, generatorRow, nodeTableau, frameNodes, tableauFrame, tableauText } from '../src/tableau.js';
 
 const header = (n) => `OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[${n}];\n`;
 const zeros = (n) => `|${'0'.repeat(n)}> : 1`;
@@ -172,35 +172,56 @@ test('the listing follows the plate, and the tree collapses to distinct nodes', 
   assert.ok(treeIds.every((id) => id !== null));
 });
 
-test('the text says what it is showing', () => {
+test('the structure says what the frame holds', () => {
+  // The interface draws this and the text is written from it, so the assertions belong
+  // here rather than against either rendering.
   const { li, layout, labels, last } = laidOut(ghz(3), zeros(3));
-  const text = tableauText(li, layout, last, {
-    qubitLabels: labels,
-    link: { pinned: 'https://example.invalid/v/v16/#c=a', current: 'https://example.invalid/#c=a' },
-  });
+  const f = tableauFrame(li, layout, last, { qubitLabels: labels });
+  assert.equal(f.step, 3);
+  assert.equal(f.last, 3);
+  assert.equal(f.qubits, 3);
+  assert.equal(f.distinct, 4);
+  assert.equal(f.positions, 4, 'in the diagram a position is a node');
+  assert.equal(f.omitted, 0);
+  assert.equal(f.short, false, 'GHZ is full rank throughout');
+  assert.deepEqual(f.nodes.map((t) => t.where), ['q[0]', 'q[1]', 'q[2]', 'terminal']);
+  assert.deepEqual(f.nodes.map((t) => t.rank), [3, 2, 1, 0]);
+  // Each generator carries both presentations, and they have to agree.
+  for (const t of f.nodes) {
+    for (const r of t.rows) {
+      assert.equal(r.letters.join('⊗'), r.string);
+      assert.equal(r.letters.length, f.qubits);
+      r.letters.forEach((ch, q) => {
+        const expect = [['I', 'Z'], ['X', 'Y']][+r.x[q]][+r.z[q]];
+        assert.equal(ch, expect, `${r.string}: qubit ${q} disagrees with the check vectors`);
+      });
+    }
+  }
+});
+
+test('the text is the same frame, aligned, and carries no link', () => {
+  const { li, layout, labels, last } = laidOut(ghz(3), zeros(3));
+  const text = tableauText(li, layout, last, { qubitLabels: labels });
   assert.match(text, /^Pauli-LIMDD stabilizers · step 3 of 3\n/);
   assert.match(text, /3 qubits, qubit 0 first: q\[0\] q\[1\] q\[2\]/);
   assert.match(text, /4 nodes/);
-  assert.ok(text.includes('https://example.invalid/v/v16/#c=a'), 'the pinned link is there');
-  assert.ok(text.includes('https://example.invalid/#c=a'), 'and the current one');
   assert.match(text, /rank 3 of 3.*stabilizer state/, 'the root of a GHZ is a stabilizer state');
-  assert.doesNotMatch(text, /proves nothing/, 'GHZ is full rank throughout, so no caveat is needed');
+  assert.doesNotMatch(text, /proves nothing/, 'GHZ is full rank throughout, so no caveat');
   assert.match(text, /terminal.*trivial/);
   assert.match(text, /sign\s+x\s+z\s+generator/);
   assert.match(text, /X⊗X⊗X/, 'GHZ is stabilized by all-X');
+  // A tableau is about a node, not about a page. Where the view came from belongs to the
+  // state permalink and the figure exports, not here.
+  assert.ok(!text.includes('http'), 'no link in a tableau');
 
   // Nothing non-ASCII beyond the few marks the tableau means to use: this text goes onto
   // a clipboard and into other people's files.
   const strays = [...text].filter((c) => c.charCodeAt(0) > 126 && !'·⊗−…'.includes(c));
   assert.deepEqual([...new Set(strays)], [], 'no unexpected characters');
 
-  // A single link, or none, is still accepted — the shape callers used before.
-  assert.ok(tableauText(li, layout, last, { link: 'https://example.invalid/x' })
-    .includes('https://example.invalid/x'));
-  assert.ok(!tableauText(li, layout, last).includes('http'));
-
   // Where the search does fall short, the text says what that does and does not mean.
   const cl = laidOut(cluster(4), zeros(4));
   const caveat = tableauText(cl.li, cl.layout, cl.last, { qubitLabels: cl.labels });
   assert.match(caveat, /full rank proves a stabilizer state and less than full rank proves nothing/);
+  assert.equal(tableauFrame(cl.li, cl.layout, cl.last, { qubitLabels: cl.labels }).short, true);
 });

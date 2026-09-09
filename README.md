@@ -142,7 +142,8 @@ can be restyled in one place. That is what belongs in a paper: text in the docum
 fonts, editable afterwards, rather than an SVG at a size nobody chose.
 
 **tableau**, in the Pauli-LIMDD view only, gives the stabilizer group of every node in the
-current step — a sign, the two check-vector blocks, and the string of `I/X/Y/Z`. The
+current step — a sign, the two check-vector blocks with the qubit index over each column,
+and the string of `I/X/Y/Z`. The
 diagram computes these groups anyway, to choose its edge labels; the button is where you
 can read them. A node whose rank matches the number of qubits below it is a stabilizer
 state, which is why the diagram is a tower there. See `docs/LIMDD.md`.

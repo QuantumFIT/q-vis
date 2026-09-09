@@ -480,6 +480,93 @@ dialog {
   tab-size: 2;
 }
 
+/* ---- the stabilizer tableau ------------------------------------------- */
+
+/*
+ * A tableau is a table, so it is drawn as one rather than dumped as text — the copy button
+ * still hands over the aligned text, which is what a paper or a fixture wants. The check
+ * vectors are the point: the 1s are inked and the 0s left faint, so the pattern of each
+ * generator reads as a shape before it is read as digits.
+ */
+.tableau {
+  overflow: auto;
+  padding: 4px 0 12px;
+}
+
+.tab-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px 6px;
+  border-top: 1px solid var(--rule-soft);
+}
+.tableau > .tab-head:first-child { border-top: none; }
+
+.tab-id { font: 500 12px/1 var(--mono); color: var(--ink); }
+.tab-where {
+  font: 11px/1 var(--mono);
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 3px 5px;
+}
+.tab-rank { font: 11.5px/1 var(--sans); color: var(--ink-soft); }
+.tab-rank b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The one badge on the page: a claim, not decoration. Earned only by full rank. */
+.tab-badge {
+  font: 500 10.5px/1 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  padding: 3px 5px;
+}
+.tab-badge.quiet { color: var(--ink-faint); border-color: var(--rule); }
+
+.tab-grid {
+  border-collapse: collapse;
+  margin: 2px 0 4px 14px;
+  font: 11.5px/1.5 var(--mono);
+}
+.tab-grid th {
+  font: 500 9.5px/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding: 0 14px 5px 0;
+  white-space: nowrap;
+}
+.tab-grid td { padding: 1px 14px 1px 0; white-space: nowrap; vertical-align: middle; }
+.tab-sign { color: var(--ink); font-weight: 500; }
+.tab-bits { letter-spacing: 0.18em; }
+/* The qubit index over each column, set back so it reads as a scale and not as data. */
+.tab-ruler td { padding-bottom: 3px; }
+.tab-ruler .tab-bits { font-size: 9px; }
+.tab-bits .on { color: var(--accent); }
+.tab-bits .off { color: var(--rule); }
+.tab-string { color: var(--ink); }
+/* The identity reads as nothing happening, so it is set back out of the way. */
+.tab-string .i { color: var(--ink-faint); }
+
+.tab-note {
+  margin: 4px 14px 0;
+  font: 11.5px/1.5 var(--sans);
+  color: var(--ink-soft);
+  max-width: 62ch;
+}
+.tab-empty { margin: 0 14px 6px; font: 11.5px/1.5 var(--sans); color: var(--ink-faint); }
+
+.tab-lead {
+  padding: 10px 14px 4px;
+  font: 11.5px/1.5 var(--sans);
+  color: var(--ink-soft);
+}
+.tab-lead b { color: var(--ink); font-weight: 600; }
+
 dialog:not([open]) { display: none; }
 dialog::backdrop { background: var(--backdrop); }
 
