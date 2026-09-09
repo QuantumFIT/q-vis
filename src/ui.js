@@ -1833,7 +1833,6 @@ function useExample(i, size) {
   const ex = instantiate(EXAMPLES[i], size);
   $('qasm').value = ex.qasm;
   $('stateText').value = ex.state;
-  $('note').textContent = ex.note;
   showSizes(EXAMPLES[i], ex.size);
   app.index = 0;
   compile();
@@ -1843,7 +1842,6 @@ function useExample(i, size) {
 function showExample(qasm, state) {
   const hit = identify(qasm, state);
   $('example').value = hit ? String(EXAMPLES.indexOf(hit.example)) : '';
-  $('note').textContent = hit ? hit.note : '';
   showSizes(hit?.example, hit?.size);
 }
 
@@ -1881,7 +1879,6 @@ export function boot() {
     clearTimeout(timer);
     stop();
     picker.value = '';
-    $('note').textContent = '';
     showSizes(null);
     timer = setTimeout(compile, 350);
   };
@@ -1957,7 +1954,6 @@ export function boot() {
     }
     $('stateText').value = symbolicStateText(nqubits);
     picker.value = '';
-    $('note').textContent = '';
     app.index = 0;
     compile();
   });

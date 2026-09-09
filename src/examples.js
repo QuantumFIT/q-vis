@@ -156,7 +156,6 @@ const toffoliCount = (n) => (n === 3 ? 1 : 2 * n - 5);
 export const EXAMPLES = [
   {
     name: 'Bell pair',
-    note: 'Two amplitudes, one shared terminal: the diagram splits only where the state does.',
     qasm: `${HEADER}
 qreg q[2];
 
@@ -170,7 +169,6 @@ cx q[0],q[1];
     // From three: GHZ on two qubits is the Bell pair, which is the example above.
     sizes: range(3, 12),
     defaultSize: 5,
-    note: 'The diagram grows by two nodes per qubit, never exponentially.',
     qasm: (n) => `${HEADER}
 qreg q[${n}];
 
@@ -183,8 +181,6 @@ ${each(n - 1, (i) => `cx q[${i}],q[${i + 1}];`)}
     name: 'Cluster state',
     sizes: range(2, 12),
     defaultSize: 5,
-    note: 'A stabilizer state. In the LIMDD view it is a tower of one node per qubit, '
-      + 'whatever the graph — the edge-valued diagram needs nearly twice as many.',
     qasm: (n) => `${HEADER}
 qreg q[${n}];
 
@@ -201,11 +197,6 @@ ${each(n - 1, (i) => `cz q[${i}],q[${i + 1}];`)}
     // would be left without a partner.
     sizes: [2, 4, 6, 8, 10, 12],
     defaultSize: 8,
-    note: (n) => 'Why the qubit order matters, in one example. Qubit i is entangled with '
-      + `qubit ${n - 1} - i, so as written the diagram has to remember the first ${n / 2} `
-      + `bits before it can decide any of the last ${n / 2}: ${2 ** (n / 2)} nodes across `
-      + 'the middle. Switch the order to **paired** and every pair becomes adjacent, '
-      + 'which is a chain. Same state, same circuit.',
     qasm: (n) => `${HEADER}
 qreg q[${n}];
 
@@ -220,9 +211,6 @@ ${each(n / 2, (i) => `h q[${i}];\ncx q[${i}],q[${n - 1 - i}];`)}
     // would need an amplitude of 1/sqrt(3), which this ring does not contain at all.
     sizes: [2, 4, 8],
     defaultSize: 4,
-    note: (n) => 'Each splitter sends one excitation half onward, half sideways. '
-      + `${n} qubits give amplitude 1/${n === 2 ? '√2' : (n === 4 ? '2' : '(2√2)')}, which `
-      + 'the exact ring holds; W on three needs 1/√3, which it cannot.',
     qasm: wState,
     state: zeros,
   },
@@ -230,8 +218,6 @@ ${each(n / 2, (i) => `h q[${i}];\ncx q[${i}],q[${n - 1 - i}];`)}
     name: 'Uniform superposition',
     sizes: range(1, 12),
     defaultSize: 8,
-    note: (n) => `${2 ** n} equal amplitudes collapse to a single terminal — every level `
-      + 'becomes a don\'t-care.',
     qasm: (n) => `${HEADER}
 qreg q[${n}];
 
@@ -241,7 +227,6 @@ h q;
   },
   {
     name: 'Symbolic input',
-    note: 'Amplitudes are the symbols a and b: watch the terminals become sums.',
     qasm: `${HEADER}
 qreg q[2];
 
@@ -257,14 +242,6 @@ h q[1];
     // Seven is where the edge-valued conversion stops being interactive; see qft() above.
     sizes: range(1, 7),
     defaultSize: 3,
-    note: (n) => 'Every amplitude differs by a phase, so nothing can be shared: the worst '
-      + `case for a diagram, and here the whole state vector — ${2 ** (n + 1) - 1} nodes. `
-      + `The edge-valued view collapses it to ${n + 1}, because a phase is exactly what an `
-      + 'edge weight holds.'
-      + (n >= 4
-        ? ` Each qubit needs a phase twice as fine as the last, so ω is e^(iπ/${2 ** (n - 1)}) `
-          + 'here rather than the π/4 of Clifford+T — a level further up the same exact ring.'
-        : ''),
     qasm: qft,
     // |1>, |01>, |101>: an odd number at every size, so it shares no factor with 2^n and
     // every one of the 2^n phases comes out different — which is the case worth showing.
@@ -274,16 +251,6 @@ h q[1];
     name: 'Multi-controlled X',
     sizes: range(3, 8),
     defaultSize: 3,
-    note: (n) => {
-      const tofs = toffoliCount(n);
-      const shape = n === 3
-        ? 'Seven T gates and eight Clifford gates for one Toffoli.'
-        : `An X controlled on ${n - 1} qubits costs ${tofs} Toffolis, so ${7 * tofs} T `
-          + `gates — folded together on ${chainSpare(n)} working qubits, the bottom rows, `
-          + 'which are borrowed and given back.';
-      return `${shape} Every intermediate phase is kept exactly, and they all cancel: the `
-        + 'last diagram is the very node the controlled gate would have produced.';
-    },
     qasm: multiControlX,
     // Every control set, the target clear: the one input the gate is supposed to act on.
     state: (n) => `|${'1'.repeat(n - 1)}0${'0'.repeat(chainSpare(n))}> : 1`,
@@ -292,23 +259,11 @@ h q[1];
     name: 'Grover',
     sizes: range(2, 6),
     defaultSize: 3,
-    note: (n) => {
-      const iterations = groverIterations(n);
-      const shape = `${iterations} iteration${iterations === 1 ? '' : 's'} over `
-        + `${2 ** n} basis states: watch |${'1'.repeat(n)}> grow while the rest shrink and `
-        + 'turn negative.';
-      return workspace(n)
-        ? `${shape} The oracle needs a Z controlled on every qubit, which the gate set `
-          + `stops short of, so it is built from Toffolis over ${workspace(n)} working `
-          + `qubits — the bottom ${workspace(n)} rows, which start and end at |0>.`
-        : shape;
-    },
     qasm: grover,
     state: (n) => zeros(n + workspace(n)),
   },
   {
     name: 'Don\'t-care patterns',
-    note: 'A dash matches either value of that qubit — the input itself is written as a diagram.',
     qasm: `${HEADER}
 qreg q[4];
 
@@ -331,7 +286,6 @@ export function instantiate(example, size) {
   return {
     name: example.name,
     size: n ?? null,
-    note: at(example.note),
     qasm: at(example.qasm),
     state: at(example.state),
   };

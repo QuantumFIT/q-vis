@@ -33,11 +33,10 @@ test('every example builds at every size it offers, and stays a state', () => {
   }
 });
 
-test('a family says what it is at every size', () => {
+test('a family builds at every size it offers', () => {
   for (const family of families()) {
     for (const size of family.sizes) {
       const instance = instantiate(family, size);
-      assert.ok(instance.note.length > 20, `${family.name} on ${size} has no note`);
       assert.equal(instance.size, size);
     }
     // An unknown size cannot produce a circuit that does not exist.
@@ -186,15 +185,14 @@ test('the Toffoli chain really is a multi-controlled X', () => {
   }
 });
 
-test('a Toffoli chain costs what it says it costs', () => {
-  // The note quotes a T count, and a reader is entitled to check it against the strip.
+test('a Toffoli chain costs what it should', () => {
+  // Seven T gates per Toffoli, and 2n-5 Toffolis for an X controlled on n-1 qubits. The
+  // decomposition is the whole point of the example, so its price is worth pinning.
   const mcx = EXAMPLES.find((ex) => ex.name === 'Multi-controlled X');
   for (const n of mcx.sizes) {
-    const instance = instantiate(mcx, n);
-    const circuit = parseQasm(instance.qasm);
+    const circuit = parseQasm(instantiate(mcx, n).qasm);
     const tGates = circuit.gates.filter((g) => g.name === 't' || g.name === 'tdg').length;
     const toffolis = n === 3 ? 1 : 2 * n - 5;
     assert.equal(tGates, 7 * toffolis, `${n} qubits: ${toffolis} Toffolis at seven T each`);
-    assert.match(instance.note, new RegExp(n === 3 ? 'Seven T gates' : `${7 * toffolis} T`));
   }
 });
