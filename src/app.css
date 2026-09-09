@@ -86,9 +86,12 @@ body {
 
 .app {
   display: grid;
-  grid-template-columns: var(--col) minmax(0, 1fr);
+  grid-template-columns: var(--col) 0 minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas: "masthead masthead" "inputs plate" "transport transport";
+  grid-template-areas:
+    "masthead masthead masthead"
+    "inputs   vsplit   plate"
+    "transport transport transport";
   height: 100vh;
   height: 100dvh;
   gap: var(--gap);
@@ -154,6 +157,60 @@ a.version[href]:hover { text-decoration: underline; }
 }
 
 .footnote:hover { color: var(--accent); text-decoration: underline; }
+
+/*
+ * Splitters. Each one is a zero-width or zero-height track whose box is pulled out over
+ * the gap it sits in by negative margins, so the grab area is the space that was already
+ * between the panels and nothing moves to make room for it. The hairline only appears
+ * under the pointer: at rest the layout looks exactly as it did.
+ */
+.vsplit,
+.hsplit {
+  position: relative;
+  z-index: 2;
+  touch-action: none;
+}
+
+.vsplit {
+  grid-area: vsplit;
+  width: var(--gap);
+  margin: 0 calc(var(--gap) / -2 - var(--gap) / 2);
+  cursor: col-resize;
+}
+
+.hsplit {
+  height: var(--gap);
+  margin: calc(var(--gap) * -1) 0;
+  cursor: row-resize;
+}
+
+/* The hairline, inset so it never touches the panel corners. */
+.vsplit::after,
+.hsplit::after {
+  content: '';
+  position: absolute;
+  border-radius: 1px;
+  background: var(--rule);
+  opacity: 0;
+  transition: opacity .12s ease-out;
+}
+.vsplit::after { inset: 12px calc(50% - 1px); }
+.hsplit::after { inset: calc(50% - 1px) 12px; }
+
+.vsplit:hover::after,
+.hsplit:hover::after,
+.dragging .vsplit::after,
+.dragging .hsplit::after { opacity: 1; }
+
+.vsplit:focus-visible::after,
+.hsplit:focus-visible::after { opacity: 1; background: var(--accent); }
+.vsplit:focus-visible,
+.hsplit:focus-visible { outline: none; }
+
+/* While a splitter is being dragged the pointer owns the whole window: without this a
+   fast drag selects the text it passes over and the panels flicker. */
+body.dragging { cursor: inherit; user-select: none; }
+body.dragging * { cursor: inherit !important; }
 
 /* ---- panels ----------------------------------------------------------- */
 
@@ -492,6 +549,8 @@ dialog {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  /* A twelve-qubit permutation plus a warning outgrows a column this narrow. */
+  flex-wrap: wrap;
   padding: 6px 8px;
   cursor: pointer;
   list-style: none;
@@ -524,6 +583,23 @@ dialog {
 .fold-now { font: 11.5px/1.4 var(--sans); color: var(--ink-soft); }
 .fold-now.changed { color: var(--accent); }
 
+/*
+ * Shown when what has been typed is not an order. The box can be folded away while the
+ * field is wrong, and then the summary is the only place that can say so — otherwise an
+ * edit that never took effect looks like one that did.
+ */
+.fold-warn {
+  font: 500 10px/1 var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 2px;
+  padding: 3px 5px;
+}
+.fold-warn[hidden] { display: none; }
+
 .picker-label {
   font: 500 10px/1 var(--mono);
   letter-spacing: .1em;
@@ -547,7 +623,16 @@ dialog {
 }
 #orderText[hidden] { display: none; }
 #orderText:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-#orderText.bad { border-color: var(--accent); }
+
+/* A refused order looks the way a refused circuit does — accent on accent-soft, which is
+   this palette's one colour doing the one job it has. A frame rather than a border colour:
+   at one pixel the difference was easy to miss, which is the whole point of showing it. */
+#orderText.bad {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 #sift { flex: 0 0 auto; font-size: 11px; padding: 2px 6px; }
 
 /* Its own line, and free to wrap: it carries a sentence when an order is refused, and a
@@ -558,6 +643,9 @@ dialog {
   color: var(--ink-soft);
 }
 .order-note:empty { display: none; }
+/* The line carries two kinds of message — what a sift found, and why an order was
+   refused — so they should not look the same. */
+.order-note.bad { color: var(--accent); }
 
 /* ---- the stabilizer tableau ------------------------------------------- */
 
@@ -755,6 +843,8 @@ dialog > header .spacer { flex: 1; }
     grid-template-areas: "masthead" "plate" "inputs" "transport";
     height: auto;
   }
+  /* One column, stacked and scrolling: there is no boundary left to drag. */
+  .vsplit, .hsplit { display: none; }
   .canvas { height: 58vh; }
   .inputs { max-height: none; }
 }

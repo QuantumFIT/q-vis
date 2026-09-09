@@ -53,6 +53,7 @@ const app = {
   canon: 'max',      // which edge an edge-valued diagram takes its factor from
   orderKind: 'written',   // written | reversed | paired | custom
   customOrder: null,      // the typed permutation, when orderKind is 'custom'
+  orderInvalid: null,     // why the text in the field is not an order, when it is not
   order: [],              // atLevel: which qubit each level decides
   levelOf: [],            // its inverse: where each qubit sits
   theme: 'auto',
@@ -254,13 +255,25 @@ function showOrder() {
   }
   $('order').value = app.orderKind;
 
+  // The field shows the order in force, except while it is being edited — so a refused
+  // edit is never left sitting there once attention has moved on.
+  const editing = document.activeElement === $('orderText');
+  const invalid = !!app.orderInvalid && editing;
+  if (!editing) app.orderInvalid = null;
+  $('orderText').classList.toggle('bad', invalid);
+  $('orderNote').classList.toggle('bad', invalid);
+  if (invalid) $('orderNote').textContent = app.orderInvalid;
+
   // The summary says what is in force, so that folding the box away never hides the
-  // reason the diagram's rows are not q[0] downwards.
+  // reason the diagram's rows are not q[0] downwards — nor that an edit has not taken.
   const changed = app.order.length > 0 && !Order.isIdentity(app.order);
   const now = $('orderNow');
   now.textContent = changed ? Order.format(app.order) : 'as written';
   now.classList.toggle('changed', changed);
   now.title = changed ? 'the qubits, top level first' : '';
+  const warn = $('orderBad');
+  warn.hidden = !invalid;
+  warn.title = invalid ? app.orderInvalid : '';
   const n = app.circuit ? app.circuit.nqubits : 0;
   $('sift').disabled = n < 3;
   $('sift').title = n < 3
@@ -328,6 +341,146 @@ function sift() {
     note.textContent = `widest frame ${before}: no order tried was smaller`;
   }
   showOrder();
+}
+
+// ---- resizing -----------------------------------------------------------
+
+const COL_MIN = 220;
+const PANEL_MIN = 64;
+const LAYOUT_STORE = 'q-vis.layout';
+
+/**
+ * The panel column's width, and the heights of the panels stacked in it.
+ *
+ * Two things are dragged and they work differently. The column is one number, the grid's
+ * `--col`. A panel boundary is a *pair* of numbers — the panel above takes a fixed height
+ * and the one below goes back to absorbing the slack — so the drag is expressed as "the
+ * panel above is this tall" and the rest of the column follows from flex.
+ *
+ * Both are clamped so a panel can never be dragged out of existence, and both are stored,
+ * because a layout you set and then lost on reload is worse than one you cannot set.
+ */
+function setColumn(px) {
+  const max = Math.max(COL_MIN, window.innerWidth - 320);
+  const w = Math.round(Math.max(COL_MIN, Math.min(px, max)));
+  document.documentElement.style.setProperty('--col', `${w}px`);
+  return w;
+}
+
+function setPanelHeight(panel, px) {
+  const h = Math.round(Math.max(PANEL_MIN, px));
+  panel.style.flex = `0 0 ${h}px`;
+  return h;
+}
+
+/** What the panels are doing now, as something small enough to store. */
+function layoutState() {
+  const col = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--col'), 10);
+  const heights = {};
+  for (const id of ['panelCircuit', 'panelState']) {
+    const m = /0 0 (\d+)px/.exec($(id).style.flex || '');
+    if (m) heights[id] = +m[1];
+  }
+  return { col, heights };
+}
+
+function saveLayout() {
+  try { localStorage.setItem(LAYOUT_STORE, JSON.stringify(layoutState())); }
+  catch { /* private windows are fine; the layout is just not remembered */ }
+}
+
+function loadLayout() {
+  let v;
+  try { v = JSON.parse(localStorage.getItem(LAYOUT_STORE) || 'null'); } catch { return; }
+  if (!v) return;
+  if (Number.isFinite(v.col)) setColumn(v.col);
+  for (const [id, h] of Object.entries(v.heights || {})) {
+    if ($(id) && Number.isFinite(h)) setPanelHeight($(id), h);
+  }
+}
+
+/** Put a boundary back the way it started. */
+function resetSplit(el) {
+  if (el.id === 'vsplit') {
+    document.documentElement.style.removeProperty('--col');
+  } else {
+    // Even out: the panel above goes back to sharing the column by flex rather than
+    // holding a height of its own.
+    const panel = el.previousElementSibling;
+    panel.style.flex = panel.id === 'panelState' ? '' : '1 1 auto';
+  }
+  saveLayout();
+  fitCanvas();
+}
+
+/**
+ * Dragging, for both kinds of splitter. Pointer events rather than mouse events so a
+ * trackpad, a touchscreen and a pen all work alike, and the move and release are listened
+ * for on the window rather than on the handle: a drag that outruns the pointer then keeps
+ * going instead of stopping wherever the cursor left the 8px strip. Pointer capture would
+ * do the same thing and is the more obvious way to write it, but it can refuse — and a
+ * splitter that silently does nothing is worse than one written the long way.
+ */
+function armSplitter(el) {
+  const vertical = el.id === 'vsplit';
+  let start = 0;
+  let base = 0;
+  let live = false;
+
+  const move = (e) => {
+    if (!live) return;
+    const delta = (vertical ? e.clientX : e.clientY) - start;
+    if (vertical) setColumn(base + delta);
+    else setPanelHeight(el.previousElementSibling, base + delta);
+    fitCanvas();
+  };
+
+  const finish = () => {
+    if (!live) return;
+    live = false;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', finish);
+    window.removeEventListener('pointercancel', finish);
+    document.body.classList.remove('dragging');
+    document.body.style.cursor = '';
+    saveLayout();
+  };
+
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    live = true;
+    start = vertical ? e.clientX : e.clientY;
+    base = vertical
+      ? $('inputs').getBoundingClientRect().width
+      : el.previousElementSibling.getBoundingClientRect().height;
+    document.body.classList.add('dragging');
+    document.body.style.cursor = vertical ? 'col-resize' : 'row-resize';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  });
+
+  el.addEventListener('dblclick', () => resetSplit(el));
+
+  // A splitter is a separator, so the arrow keys move it — the one way to set a layout
+  // without a pointer at all.
+  el.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 40 : 10;
+    const keys = vertical
+      ? { ArrowLeft: -step, ArrowRight: step }
+      : { ArrowUp: -step, ArrowDown: step };
+    if (e.key === 'Home') { e.preventDefault(); resetSplit(el); return; }
+    if (!(e.key in keys)) return;
+    e.preventDefault();
+    if (vertical) setColumn($('inputs').getBoundingClientRect().width + keys[e.key]);
+    else {
+      const panel = el.previousElementSibling;
+      setPanelHeight(panel, panel.getBoundingClientRect().height + keys[e.key]);
+    }
+    saveLayout();
+    fitCanvas();
+  });
 }
 
 function fail(e, where) {
@@ -1722,19 +1875,31 @@ export function boot() {
     compile();
   });
   $('orderText').addEventListener('input', () => {
-    const field = $('orderText');
     try {
-      app.customOrder = Order.parse(field.value, app.circuit.nqubits);
-      field.classList.remove('bad');
+      app.customOrder = Order.parse($('orderText').value, app.circuit.nqubits);
+      app.orderInvalid = null;
       $('orderNote').textContent = '';
       compile();
     } catch (err) {
-      // Say what is wrong and keep the last good drawing, as the circuit box does.
-      field.classList.add('bad');
-      $('orderNote').textContent = err.message;
+      // Keep the last good drawing, as the circuit box does, and say what is wrong — in
+      // the field, in the note, and in the summary, since the box can be folded away.
+      app.orderInvalid = err.message;
+      showOrder();
+    }
+  });
+  // Leaving the field puts back the order actually in force: a refused permutation left
+  // on screen would read as the one being drawn.
+  $('orderText').addEventListener('blur', () => {
+    if (app.orderInvalid) {
+      app.orderInvalid = null;
+      $('orderNote').textContent = '';
+      showOrder();
     }
   });
   $('sift').addEventListener('click', sift);
+
+  for (const el of document.querySelectorAll('.vsplit, .hsplit')) armSplitter(el);
+  loadLayout();
   $('codeCopy').addEventListener('click', copyCode);
   $('codeClose').addEventListener('click', () => $('codeDialog').close());
   $('codeDialog').addEventListener('click', (e) => {

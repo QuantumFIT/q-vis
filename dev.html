@@ -35,8 +35,8 @@
     <button id="theme" type="button" title="theme">◐</button>
   </header>
 
-  <section class="inputs">
-    <div class="panel" style="flex:1 1 auto">
+  <section class="inputs" id="inputs">
+    <div class="panel" id="panelCircuit" style="flex:1 1 auto">
       <header>
         <span class="label">Circuit</span>
         <span class="spacer"></span>
@@ -50,6 +50,7 @@
         <summary title="which qubit each level of the diagram decides — the rows move, the notation does not">
           <span class="fold-label">order</span>
           <span class="fold-now" id="orderNow"></span>
+          <span class="fold-warn" id="orderBad" hidden>not applied</span>
         </summary>
         <div class="pickers">
           <select id="order" aria-label="which qubit each level decides"></select>
@@ -64,7 +65,9 @@
       <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
     </div>
 
-    <div class="panel">
+    <div class="hsplit" role="separator" aria-orientation="horizontal" tabindex="0"
+      aria-label="resize the panel above" title="drag to resize · double-click to even out"></div>
+    <div class="panel" id="panelState">
       <header>
         <span class="label">Input state</span>
         <span class="spacer"></span>
@@ -76,7 +79,9 @@
       <p class="error" id="error" role="alert"></p>
     </div>
 
-    <div class="panel" style="flex:1 1 auto">
+    <div class="hsplit" role="separator" aria-orientation="horizontal" tabindex="0"
+      aria-label="resize the panel above" title="drag to resize · double-click to even out"></div>
+    <div class="panel" id="panelAmps" style="flex:1 1 auto">
       <header>
         <span class="label">Amplitudes</span>
         <span class="spacer"></span>
@@ -85,6 +90,9 @@
       <div id="readout"></div>
     </div>
   </section>
+
+  <div class="vsplit" id="vsplit" role="separator" aria-orientation="vertical" tabindex="0"
+    aria-label="resize the input column" title="drag to resize · double-click to reset"></div>
 
   <main class="plate">
     <nav class="circuit" id="circuit" aria-label="circuit; click a column to jump to that step"></nav>
