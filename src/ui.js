@@ -244,7 +244,7 @@ function resolveOrder(n) {
   return (Order.PRESETS[app.orderKind] ?? Order.PRESETS.written).of(n);
 }
 
-/** Keep the order controls showing what is in force. */
+/** Keep the order controls showing what is in force, folded away or not. */
 function showOrder() {
   const custom = app.orderKind === 'custom';
   $('orderText').hidden = !custom;
@@ -253,6 +253,14 @@ function showOrder() {
     $('orderText').value = Order.format(app.order);
   }
   $('order').value = app.orderKind;
+
+  // The summary says what is in force, so that folding the box away never hides the
+  // reason the diagram's rows are not q[0] downwards.
+  const changed = app.order.length > 0 && !Order.isIdentity(app.order);
+  const now = $('orderNow');
+  now.textContent = changed ? Order.format(app.order) : 'as written';
+  now.classList.toggle('changed', changed);
+  now.title = changed ? 'the qubits, top level first' : '';
   const n = app.circuit ? app.circuit.nqubits : 0;
   $('sift').disabled = n < 3;
   $('sift').title = n < 3
@@ -314,6 +322,7 @@ function sift() {
     app.orderKind = 'custom';
     app.customOrder = order;
     note.textContent = `widest frame ${before} → ${best}`;
+    $('orderBox').open = true;
     compile();
   } else {
     note.textContent = `widest frame ${before}: no order tried was smaller`;
@@ -1549,6 +1558,9 @@ function applyPermalink() {
     try {
       app.customOrder = p.get('o').split('-').map(Number);
       app.orderKind = 'custom';
+      // Arriving with an order set, unfold: it is not the reader's own choice yet, and
+      // they should see it rather than wonder why the rows are shuffled.
+      $('orderBox').open = true;
     } catch { /* a malformed order is no order */ }
   }
   const f = normaliseFormat(p.get('f'));
@@ -1822,8 +1834,17 @@ export function boot() {
     drawFrame(app.layout.frames[app.index]);
   });
 
+  /**
+   * Anything the reader is typing into keeps its own keys. The shortcuts are single
+   * characters — space plays, `0` fits, `-` zooms out, the arrows step — and the order
+   * field is typed with digits, spaces and dashes, so every character of a custom order
+   * was a shortcut. A `select` is included because its arrow keys are its own too.
+   */
+  const typing = (el) => el instanceof HTMLElement
+    && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey) return;
+    if (typing(e.target) || e.metaKey || e.ctrlKey) return;
     const zoomKeys = {
       '+': () => zoomBy(ZOOM_STEP), '=': () => zoomBy(ZOOM_STEP),
       '-': () => zoomBy(1 / ZOOM_STEP), '0': () => setZoom('fit'),
