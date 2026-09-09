@@ -44,29 +44,69 @@ export function invert(order) {
 
 export const isIdentity = (order) => order.every((q, i) => q === i);
 
-/** For the field, and — with a dash — for a link. */
-export const format = (order, sep = ' ') => order.join(sep);
-
 /**
- * An order from text: the qubits, top level first, separated by anything that is not a
- * digit. Every failure names itself, because a rejected order with no reason is worse than
- * no field at all.
+ * For the field and the summary, in the circuit's own names — `q[0] q[2] q[1] b[0]`.
+ *
+ * Bare indices are what the order *is*, but they are not what a reader has to work with.
+ * A circuit may declare several registers, which are flattened into one run of qubits, so
+ * `qreg q[3]; qreg b[1];` makes `b[0]` the qubit at index 3 and `0 2 1 3` says nothing
+ * about which qubit is which. Given the labels, this writes them out.
  */
-export function parse(text, n) {
-  const parts = String(text).trim().split(/[^0-9]+/).filter((s) => s !== '');
-  if (!parts.length) throw new OrderError('give the qubits in the order you want them, top first');
-  const order = parts.map(Number);
+export const format = (order, labels = null, sep = ' ') =>
+  order.map((q) => (labels && labels[q] !== undefined ? labels[q] : q)).join(sep);
+
+/** The indices, for a link: compact, and not invalidated by editing a register's name. */
+export const formatIndices = (order, sep = '-') => order.join(sep);
+
+/** Already an array of indices — check it is a permutation of this circuit's qubits. */
+export function validate(order, n, labels = null) {
+  const name = (q) => (labels && labels[q] !== undefined ? labels[q] : `qubit ${q}`);
+  if (!Array.isArray(order) || !order.length) {
+    throw new OrderError('give the qubits in the order you want them, top first');
+  }
   if (order.length !== n) {
     throw new OrderError(`${order.length} qubit${order.length === 1 ? '' : 's'} listed, `
       + `the circuit has ${n} — every qubit has to appear exactly once`);
   }
   const seen = new Set();
   for (const q of order) {
-    if (q >= n) throw new OrderError(`there is no qubit ${q}: they run 0 to ${n - 1}`);
-    if (seen.has(q)) throw new OrderError(`qubit ${q} appears twice; every qubit has to appear exactly once`);
+    if (!Number.isInteger(q) || q < 0 || q >= n) {
+      throw new OrderError(`there is no qubit ${q}: this circuit has ${n}, `
+        + `${labels ? `${labels[0]} to ${labels[n - 1]}` : `0 to ${n - 1}`}`);
+    }
+    if (seen.has(q)) {
+      throw new OrderError(`${name(q)} appears twice; every qubit has to appear exactly once`);
+    }
     seen.add(q);
   }
   return order;
+}
+
+/**
+ * An order from text: the qubits, top level first. Each may be written the way the circuit
+ * writes it — `q[0]`, `b[0]` — or as a bare index into the flattened run of qubits, which
+ * is the same thing when there is only one register. Separated by spaces, commas or
+ * dashes, so what a link carries parses too.
+ *
+ * Every failure names itself, because a rejected order with no reason is worse than no
+ * field at all.
+ */
+export function parse(text, n, labels = null) {
+  const tokens = String(text).trim().split(/[\s,;-]+/).filter((t) => t !== '');
+  if (!tokens.length) throw new OrderError('give the qubits in the order you want them, top first');
+
+  const byLabel = new Map();
+  if (labels) labels.forEach((label, q) => byLabel.set(label.toLowerCase(), q));
+
+  const order = tokens.map((token) => {
+    if (/^\d+$/.test(token)) return Number(token);
+    const hit = byLabel.get(token.toLowerCase());
+    if (hit !== undefined) return hit;
+    // Name what is on offer: with several registers a reader cannot guess the spelling.
+    const known = labels ? labels.join(' ') : `0 to ${n - 1}`;
+    throw new OrderError(`'${token}' is not a qubit of this circuit. It has ${known}`);
+  });
+  return validate(order, n, labels);
 }
 
 /**

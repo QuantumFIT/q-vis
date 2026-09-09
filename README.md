@@ -142,7 +142,9 @@ can be restyled in one place. That is what belongs in a paper: text in the docum
 fonts, editable afterwards, rather than an SVG at a size nobody chose.
 
 **order** decides which qubit each level of the diagram decides — *as written*, *reversed*,
-*paired*, or any permutation typed in, top level first. It is the biggest lever there is on
+*paired*, or any permutation typed in, top level first in the circuit's own names —
+`q[0] q[2] q[1] b[0]`, which is what several registers flattened into one run makes of
+`0 2 1 3`. It is the biggest lever there is on
 how big a diagram gets: **Nested Bell pairs** on eight qubits is 47 nodes as written and 14
 when paired, the same state either way. **sift** searches for an order that makes the widest
 frame smaller. Only the rows move: a ket and a Pauli string are always written in qubit

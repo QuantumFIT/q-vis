@@ -108,7 +108,7 @@ test('an order typed in is accepted or refused with a reason', () => {
   for (const [text, why] of [
     ['0 1 2', /3 qubits listed, the circuit has 4/],
     ['0 1 2 3 4', /5 qubits listed, the circuit has 4/],
-    ['0 1 2 9', /no qubit 9: they run 0 to 3/],
+    ['0 1 2 9', /there is no qubit 9: this circuit has 4, 0 to 3/],
     ['0 1 1 2', /qubit 1 appears twice/],
     ['', /give the qubits in the order you want them/],
     ['   ', /give the qubits/],
@@ -116,13 +116,45 @@ test('an order typed in is accepted or refused with a reason', () => {
     assert.throws(() => O.parse(text, 4), why, JSON.stringify(text));
   }
   assert.equal(O.format([0, 3, 1, 2]), '0 3 1 2');
-  assert.equal(O.format([0, 3, 1, 2], '-'), '0-3-1-2');
+  assert.equal(O.formatIndices([0, 3, 1, 2]), '0-3-1-2');
   // What is formatted is what parses back.
   for (const n of [2, 5, 11]) {
     const order = O.paired(n);
     assert.deepEqual(O.parse(O.format(order), n), order);
-    assert.deepEqual(O.parse(O.format(order, '-'), n), order);
+    assert.deepEqual(O.parse(O.formatIndices(order), n), order);
   }
+});
+
+test('an order is written in the circuit\'s own qubit names', () => {
+  // A bare index says nothing about which qubit it is once a circuit declares more than
+  // one register: `qreg q[3]; qreg b[1];` flattens to four qubits and index 3 is b[0].
+  const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\nqreg b[1];\nh q[0];\n');
+  const names = circuit.qubits.map((q) => q.label);
+  assert.deepEqual(names, ['q[0]', 'q[1]', 'q[2]', 'b[0]']);
+
+  assert.equal(O.format([0, 2, 1, 3], names), 'q[0] q[2] q[1] b[0]');
+  assert.equal(O.formatIndices([0, 2, 1, 3]), '0-2-1-3', 'a link stays on indices');
+
+  // Names, indices, a mixture, and the dashes a link uses all mean the same order.
+  for (const text of ['q[0] q[2] q[1] b[0]', '0 2 1 3', 'q[0], 2, q[1], b[0]', '0-2-1-3']) {
+    assert.deepEqual(O.parse(text, 4, names), [0, 2, 1, 3], text);
+  }
+  assert.deepEqual(O.parse('Q[0] Q[2] Q[1] B[0]', 4, names), [0, 2, 1, 3], 'case is not the point');
+
+  // A name that is not a qubit of this circuit says so, and says what is.
+  assert.throws(() => O.parse('q[0] q[1] q[2] q[3]', 4, names),
+    /'q\[3\]' is not a qubit of this circuit\. It has q\[0\] q\[1\] q\[2\] b\[0\]/);
+  assert.throws(() => O.parse('q[0] q[0] q[1] b[0]', 4, names), /q\[0\] appears twice/);
+  assert.throws(() => O.parse('q[0] q[1]', 4, names), /2 qubits listed, the circuit has 4/);
+  // Out of range by index, reported in the names the reader can see.
+  assert.throws(() => O.validate([0, 1, 2, 9], 4, names),
+    /there is no qubit 9: this circuit has 4, q\[0\] to b\[0\]/);
+
+  // With one register the two spellings coincide, which is why this went unnoticed.
+  const plain = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nh q[0];\n')
+    .qubits.map((q) => q.label);
+  assert.equal(O.format([0, 2, 1, 3], plain), 'q[0] q[2] q[1] q[3]');
+  assert.deepEqual(O.parse('0 2 1 3', 4, plain), [0, 2, 1, 3]);
 });
 
 const HEADER = (n) => `OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[${n}];\n`;

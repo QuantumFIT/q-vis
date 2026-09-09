@@ -111,7 +111,7 @@ function compile() {
   // level decides, and everything below is expressed in levels.
   let order;
   try {
-    order = resolveOrder(circuit.nqubits);
+    order = resolveOrder(circuit);
   } catch (e) {
     return fail(e, 'order');
   }
@@ -229,18 +229,22 @@ function compile() {
   save();
 }
 
+/** The circuit's qubits, in circuit order — `['q[0]', 'q[1]', 'q[2]', 'b[0]']`. */
+const qubitNames = () => (app.circuit ? app.circuit.qubits.map((q) => q.label) : []);
+
 /**
- * The order the controls are asking for, as `atLevel`. Throws when a typed order does not
+ * The order the controls are asking for, as `atLevel`. Throws when a stored order does not
  * name every qubit exactly once, which `compile` reports like any other bad input.
  */
-function resolveOrder(n) {
+function resolveOrder(circuit) {
+  const n = circuit.nqubits;
   if (app.orderKind === 'custom') {
     if (!app.customOrder || app.customOrder.length !== n) {
       // A custom order is a permutation of *these* qubits, so it cannot survive a change
-      // of size. Falling back beats refusing to draw anything.
+      // of size or of register layout. Falling back beats refusing to draw anything.
       app.customOrder = Order.identity(n);
     }
-    return Order.parse(Order.format(app.customOrder), n);
+    return Order.validate(app.customOrder, n, circuit.qubits.map((q) => q.label));
   }
   return (Order.PRESETS[app.orderKind] ?? Order.PRESETS.written).of(n);
 }
@@ -250,9 +254,16 @@ function showOrder() {
   const custom = app.orderKind === 'custom';
   $('orderText').hidden = !custom;
   if (!custom) $('orderText').classList.remove('bad');
+  const names = qubitNames();
   if (document.activeElement !== $('orderText')) {
-    $('orderText').value = Order.format(app.order);
+    // In the circuit's own names, because a bare index says nothing about which qubit it
+    // is once there is more than one register: `qreg q[3]; qreg b[1];` makes index 3 into
+    // `b[0]`, and no reader should have to count that out.
+    $('orderText').value = Order.format(app.order, names);
   }
+  $('orderText').title = names.length
+    ? `the qubits in the order you want them, top level first — ${names.join(' ')}`
+    : 'the qubits in the order you want them, top level first';
   $('order').value = app.orderKind;
 
   // The field shows the order in force, except while it is being edited — so a refused
@@ -268,7 +279,7 @@ function showOrder() {
   // reason the diagram's rows are not q[0] downwards — nor that an edit has not taken.
   const changed = app.order.length > 0 && !Order.isIdentity(app.order);
   const now = $('orderNow');
-  now.textContent = changed ? Order.format(app.order) : 'as written';
+  now.textContent = changed ? Order.format(app.order, names) : 'as written';
   now.classList.toggle('changed', changed);
   now.title = changed ? 'the qubits, top level first' : '';
   const warn = $('orderBad');
@@ -1279,7 +1290,10 @@ function buildHelp() {
       + 'how big a diagram gets — Nested Bell pairs on eight qubits is 47 nodes as written '
       + 'and 14 when paired. Only the rows move: a ket and a Pauli string are always '
       + 'written in qubit order'],
-    ['custom…', 'the qubits in the order you want them, top level first: 0 7 1 6 2 5 3 4'],
+    ['custom…', 'the qubits in the order you want them, top level first, in the circuit\'s '
+      + 'own names: q[0] q[2] q[1] b[0]. Bare indices into the flattened run of qubits work '
+      + 'too, and mean the same thing — but with more than one register only the names say '
+      + 'which qubit is which'],
     ['sift', 'search for an order that makes the widest frame of the run smaller. Refuses, '
       + 'with an estimate, when the search would take more than a few seconds'],
   ]));
@@ -1666,7 +1680,7 @@ function permalink() {
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
   // Only when it is not the identity, so every link already written keeps its meaning.
-  if (app.order.length && !Order.isIdentity(app.order)) p.set('o', Order.format(app.order, '-'));
+  if (app.order.length && !Order.isIdentity(app.order)) p.set('o', Order.formatIndices(app.order));
   const here = location.href.split('#')[0];
   const base = archiveUrl(location.href, version()) || here;
   return `${base}#${p}`;
@@ -1876,7 +1890,7 @@ export function boot() {
   });
   $('orderText').addEventListener('input', () => {
     try {
-      app.customOrder = Order.parse($('orderText').value, app.circuit.nqubits);
+      app.customOrder = Order.parse($('orderText').value, app.circuit.nqubits, qubitNames());
       app.orderInvalid = null;
       $('orderNote').textContent = '';
       compile();
@@ -1887,14 +1901,16 @@ export function boot() {
       showOrder();
     }
   });
-  // Leaving the field puts back the order actually in force: a refused permutation left
-  // on screen would read as the one being drawn.
+  // Leaving the field puts back the order actually in force, written in the circuit's
+  // names. That covers two things: a refused permutation left on screen would read as the
+  // one being drawn, and `0 2 1 3` typed as indices is normalised to `q[0] q[2] q[1] b[0]`
+  // — which is the same order said in a way that does not have to be counted out.
   $('orderText').addEventListener('blur', () => {
     if (app.orderInvalid) {
       app.orderInvalid = null;
       $('orderNote').textContent = '';
-      showOrder();
     }
+    showOrder();
   });
   $('sift').addEventListener('click', sift);
 

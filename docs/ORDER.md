@@ -12,7 +12,21 @@ The **order** control does. Three presets and a field:
 | **as written** | level `i` decides qubit `i` — what the diagram always did |
 | **reversed** | level `i` decides qubit `n−1−i` |
 | **paired** | `0, n−1, 1, n−2, …`, which brings qubit `i` next to qubit `n−1−i` |
-| **custom…** | type the qubits, top level first: `0 7 1 6 2 5 3 4` |
+| **custom…** | type the qubits, top level first: `q[0] q[7] q[1] q[6] …` |
+
+An order is written in the circuit's own names, because a bare index says nothing about
+which qubit it is as soon as a circuit declares more than one register. These four qubits
+
+```
+qreg q[3];
+qreg b[1];
+```
+
+flatten to one run, so index 3 is `b[0]` and `q[3]` does not exist. Writing the order as
+`q[0] q[2] q[1] b[0]` says what it means; `0 2 1 3` means the same thing and is accepted,
+along with any mixture and any of space, comma or dash as a separator. What is *shown* is
+always the names. A name that is not a qubit of the circuit is refused with the list of
+the ones that are.
 
 ## What it costs, in one example
 
@@ -68,8 +82,9 @@ qubit limit that would be wrong in both directions.
 
 ## In a link
 
-A copied link carries the order as `o=0-7-1-6-2-5-3-4`, and only when it is not the
-identity, so every link written before this existed still means what it meant. What travels
+A copied link carries the order as `o=0-7-1-6-2-5-3-4` — indices, not names, because a
+register can be renamed and an index cannot — and only when it is not the identity, so
+every link written before this existed still means what it meant. What travels
 is the permutation, not which preset produced it: a preset is a way of typing one.
 
 ## Where it lives in the code
