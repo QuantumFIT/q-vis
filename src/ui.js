@@ -392,7 +392,8 @@ function layoutState() {
     const m = /0 0 (\d+)px/.exec($(id).style.flex || '');
     if (m) heights[id] = +m[1];
   }
-  return { col, heights };
+  // Which panels are folded is the reader's own choice, so it is kept like a size.
+  return { col, heights, folded: { panelAmps: !$('panelAmps').open } };
 }
 
 function saveLayout() {
@@ -407,6 +408,9 @@ function loadLayout() {
   if (Number.isFinite(v.col)) setColumn(v.col);
   for (const [id, h] of Object.entries(v.heights || {})) {
     if ($(id) && Number.isFinite(h)) setPanelHeight($(id), h);
+  }
+  for (const [id, shut] of Object.entries(v.folded || {})) {
+    if ($(id)) $(id).open = !shut;
   }
 }
 
@@ -1915,6 +1919,9 @@ export function boot() {
   $('sift').addEventListener('click', sift);
 
   for (const el of document.querySelectorAll('.vsplit, .hsplit')) armSplitter(el);
+  for (const el of document.querySelectorAll('.panel.foldable')) {
+    el.addEventListener('toggle', saveLayout);
+  }
   loadLayout();
   $('codeCopy').addEventListener('click', copyCode);
   $('codeClose').addEventListener('click', () => $('codeDialog').close());

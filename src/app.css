@@ -231,13 +231,45 @@ body.dragging * { cursor: inherit !important; }
   min-height: 0;
 }
 
-.panel > header {
+.panel > header,
+.panel.foldable > summary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 7px 10px 6px;
   border-bottom: 1px solid var(--rule-soft);
 }
+
+/*
+ * A panel whose own header folds it away. The summary keeps the header's shape, so the
+ * column looks the same either way, and the marker is the one the order box uses — a fold
+ * is a fold, wherever it is.
+ */
+.panel.foldable > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.panel.foldable > summary::-webkit-details-marker { display: none; }
+
+.panel.foldable > summary::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border: 3.5px solid transparent;
+  border-left-color: var(--ink-faint);
+  transition: transform .15s ease-out;
+}
+.panel.foldable[open] > summary::before { transform: rotate(90deg) translateX(1px); }
+.panel.foldable > summary:hover::before { border-left-color: var(--ink-soft); }
+.panel.foldable > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Open it shares the column; folded it is only its own header, and the rule under that
+   header would be a line with nothing beneath it. */
+#panelAmps[open] { flex: 1 1 auto; }
+#panelAmps:not([open]) { flex: 0 0 auto; }
+.panel.foldable:not([open]) > summary { border-bottom: 0; }
 
 .label {
   font: 600 10px/1 var(--sans);
@@ -507,7 +539,8 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .dimmed { opacity: 0.12 !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .fold summary::before { transition: none; }
+  .fold summary::before,
+  .panel.foldable > summary::before { transition: none; }
   .node, .edge, .root-marker { transition: none; }
 }
 

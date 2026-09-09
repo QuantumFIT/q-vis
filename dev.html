@@ -46,6 +46,7 @@
         <select id="example" aria-label="load an example"></select>
         <select id="size" aria-label="how many qubits" title="how many qubits to build this example on"></select>
       </div>
+      <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
       <details class="fold" id="orderBox">
         <summary title="which qubit each level of the diagram decides — the rows move, the notation does not">
           <span class="fold-label">order</span>
@@ -62,7 +63,6 @@
           title="the qubits in the order you want them, top level first">
         <p class="order-note" id="orderNote"></p>
       </details>
-      <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
     </div>
 
     <div class="hsplit" role="separator" aria-orientation="horizontal" tabindex="0"
@@ -81,14 +81,14 @@
 
     <div class="hsplit" role="separator" aria-orientation="horizontal" tabindex="0"
       aria-label="resize the panel above" title="drag to resize · double-click to even out"></div>
-    <div class="panel" id="panelAmps" style="flex:1 1 auto">
-      <header>
+    <details class="panel foldable" id="panelAmps" open>
+      <summary>
         <span class="label">Amplitudes</span>
         <span class="spacer"></span>
         <span class="hint">– is either value</span>
-      </header>
+      </summary>
       <div id="readout"></div>
-    </div>
+    </details>
   </section>
 
   <div class="vsplit" id="vsplit" role="separator" aria-orientation="vertical" tabindex="0"
