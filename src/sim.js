@@ -67,12 +67,20 @@ export function applyNamed(dd, root, name, qubits) {
   return applyGate(dd, root, qubits, g.matrix);
 }
 
-/** Apply one circuit operation. Parsed operations carry their own matrix (u1/p are
- *  built per-angle), so the gate table is only a fallback for hand-written ops. */
-export function applyOp(dd, root, op) {
+/**
+ * Apply one circuit operation. Parsed operations carry their own matrix (u1/p are built
+ * per-angle), so the gate table is only a fallback for hand-written ops.
+ *
+ * This is where a circuit's qubits become a diagram's levels, and the only place that
+ * happens: `applyGate` above takes levels and, as its own comment says, does not care
+ * which. `levelOf[q]` is where qubit q sits; omitted, every qubit sits at its own index,
+ * which is what the diagram did before there was an order to choose.
+ */
+export function applyOp(dd, root, op, levelOf = null) {
   const matrix = op.matrix || (GATES[op.name] && GATES[op.name].matrix);
   if (!matrix) throw new Error(`unknown gate '${op.name}'`);
-  return applyGate(dd, root, op.qubits, matrix);
+  const at = levelOf ? op.qubits.map((q) => levelOf[q]) : op.qubits;
+  return applyGate(dd, root, at, matrix);
 }
 
 /**
@@ -92,9 +100,13 @@ export function applyOp(dd, root, op) {
  * unchanged nodes: keeping the whole history costs only the genuinely new nodes,
  * and the diff between consecutive frames is a set difference over node ids.
  *
+ * `levelOf` maps a circuit qubit to the level that decides it; omitted, they coincide.
+ * Frames keep the gate *as written*, qubit indices and all, so the score strip and the
+ * highlight stay in the reader's terms and only the diagram is reordered.
+ *
  * @returns {Frame[]} one frame for the input state plus one per gate
  */
-export function simulate(dd, initialRoot, circuit) {
+export function simulate(dd, initialRoot, circuit, levelOf = null) {
   /** @type {Frame[]} */
   const frames = [];
   let prev = new Set();
@@ -115,7 +127,7 @@ export function simulate(dd, initialRoot, circuit) {
 
   push(0, null);
   circuit.gates.forEach((g, i) => {
-    root = applyOp(dd, root, g);
+    root = applyOp(dd, root, g, levelOf);
     push(i + 1, g);
   });
   return frames;

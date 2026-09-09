@@ -203,7 +203,8 @@ test('the text is the same frame, aligned, and carries no link', () => {
   const { li, layout, labels, last } = laidOut(ghz(3), zeros(3));
   const text = tableauText(li, layout, last, { qubitLabels: labels });
   assert.match(text, /^Pauli-LIMDD stabilizers · step 3 of 3\n/);
-  assert.match(text, /3 qubits, qubit 0 first: q\[0\] q\[1\] q\[2\]/);
+  assert.match(text, /3 qubits, columns in qubit order: q\[0\] q\[1\] q\[2\]/);
+  assert.doesNotMatch(text, /diagram rows/, 'nothing to say when the order is the identity');
   assert.match(text, /4 nodes/);
   assert.match(text, /rank 3 of 3.*stabilizer state/, 'the root of a GHZ is a stabilizer state');
   assert.doesNotMatch(text, /proves nothing/, 'GHZ is full rank throughout, so no caveat');
@@ -224,4 +225,15 @@ test('the text is the same frame, aligned, and carries no link', () => {
   const caveat = tableauText(cl.li, cl.layout, cl.last, { qubitLabels: cl.labels });
   assert.match(caveat, /full rank proves a stabilizer state and less than full rank proves nothing/);
   assert.equal(tableauFrame(cl.li, cl.layout, cl.last, { qubitLabels: cl.labels }).short, true);
+
+  // Under an order the columns and the rows are different orders, and the text has to say
+  // both — a tableau whose columns silently meant levels would be wrong, not just unclear.
+  const order = [0, 2, 1];
+  const rows = order.map((q) => labels[q]);
+  const reordered = tableauText(li, layout, last,
+    { qubitLabels: rows, names: labels, order, levelOf: [0, 2, 1] });
+  assert.match(reordered, /columns in qubit order: q\[0\] q\[1\] q\[2\]/);
+  assert.match(reordered, /diagram rows, top first: q\[0\] q\[2\] q\[1\]/);
+  assert.equal(tableauFrame(li, layout, last, { order }).reordered, true);
+  assert.equal(tableauFrame(li, layout, last, { order: [0, 1, 2] }).reordered, false);
 });

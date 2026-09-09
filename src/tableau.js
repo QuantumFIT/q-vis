@@ -37,10 +37,14 @@ function minusIPow(ring, k) {
   }
 }
 
-/** A check vector block as bits, qubit 0 leftmost — the order `Pauli.formatString` uses. */
-export function blockBits(mask, n) {
+/**
+ * A check vector block as bits, qubit 0 leftmost — the order `Pauli.formatString` uses, so
+ * the two presentations line up column by column. The mask itself is indexed by level, so
+ * under a qubit order the column for qubit q reads bit `levelOf[q]`.
+ */
+export function blockBits(mask, n, levelOf = null) {
   let out = '';
-  for (let q = 0; q < n; q++) out += (mask >> q) & 1;
+  for (let q = 0; q < n; q++) out += (mask >> (levelOf ? levelOf[q] : q)) & 1;
   return out;
 }
 
@@ -54,20 +58,21 @@ export function blockBits(mask, n) {
  * If it is somehow not a sign, `sign` is null and the weight is handed back for printing.
  * Better an odd-looking tableau than a wrong one.
  */
-export function generatorRow(ring, g, n) {
+export function generatorRow(ring, g, n, levelOf = null) {
   const owed = Pauli.phaseShift(g);
   const fix = minusIPow(ring, owed);
   const w = fix === null ? g.w : ring.mul(g.w, fix);
   let sign = null;
   if (ring.eq(w, ring.one)) sign = '+';
   else if (ring.eq(w, ring.neg(ring.one))) sign = '−';
+  const string = Pauli.formatString(g, n, levelOf);
   return {
     sign,
     weight: w,
-    x: blockBits(g.x, n),
-    z: blockBits(g.z, n),
-    letters: [...Pauli.formatString(g, n).split('⊗')],
-    string: Pauli.formatString(g, n),
+    x: blockBits(g.x, n, levelOf),
+    z: blockBits(g.z, n, levelOf),
+    letters: string.split('⊗'),
+    string,
   };
 }
 
@@ -76,7 +81,7 @@ export function generatorRow(ring, g, n) {
  * means — the rank, and the number of qubits the node's function spans, which is how many
  * generators a stabilizer state would have.
  */
-export function nodeTableau(lim, id) {
+export function nodeTableau(lim, id, levelOf = null) {
   const n = lim.nvars;
   const terminal = lim.isTerminal(id);
   const gens = lim.stabilizers(id);
@@ -90,7 +95,7 @@ export function nodeTableau(lim, id) {
     // The terminal denotes the scalar 1 on no qubits, which is vacuously full rank and
     // says nothing; only an internal node earns the label.
     full: !terminal && gens.length === span,
-    rows: gens.map((g) => generatorRow(lim.ring, g, n)),
+    rows: gens.map((g) => generatorRow(lim.ring, g, n, levelOf)),
   };
 }
 
@@ -119,22 +124,30 @@ export function frameNodes(frame) {
  * @param {object} lim the LIMDD the layout was built from
  * @param {object} layout as returned by layoutEdgeValued or layoutEdgeValuedTree
  * @param {number} index which frame
- * @param {object} [opts] `qubitLabels`
+ * @param {object} [opts] `qubitLabels` per level, and `levelOf` when the qubit order is
+ *   not the identity — the check vectors and the strings both come out in qubit order
  */
 export function tableauFrame(lim, layout, index, opts = {}) {
-  const { qubitLabels = [] } = opts;
+  const { qubitLabels = [], levelOf = null, order = null, names = null } = opts;
   const frame = layout.frames[index];
   const ids = frameNodes(frame);
   const shown = ids.slice(0, MAX_NODES);
   const nodes = shown.map((id) => {
-    const t = nodeTableau(lim, id);
+    const t = nodeTableau(lim, id, levelOf);
     return { ...t, where: t.terminal ? 'terminal' : (qubitLabels[t.level] ?? `level ${t.level}`) };
   });
   return {
     step: index,
     last: layout.frames.length - 1,
     qubits: lim.nvars,
+    // `qubitLabels` names the diagram's rows, top first, which is what a node's `where`
+    // comes from. `names` names the *qubits*, which is what the columns are in. They
+    // coincide until the order does not, and saying so is the difference between a
+    // tableau that can be read and one that quietly means something else.
     qubitLabels,
+    names: names ?? qubitLabels,
+    order,
+    reordered: !!order && order.some((q, i) => q !== i),
     nodes,
     distinct: ids.length,
     // How many places on the plate those nodes occupy, which differs only in the tree.
@@ -153,7 +166,10 @@ export function tableauText(lim, layout, index, opts = {}) {
   const f = tableauFrame(lim, layout, index, opts);
   const n = f.qubits;
   const lines = [`Pauli-LIMDD stabilizers · step ${f.step} of ${f.last}`];
-  if (f.qubitLabels.length) lines.push(`${n} qubits, qubit 0 first: ${f.qubitLabels.join(' ')}`);
+  if (f.names.length) {
+    lines.push(`${n} qubits, columns in qubit order: ${f.names.join(' ')}`);
+    if (f.reordered) lines.push(`diagram rows, top first: ${f.qubitLabels.join(' ')}`);
+  }
   lines.push(f.distinct === f.positions
     ? `${f.distinct} node${f.distinct === 1 ? '' : 's'}`
     : `${f.distinct} distinct nodes in ${f.positions} tree positions`);

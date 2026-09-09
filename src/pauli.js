@@ -137,13 +137,20 @@ const LETTERS = [['I', 'Z'], ['X', 'Y']];
 
 /**
  * The string as letters joined by the tensor product, qubit 0 first — the same order as
- * the ket, so `X⊗Z⊗I` reads off the diagram top to bottom. X^x Z^z is -i Y when both bits
- * are set, so printing Y means the caller owes the weight a factor of (-i)^|x&z|; that
- * is what `phaseShift` reports.
+ * the ket, so `X⊗Z⊗I` is read the way it is written. X^x Z^z is -i Y when both bits are
+ * set, so printing Y means the caller owes the weight a factor of (-i)^|x&z|; that is what
+ * `phaseShift` reports.
+ *
+ * The masks are indexed by *level*, since that is what the diagram's algebra works in, so
+ * under a qubit order the letter for qubit q comes from bit `levelOf[q]`. A Pauli string is
+ * always written in qubit order: only the rows of the diagram move.
  */
-export function formatString(a, n) {
+export function formatString(a, n, levelOf = null) {
   const letters = [];
-  for (let q = 0; q < n; q++) letters.push(LETTERS[(a.x >> q) & 1][(a.z >> q) & 1]);
+  for (let q = 0; q < n; q++) {
+    const bit = levelOf ? levelOf[q] : q;
+    letters.push(LETTERS[(a.x >> bit) & 1][(a.z >> bit) & 1]);
+  }
   return letters.join('⊗');
 }
 

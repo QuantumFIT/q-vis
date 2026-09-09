@@ -15,6 +15,7 @@
 // "?/2" halves each of them.
 
 import * as Z from './zomega.js';
+import { toLevels } from './order.js';
 import * as P from './poly.js';
 
 /** One line may not introduce more symbols than this; each becomes its own terminal. */
@@ -211,8 +212,17 @@ export function parseState(text, nqubits) {
 }
 
 /** Build the diagram for a parsed state. Repeated patterns add up. */
-export function buildState(dd, entries) {
-  return dd.fromPatterns(entries.map((e) => [e.pattern, e.amplitude]));
+/**
+ * The parsed state as a diagram. Patterns are written in qubit order — `|0101>` is qubit 0
+ * first, which is how anyone writes a ket — and the diagram wants them in level order, so
+ * this is where they are permuted. `parseState` above validates in qubit order and knows
+ * nothing about levels.
+ */
+export function buildState(dd, entries, levelOf = null) {
+  const at = levelOf
+    ? entries.map((e) => [toLevels(e.pattern, levelOf), e.amplitude])
+    : entries.map((e) => [e.pattern, e.amplitude]);
+  return dd.fromPatterns(at);
 }
 
 /** A fully general state: every basis state its own unknown. */

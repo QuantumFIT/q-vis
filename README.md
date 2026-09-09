@@ -141,6 +141,13 @@ to `\omega^{3}`), and the TikZ styles come with the picture, so every low edge o
 can be restyled in one place. That is what belongs in a paper: text in the document's own
 fonts, editable afterwards, rather than an SVG at a size nobody chose.
 
+**order** decides which qubit each level of the diagram decides — *as written*, *reversed*,
+*paired*, or any permutation typed in, top level first. It is the biggest lever there is on
+how big a diagram gets: **Nested Bell pairs** on eight qubits is 47 nodes as written and 14
+when paired, the same state either way. **sift** searches for an order that makes the widest
+frame smaller. Only the rows move: a ket and a Pauli string are always written in qubit
+order. See `docs/ORDER.md`.
+
 **tableau**, in the Pauli-LIMDD view only, gives the stabilizer group of every node in the
 current step — a sign, the two check-vector blocks with the qubit index over each column,
 and the string of `I/X/Y/Z`. The

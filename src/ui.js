@@ -11,6 +11,7 @@ import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
+import * as Order from './order.js';
 import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
 import { EXAMPLES, instantiate, identify } from './examples.js';
@@ -50,6 +51,10 @@ const app = {
   rep: 'reduced',    // reduced | edge-valued | limdd — what goes on the edges
   tree: false,       // the same representation with nothing shared
   canon: 'max',      // which edge an edge-valued diagram takes its factor from
+  orderKind: 'written',   // written | reversed | paired | custom
+  customOrder: null,      // the typed permutation, when orderKind is 'custom'
+  order: [],              // atLevel: which qubit each level decides
+  levelOf: [],            // its inverse: where each qubit sits
   theme: 'auto',
   ampFormat: 'exact',
   zoom: 'fit',
@@ -77,13 +82,13 @@ const svgEl = (name, attrs = {}) => {
  * as X^x Z^z internally but printed with Y, which owes the weight a factor of (-i) for
  * every Y — so the two are put back together before either is shown.
  */
-function limLabel(e, i, n, show) {
+function limLabel(e, i, n, show, levelOf = null) {
   const owed = Pauli.phaseShift(e);
   const w = owed ? P.mul(e.w, P.fromZ(Z.omegaPow(-2 * owed))) : e.w;
   const text = show(w, i);
   if (Pauli.isIdentityString(e)) return text;
   if (P.isZero(w)) return text;
-  return P.attachCoefficient(text, Pauli.formatString(e, n));
+  return P.attachCoefficient(text, Pauli.formatString(e, n, levelOf));
 }
 
 /** Parse both inputs, run the circuit, lay every frame out. Keeps the last good
@@ -101,10 +106,22 @@ function compile() {
     return fail(e, 'state');
   }
 
+  // The order has to be settled before anything is built: it decides which qubit each
+  // level decides, and everything below is expressed in levels.
+  let order;
+  try {
+    order = resolveOrder(circuit.nqubits);
+  } catch (e) {
+    return fail(e, 'order');
+  }
+  app.order = order;
+  app.levelOf = Order.invert(order);
+  app.parsedState = parsedState;      // the sift re-simulates from it
+
   const dd = new MTBDD(P.Ring, circuit.nqubits);
   let frames;
   try {
-    frames = simulate(dd, buildState(dd, parsedState.entries), circuit);
+    frames = simulate(dd, buildState(dd, parsedState.entries, app.levelOf), circuit, app.levelOf);
   } catch (e) {
     return fail(e, 'circuit');
   }
@@ -130,7 +147,9 @@ function compile() {
     }
     return d;
   });
-  const labels = circuit.qubits.map((q) => q.label);
+  // Indexed by level, which is what the layout and the TikZ exporter both want: the label
+  // on a row is the qubit that row decides.
+  const labels = app.order.map((q) => circuit.qubits[q].label);
   const show = (v, i) => P.format(v, app.ampFormat,
     { k: app.commonK[i], level: app.commonLevel[i] });
   // Kept so the tableau can format a weight the same way the diagram does.
@@ -150,7 +169,7 @@ function compile() {
     app.limdd = li;
     const memo = new Map();
     const built = frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) }));
-    const label = (e, i) => limLabel(e, i, circuit.nqubits, show);
+    const label = (e, i) => limLabel(e, i, circuit.nqubits, show, app.levelOf);
     // The tree here is the diagram unfolded rather than rebuilt: which labels a LIMDD
     // chooses depends on the diagram it is building, so a tree computed on its own would
     // be a different thing wearing the same name. See layoutEdgeValuedTree.
@@ -202,10 +221,104 @@ function compile() {
   // one, so that is the only view where offering it says anything.
   $('tableau').style.display = app.rep === 'limdd' ? '' : 'none';
   $('canon').title = NORMALISERS[app.canon].note;
+  showOrder();
   resetCanvas();
   renderCircuit();
   setFrame(app.index);
   save();
+}
+
+/**
+ * The order the controls are asking for, as `atLevel`. Throws when a typed order does not
+ * name every qubit exactly once, which `compile` reports like any other bad input.
+ */
+function resolveOrder(n) {
+  if (app.orderKind === 'custom') {
+    if (!app.customOrder || app.customOrder.length !== n) {
+      // A custom order is a permutation of *these* qubits, so it cannot survive a change
+      // of size. Falling back beats refusing to draw anything.
+      app.customOrder = Order.identity(n);
+    }
+    return Order.parse(Order.format(app.customOrder), n);
+  }
+  return (Order.PRESETS[app.orderKind] ?? Order.PRESETS.written).of(n);
+}
+
+/** Keep the order controls showing what is in force. */
+function showOrder() {
+  const custom = app.orderKind === 'custom';
+  $('orderText').hidden = !custom;
+  if (!custom) $('orderText').classList.remove('bad');
+  if (document.activeElement !== $('orderText')) {
+    $('orderText').value = Order.format(app.order);
+  }
+  $('order').value = app.orderKind;
+  const n = app.circuit ? app.circuit.nqubits : 0;
+  $('sift').disabled = n < 3;
+  $('sift').title = n < 3
+    ? 'there is nothing to reorder below three qubits'
+    : 'search for an order that makes the largest frame smaller';
+}
+
+/** The largest frame of a run under one order — what a sift is trying to make small. */
+function widestUnder(order) {
+  const levelOf = Order.invert(order);
+  const dd = new MTBDD(P.Ring, app.circuit.nqubits);
+  const frames = simulate(dd,
+    buildState(dd, app.parsedState.entries, levelOf), app.circuit, levelOf);
+  return Math.max(...frames.map((f) => f.size));
+}
+
+/**
+ * Sifting: take each qubit in turn and try it at every position, keeping the best. One
+ * pass, which is the usual formulation and bounds the work at about n^2/2 rebuilds.
+ *
+ * It measures on the cheap path — an MTBDD and `simulate`, whose sizes come for free —
+ * and never builds a layout or an edge-valued diagram. Measured here that is the whole
+ * difference between a second and a quarter of a minute: for QFT on 7 qubits `simulate`
+ * is 21 ms against 484 ms for the conversion and layout on top of it.
+ */
+function sift() {
+  if (!app.circuit || !app.parsedState) return;
+  const n = app.circuit.nqubits;
+  const note = $('orderNote');
+
+  // Time the first rebuild and decide from that, rather than from a guessed qubit limit.
+  const t0 = performance.now();
+  let best = widestUnder(app.order);
+  const each = performance.now() - t0;
+  const projected = (each * n * n) / 2;
+  if (projected > 3000) {
+    note.textContent = `too slow to search: about ${Math.round(projected / 1000)}s`;
+    return;
+  }
+
+  const before = best;
+  let order = [...app.order];
+  for (let q = 0; q < n; q++) {
+    const from = order.indexOf(q);
+    let bestOrder = order;
+    for (let to = 0; to < n; to++) {
+      if (to === from) continue;
+      const trial = order.filter((x) => x !== q);
+      trial.splice(to, 0, q);
+      const width = widestUnder(trial);
+      if (width < best) { best = width; bestOrder = trial; }
+    }
+    order = bestOrder;
+  }
+
+  // Say which number moved. The strip reports the frame on screen; this is the widest
+  // frame of the whole run, which is what the plate is sized for and what was minimised.
+  if (best < before) {
+    app.orderKind = 'custom';
+    app.customOrder = order;
+    note.textContent = `widest frame ${before} → ${best}`;
+    compile();
+  } else {
+    note.textContent = `widest frame ${before}: no order tried was smaller`;
+  }
+  showOrder();
 }
 
 function fail(e, where) {
@@ -381,7 +494,8 @@ function resetCanvas() {
     const y = yOf(lev);
     const line = svgEl('line', { class: 'level-rule', x1: gutter - 6, y1: y, x2: W - 8, y2: y });
     const t = svgEl('text', { class: 'gutter', x: gutter - 16, y });
-    t.textContent = app.circuit.qubits[lev].label;
+    // The row is named for the qubit it decides, which under an order is not `lev`.
+    t.textContent = app.circuit.qubits[app.order[lev]].label;
     rules.append(line);
     sticky.append(t);
     app.ruleEls.set(lev, [line, t]);   // marked per frame with the current gate's qubits
@@ -645,7 +759,8 @@ function drawFrame(f) {
 
   // Mark the qubits this gate acted on. Without it the score strip says "CX q[0] q[1]"
   // and the reader has to find those levels by counting.
-  const touched = new Set(f.gate ? f.gate.qubits : []);
+  // Frames keep the gate as written, so its qubits have to be found on the plate.
+  const touched = new Set(f.gate ? f.gate.qubits.map((q) => app.levelOf[q]) : []);
   for (const [lev, els] of app.ruleEls) {
     for (const el of els) el.classList.toggle('acting', touched.has(lev));
   }
@@ -860,7 +975,9 @@ function renderReadout(f) {
       { k: app.commonK[f.index], level: app.commonLevel[f.index] });
     const ket = document.createElement('span');
     ket.className = 'amp-ket';
-    ket.textContent = `|${path}⟩`;
+    // `paths` walks the diagram, so its strings are in level order; a ket is written in
+    // qubit order, whatever the diagram is doing.
+    ket.textContent = `|${Order.toQubits(path, app.levelOf)}⟩`;
     line.append(coef, ket);
     out.append(line);
     shown++;
@@ -994,6 +1111,17 @@ function buildHelp() {
       + 'the first qubit, Z on the second, nothing on the third. Every stabilizer state is a tower.'],
   ]));
 
+  body.append(el('h3', null, 'The qubit order'));
+  body.append(helpTable([
+    ['order', 'which qubit each level of the diagram decides. The single biggest lever on '
+      + 'how big a diagram gets — Nested Bell pairs on eight qubits is 47 nodes as written '
+      + 'and 14 when paired. Only the rows move: a ket and a Pauli string are always '
+      + 'written in qubit order'],
+    ['custom…', 'the qubits in the order you want them, top level first: 0 7 1 6 2 5 3 4'],
+    ['sift', 'search for an order that makes the widest frame of the run smaller. Refuses, '
+      + 'with an estimate, when the search would take more than a few seconds'],
+  ]));
+
   body.append(el('h3', null, 'Taking a figure away'));
   body.append(helpTable([
     ['copy link', 'the whole view in a URL: circuit, input, step and how it is drawn'],
@@ -1112,7 +1240,7 @@ function showTikz(what) {
   const text = what === 'circuit'
     ? circuitTikz(app.circuit, { link })
     : diagramTikz(app.layout, app.index, {
-      qubitLabels: app.circuit.qubits.map((q) => q.label),
+      qubitLabels: app.order.map((q) => app.circuit.qubits[q].label),
       bandLabel: BAND_LABEL.toLowerCase(),
       hideZero: app.hideZero,
       link,
@@ -1134,7 +1262,10 @@ function showTikz(what) {
 function showTableau() {
   if (!app.limdd || !app.layout || !app.circuit) return;
   const opts = {
-    qubitLabels: app.circuit.qubits.map((q) => q.label),
+    qubitLabels: app.order.map((q) => app.circuit.qubits[q].label),
+    names: app.circuit.qubits.map((q) => q.label),
+    levelOf: app.levelOf,
+    order: app.order,
     formatWeight: (w) => app.showAmp(w, app.index),
   };
   const f = tableauFrame(app.limdd, app.layout, app.index, opts);
@@ -1152,8 +1283,14 @@ function tableauDom(f, formatWeight) {
     ? `${f.distinct} node${f.distinct === 1 ? '' : 's'}`
     : `${f.distinct} distinct nodes`));
   lead.append(document.createTextNode(f.distinct === f.positions
-    ? `, on ${f.qubits} qubits — ${f.qubitLabels.join(', ')}, qubit 0 first.`
-    : `, standing in ${f.positions} places in the tree. The group belongs to the node, not to where it sits.`));
+    ? `, on ${f.qubits} qubits.`
+    : `, standing in ${f.positions} places in the tree — the group belongs to the node, not to where it sits.`));
+  // Columns are in qubit order whatever the diagram is doing, so where the two differ the
+  // reader is told both rather than left to assume they are the same.
+  lead.append(document.createTextNode(` Columns read ${f.names.join(', ')}, qubit 0 first.`));
+  if (f.reordered) {
+    lead.append(document.createTextNode(` The diagram's rows are ${f.qubitLabels.join(', ')}.`));
+  }
   box.append(lead);
 
   // The bits are the point, so they are drawn rather than written: an inked 1 against a
@@ -1366,6 +1503,8 @@ function permalink() {
   if (app.canon !== 'max') p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
+  // Only when it is not the identity, so every link already written keeps its meaning.
+  if (app.order.length && !Order.isIdentity(app.order)) p.set('o', Order.format(app.order, '-'));
   const here = location.href.split('#')[0];
   const base = archiveUrl(location.href, version()) || here;
   return `${base}#${p}`;
@@ -1404,6 +1543,14 @@ function applyPermalink() {
   [app.rep, app.tree] = viewFromCode(p.get('t'));
   if (NORMALISERS[p.get('n')]) app.canon = p.get('n');
   app.hideZero = p.get('z') === '1';
+  // A link carries the order itself rather than which preset produced it: a preset is a
+  // way of typing one, and what matters is the permutation.
+  if (p.get('o')) {
+    try {
+      app.customOrder = p.get('o').split('-').map(Number);
+      app.orderKind = 'custom';
+    } catch { /* a malformed order is no order */ }
+  }
   const f = normaliseFormat(p.get('f'));
   if (AMP_FORMATS.includes(f) && f !== 'exact') app.ampFormat = f;
   $('view').value = app.rep;
@@ -1549,6 +1696,33 @@ export function boot() {
   $('tikzDiagram').addEventListener('click', () => showTikz('diagram'));
   $('tikzCircuit').addEventListener('click', () => showTikz('circuit'));
   $('tableau').addEventListener('click', showTableau);
+
+  for (const [key, preset] of Object.entries(Order.PRESETS)) {
+    $('order').append(new Option(preset.name, key));
+  }
+  $('order').append(new Option('custom…', 'custom'));
+  $('order').addEventListener('change', (e) => {
+    app.orderKind = e.target.value;
+    // Entering custom starts from whatever is on screen, so the field is never blank and
+    // the diagram never jumps at the moment of switching.
+    if (app.orderKind === 'custom') app.customOrder = [...app.order];
+    $('orderNote').textContent = '';
+    compile();
+  });
+  $('orderText').addEventListener('input', () => {
+    const field = $('orderText');
+    try {
+      app.customOrder = Order.parse(field.value, app.circuit.nqubits);
+      field.classList.remove('bad');
+      $('orderNote').textContent = '';
+      compile();
+    } catch (err) {
+      // Say what is wrong and keep the last good drawing, as the circuit box does.
+      field.classList.add('bad');
+      $('orderNote').textContent = err.message;
+    }
+  });
+  $('sift').addEventListener('click', sift);
   $('codeCopy').addEventListener('click', copyCode);
   $('codeClose').addEventListener('click', () => $('codeDialog').close());
   $('codeDialog').addEventListener('click', (e) => {

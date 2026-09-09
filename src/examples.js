@@ -196,6 +196,25 @@ ${each(n - 1, (i) => `cz q[${i}],q[${i + 1}];`)}
     state: zeros,
   },
   {
+    name: 'Nested Bell pairs',
+    // Even sizes only: the construction pairs qubit i with qubit n-1-i, so an odd qubit
+    // would be left without a partner.
+    sizes: [2, 4, 6, 8, 10, 12],
+    defaultSize: 8,
+    note: (n) => 'Why the qubit order matters, in one example. Qubit i is entangled with '
+      + `qubit ${n - 1} - i, so as written the diagram has to remember the first ${n / 2} `
+      + `bits before it can decide any of the last ${n / 2}: ${2 ** (n / 2)} nodes across `
+      + 'the middle. Switch the order to **paired** and every pair becomes adjacent, '
+      + 'which is a chain. Same state, same circuit.',
+    qasm: (n) => `${HEADER}
+qreg q[${n}];
+
+// A Bell pair between qubit i and qubit ${n - 1} - i, nested rather than adjacent.
+${each(n / 2, (i) => `h q[${i}];\ncx q[${i}],q[${n - 1 - i}];`)}
+`,
+    state: zeros,
+  },
+  {
     name: 'W state',
     // Halving only lands on every qubit when there are a power of two of them. W on three
     // would need an amplitude of 1/sqrt(3), which this ring does not contain at all.

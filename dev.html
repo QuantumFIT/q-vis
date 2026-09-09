@@ -46,6 +46,17 @@
         <select id="example" aria-label="load an example"></select>
         <select id="size" aria-label="how many qubits" title="how many qubits to build this example on"></select>
       </div>
+      <div class="pickers">
+        <label class="picker-label" for="order">order</label>
+        <select id="order" aria-label="which qubit each level decides"
+          title="which qubit each level of the diagram decides — the rows move, the notation does not"></select>
+        <button id="sift" type="button"
+          title="search for an order that makes the widest frame of the run smaller">sift</button>
+      </div>
+      <input id="orderText" type="text" spellcheck="false" hidden
+        aria-label="the qubits, top level first"
+        title="the qubits in the order you want them, top level first">
+      <p class="order-note" id="orderNote"></p>
       <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
     </div>
 

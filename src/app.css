@@ -480,6 +480,42 @@ dialog {
   tab-size: 2;
 }
 
+/* The order row sits under the example pickers and shares their shape. */
+.picker-label {
+  font: 500 10px/1 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  align-self: center;
+}
+#order { flex: 0 1 auto; min-width: 0; }
+#orderText {
+  /* Its own line: a twelve-qubit permutation is 26 characters and there is no room for it
+     beside the picker and the button in a column this narrow. */
+  display: block;
+  width: calc(100% - 16px);
+  margin: 0 8px 3px;
+  font: 11.5px/1 var(--mono);
+  padding: 3px 5px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--plate);
+  color: var(--ink);
+}
+#orderText[hidden] { display: none; }
+#orderText:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+#orderText.bad { border-color: var(--accent); }
+#sift { flex: 0 0 auto; font-size: 11px; padding: 2px 6px; }
+
+/* Its own line, and free to wrap: it carries a sentence when an order is refused, and a
+   clipped explanation of what is wrong with your input is no explanation at all. */
+.order-note {
+  margin: 0 8px 2px;
+  font: 11px/1.45 var(--sans);
+  color: var(--ink-soft);
+}
+.order-note:empty { display: none; }
+
 /* ---- the stabilizer tableau ------------------------------------------- */
 
 /*
