@@ -450,6 +450,7 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .dimmed { opacity: 0.12 !important; }
 
 @media (prefers-reduced-motion: reduce) {
+  .fold summary::before { transition: none; }
   .node, .edge, .root-marker { transition: none; }
 }
 
@@ -480,7 +481,49 @@ dialog {
   tab-size: 2;
 }
 
-/* The order row sits under the example pickers and shares their shape. */
+/*
+ * A control that is usually left alone, folded away — but never silently. The summary
+ * carries what is in force, because a collapsed box hiding a non-default order would
+ * leave the diagram's rows disagreeing with q[0]..q[n-1] and the reason out of sight.
+ */
+.fold { border-top: 1px solid var(--rule-soft); }
+
+.fold summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary:hover .fold-label { color: var(--ink-soft); }
+.fold summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* The marker, drawn rather than inherited so it matches the rest of the furniture. */
+.fold summary::before {
+  content: '';
+  align-self: center;
+  width: 0;
+  height: 0;
+  border: 3.5px solid transparent;
+  border-left-color: var(--ink-faint);
+  margin-right: -2px;
+  transition: transform .15s ease-out;
+}
+.fold[open] summary::before { transform: rotate(90deg) translateX(1px); }
+
+.fold-label {
+  font: 500 10px/1.4 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+/* What is in force. Quiet while it is the default, and inked once it is not. */
+.fold-now { font: 11.5px/1.4 var(--sans); color: var(--ink-soft); }
+.fold-now.changed { color: var(--accent); }
+
 .picker-label {
   font: 500 10px/1 var(--mono);
   letter-spacing: .1em;
