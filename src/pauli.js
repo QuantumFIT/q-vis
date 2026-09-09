@@ -83,10 +83,22 @@ export const key = (ring, a) => `${a.x}.${a.z}.${ring.key(a.w)}`;
  * block, and the weight last. The identity string is the least, which is what the
  * stabilizer algorithms rely on. The paper orders the weight by its float polar form;
  * the ring's own key is exact and just as total, so it is used instead.
+ *
+ * With one thing put back that the float form gave for free. The paper's order takes the
+ * weight as `(r, θ)`, so `+1` at `θ = 0` precedes `-1` at `θ = π`, and Alg. 14 relies on
+ * it: `meetCosets` asks whether the *minimum* of a set is the identity as its way of
+ * asking whether the identity is *in* it. The ring's key is a string — `":1,0,0,0/0"` for
+ * `+1` and `":-1,0,0,0/0"` for `-1` — and `'-'` sorts before `'1'`, so a set containing
+ * both signs of the identity would answer that question with `-I` and the caller would
+ * conclude the identity was absent. Whatever else the key order does, then, the identity
+ * weight comes first.
  */
 export function compare(ring, a, b) {
   if (a.x !== b.x) return a.x < b.x ? -1 : 1;
   if (a.z !== b.z) return a.z < b.z ? -1 : 1;
+  const oneA = ring.eq(a.w, ring.one);
+  const oneB = ring.eq(b.w, ring.one);
+  if (oneA !== oneB) return oneA ? -1 : 1;
   const ka = ring.key(a.w);
   const kb = ring.key(b.w);
   return ka === kb ? 0 : (ka < kb ? -1 : 1);
