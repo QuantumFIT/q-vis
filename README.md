@@ -184,6 +184,19 @@ completely uncorrelated, and yet no qubit factors out and its depth is three. Th
 is exhaustive because anything cheaper gets that state wrong. Past about twelve qubits it
 says so rather than making you wait.
 
+**The Schmidt rank of the state.** A Schmidt rank belongs to a bipartition, so a state
+has no single one — unless you ask for the worst case, which is what the phrase usually
+means and what the panel gives: the largest rank over *every* bipartition, together with
+the split that reaches it. One everywhere is a fully product state; 2^⌊n/2⌋ is the most
+any state of n qubits can manage. Past twelve qubits there are too many splits to try
+them all, and it says so.
+
+Beneath it is the rank across each cut of **the order the diagram is drawn in** — the
+state's bond dimensions along that order. These are the ranks the picture itself has to
+carry, so a wide frame and a large rank here are one fact seen twice. Nested Bell pairs on
+eight qubits read `2 4 8 16 8 4 2` as written and `2 1 2 1 2 1 2` once paired, which is
+the whole case for the ordering control in one line of numbers.
+
 **A Schmidt decomposition** of any split you name — type the qubits on one side, in the
 circuit's own names or as bare indices — gives the Schmidt rank, the coefficients, and the
 entanglement entropy across it.

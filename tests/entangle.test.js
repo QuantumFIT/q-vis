@@ -179,3 +179,81 @@ test('a bipartition can be written the way qubits are named', () => {
   assert.match(Ent.parseSubset('', labels).error, /name at least one/);
   assert.match(Ent.parseSubset('q[0] q[1] a[0] a[1]', labels).error, /cannot be every qubit/);
 });
+
+test('the Schmidt rank of the state is the largest over every bipartition', () => {
+  // A Schmidt rank belongs to a split, so the state's own is the worst case over all of
+  // them. Checked against the ranks taken one split at a time, by a different route:
+  // the sweep uses elimination, the per-split figure comes from eigenvalues.
+  for (const [name, qasm, n] of CASES) {
+    const { numeric } = evolve(qasm, n);
+    let brute = 0;
+    for (let mask = 1; mask < (1 << n) - 1; mask++) {
+      const part = [];
+      for (let q = 0; q < n; q++) if (mask & (1 << q)) part.push(q);
+      brute = Math.max(brute, Ent.schmidt(numeric, n, part).rank);
+    }
+    const got = Ent.maxSchmidtRank(numeric, n);
+    assert.equal(got.exhausted, false, name);
+    assert.equal(got.rank, brute, `${name}: elimination and eigenvalues agree`);
+    assert.ok(got.rank <= got.ceiling, `${name}: within 2^floor(n/2)`);
+    if (got.rank > 1) {
+      assert.equal(Ent.schmidt(numeric, n, got.part).rank, got.rank,
+        `${name}: the split it names really does reach it`);
+    }
+  }
+});
+
+test('a fully product state has Schmidt rank one, and only such a state does', () => {
+  const product = evolve(CASES[0][1], 4);
+  assert.equal(Ent.maxSchmidtRank(product.numeric, 4).rank, 1);
+  assert.equal(Ent.productPartition(P.Ring, product.amps, 4, { numeric: product.numeric }).depth, 1);
+  for (const [name, qasm, n, depth] of CASES.slice(1)) {
+    const { numeric } = evolve(qasm, n);
+    assert.ok(Ent.maxSchmidtRank(numeric, n).rank > 1, `${name} is entangled, so rank > 1`);
+    assert.ok(depth > 1, name);
+  }
+});
+
+test('the cut profile follows the qubit order, and bounds nothing it should not', () => {
+  // Nested Bell pairs are the example the ordering control exists for: written in order
+  // the middle cut has to carry every pair at once, and pairing the qubits up makes each
+  // cut carry one. The numbers say exactly that.
+  const n = 8;
+  const qasm = `${HEAD}qreg q[${n}];\n`
+    + Array.from({ length: n / 2 }, (_, i) => `h q[${i}];\ncx q[${i}],q[${n - 1 - i}];`).join('\n');
+  const { numeric } = evolve(qasm, n);
+  const written = Ent.cutProfile(numeric, n, Array.from({ length: n }, (_, i) => i));
+  const paired = Ent.cutProfile(numeric, n, [0, 7, 1, 6, 2, 5, 3, 4]);
+  assert.deepEqual(written.map((c) => c.rank), [2, 4, 8, 16, 8, 4, 2]);
+  assert.deepEqual(paired.map((c) => c.rank), [2, 1, 2, 1, 2, 1, 2]);
+
+  // Every cut is a bipartition, so none of them can beat the state's own rank.
+  const worst = Ent.maxSchmidtRank(numeric, n).rank;
+  for (const c of [...written, ...paired]) assert.ok(c.rank <= worst, `${c.above} within ${worst}`);
+  assert.equal(worst, 16, 'and the written order reaches it');
+});
+
+test('matrixRank agrees with the exact product test at rank one', () => {
+  for (const [name, qasm, n] of CASES) {
+    const { amps, numeric } = evolve(qasm, n);
+    for (let mask = 1; mask < (1 << n) - 1; mask++) {
+      const part = [];
+      for (let q = 0; q < n; q++) if (mask & (1 << q)) part.push(q);
+      const exact = Ent.isProduct(P.Ring, Ent.splitMatrix(amps, n, part));
+      assert.equal(Ent.matrixRank(Ent.splitMatrix(numeric, n, part)) <= 1, exact,
+        `${name}, split ${part}`);
+    }
+  }
+});
+
+test('a state too wide for every bipartition says so', () => {
+  const n = 13;
+  const qasm = `${HEAD}qreg q[${n}];\nh q[0];\n`
+    + Array.from({ length: n - 1 }, (_, i) => `cx q[${i}],q[${i + 1}];\n`).join('');
+  const { numeric } = evolve(qasm, n);
+  const got = Ent.maxSchmidtRank(numeric, n);
+  assert.equal(got.exhausted, true);
+  assert.equal(got.rank, null);
+  // but the cuts of one order are always affordable, and there are only n - 1 of them
+  assert.equal(Ent.cutProfile(numeric, n, Array.from({ length: n }, (_, i) => i)).length, n - 1);
+});

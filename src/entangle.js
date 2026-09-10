@@ -253,6 +253,102 @@ export function schmidt(numeric, n, part, { tol = 1e-9 } = {}) {
 }
 
 /**
+ * The rank of a complex matrix, by elimination with partial pivoting.
+ *
+ * Cheaper than asking for the eigenvalues, which matters because the state's own Schmidt
+ * rank needs one of these per bipartition and there are 2^(n-1) - 1 of them. Pivots below
+ * `tol` times the largest entry are taken as zero — the same judgement the coefficients
+ * make, and the reason this half of the panel is described as floating point.
+ */
+export function matrixRank(src, tol = 1e-9) {
+  // Eliminate down the shorter axis; the rank is the same either way round.
+  const wide = src[0].length > src.length;
+  const rows = wide ? src[0].length : src.length;
+  const cols = wide ? src.length : src[0].length;
+  const a = Array.from({ length: rows }, (_, i) => Array.from({ length: cols }, (_, j) => {
+    const z = wide ? src[j][i] : src[i][j];
+    return { re: z.re, im: z.im };
+  }));
+  let scale = 0;
+  for (const row of a) for (const z of row) scale = Math.max(scale, Math.hypot(z.re, z.im));
+  if (scale === 0) return 0;
+  const eps = tol * scale;
+
+  const done = new Array(rows).fill(false);
+  let rank = 0;
+  for (let c = 0; c < cols && rank < Math.min(rows, cols); c++) {
+    let pivot = -1;
+    let best = eps;
+    for (let r = 0; r < rows; r++) {
+      if (done[r]) continue;
+      const v = Math.hypot(a[r][c].re, a[r][c].im);
+      if (v > best) { best = v; pivot = r; }
+    }
+    if (pivot < 0) continue;
+    done[pivot] = true;
+    rank++;
+    const p = a[pivot][c];
+    const den = p.re * p.re + p.im * p.im;
+    for (let r = 0; r < rows; r++) {
+      if (done[r]) continue;
+      const f = a[r][c];
+      const fr = (f.re * p.re + f.im * p.im) / den;
+      const fi = (f.im * p.re - f.re * p.im) / den;
+      if (fr === 0 && fi === 0) continue;
+      for (let k = c; k < cols; k++) {
+        const z = a[pivot][k];
+        a[r][k].re -= fr * z.re - fi * z.im;
+        a[r][k].im -= fr * z.im + fi * z.re;
+      }
+    }
+  }
+  return rank;
+}
+
+/**
+ * The Schmidt rank of the *state*: the largest it is across any bipartition at all.
+ *
+ * A Schmidt rank belongs to a split, so a state has no single one — unless one asks for
+ * the worst case, which is the number meant by "the Schmidt rank of this state" and the
+ * one that says how entangled it is at its most. Every split is tried; the one that
+ * reaches the maximum is reported with it, since knowing *where* the state is hardest to
+ * cut is most of the value.
+ *
+ * A rank of 1 everywhere is a fully product state; 2^floor(n/2) is the most any state of
+ * n qubits can reach.
+ */
+export function maxSchmidtRank(numeric, n, { tol = 1e-9, budget = 4.5e8 } = {}) {
+  let best = 0;
+  let where = null;
+  let work = 0;
+  for (let mask = 1; mask < (1 << n) - 1; mask++) {
+    const part = [];
+    for (let q = 0; q < n; q++) if (mask & (1 << q)) part.push(q);
+    // Each split and its complement have the same rank, so only half need looking at.
+    if (part.length > n - part.length) continue;
+    work += 2 ** n * 2 ** part.length;
+    if (work > budget) return { rank: null, part: null, exhausted: true, ceiling: 2 ** Math.floor(n / 2) };
+    const r = matrixRank(splitMatrix(numeric, n, part), tol);
+    if (r > best) { best = r; where = part; }
+  }
+  return { rank: best, part: where, exhausted: false, ceiling: 2 ** Math.floor(n / 2) };
+}
+
+/**
+ * The rank across each cut of a qubit order: everything above the cut against everything
+ * below it. These are the state's bond dimensions along that order, and they are the ones
+ * the diagram itself has to carry — so a wide diagram and a large rank here are the same
+ * fact seen twice, and reordering the qubits moves both.
+ */
+export function cutProfile(numeric, n, order, { tol = 1e-9 } = {}) {
+  const at = order ?? Array.from({ length: n }, (_, i) => i);
+  return Array.from({ length: n - 1 }, (_, i) => ({
+    above: at.slice(0, i + 1),
+    rank: matrixRank(splitMatrix(numeric, n, at.slice(0, i + 1)), tol),
+  }));
+}
+
+/**
  * A bipartition written the way the reader names qubits: `q[0] q[2]`, or bare indices, in
  * any order and separated by anything that is not part of a name. Returns the qubits, or
  * an error saying which word was not understood.

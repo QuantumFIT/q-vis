@@ -1652,14 +1652,51 @@ function showEntanglement() {
       : `The finest partition the state is a product over — ${found.blocks.length} factors.`));
   }
 
-  box.append(el('h4', null, 'Schmidt decomposition'));
   if (symbolic) {
+    box.append(el('h4', null, 'Schmidt rank'));
     box.append(el('p', 'ent-note',
-      'Not for a state with free symbols: Schmidt coefficients are square roots of '
-      + 'eigenvalues, which needs numbers. The depth above does not, and holds.'));
+      'Not for a state with free symbols: a rank means deciding which numbers are zero, '
+      + 'and Schmidt coefficients are square roots of eigenvalues besides. The depth '
+      + 'above needs neither and holds.'));
     showRich(`Entanglement · step ${app.index} of ${app.frames.length - 1}`, box, entangleText(box));
     return;
   }
+
+  // The state's own rank, which belongs to no one split — so it is the largest over all
+  // of them, the number meant by "how entangled is this state at its most".
+  box.append(el('h4', null, 'Schmidt rank of the state'));
+  const worst = Ent.maxSchmidtRank(numeric, n);
+  if (worst.exhausted) {
+    box.append(el('p', 'ent-note',
+      `${n} qubits is too many to try every bipartition. The cuts of the current order `
+      + 'are below, and a split you name is at the bottom.'));
+  } else {
+    const top = el('dl', 'ent-stats');
+    top.append(el('dt', null, 'Schmidt rank'));
+    const dd0 = el('dd', null, String(worst.rank));
+    dd0.append(el('span', 'ent-aside', `of at most ${worst.ceiling}`));
+    top.append(dd0);
+    box.append(top);
+    box.append(el('p', 'ent-note', worst.rank === 1
+      ? 'One across every bipartition: the state is a product of single qubits.'
+      : `The largest across any of the ${2 ** (n - 1) - 1} bipartitions, reached by `
+        + `${listOf(worst.part)} │ ${listOf(Array.from({ length: n }, (_, i) => i).filter((q) => !worst.part.includes(q)))}.`));
+  }
+
+  // The cuts of the *order the diagram is drawn in*: these are the ranks the picture
+  // itself has to carry, so a wide frame and a large rank here are one fact seen twice.
+  const profile = Ent.cutProfile(numeric, n, app.order);
+  const ruler = el('div', 'ent-cuts');
+  app.order.forEach((q, i) => {
+    ruler.append(el('span', 'ent-wire', labels[q]));
+    if (i < profile.length) ruler.append(el('span', 'ent-cut', String(profile[i].rank)));
+  });
+  box.append(ruler);
+  box.append(el('p', 'ent-note',
+    'The rank across each cut of the order the diagram is drawn in — its bond dimensions. '
+    + 'Reordering the qubits moves these, and moves the width of the picture with them.'));
+
+  box.append(el('h4', null, 'Schmidt decomposition of one split'));
 
   const row = el('div', 'ent-input');
   const field = el('input');
@@ -1691,7 +1728,9 @@ function showEntanglement() {
       if (aside) d.append(el('span', 'ent-aside', aside));
       stats.append(d);
     };
-    stat('Schmidt rank', String(s.rank), `of at most ${s.maxRank}`);
+    // Not "Schmidt rank": the state's own is above, and two rows under one name in one
+    // panel would leave the reader to work out which was which.
+    stat('rank across this split', String(s.rank), `of at most ${s.maxRank}`);
     stat('entanglement entropy', `${s.entropy.toFixed(4)} bits`,
       `of at most ${Math.log2(s.maxRank).toFixed(4)}`);
     out.append(stats);
@@ -1722,7 +1761,7 @@ function showEntanglement() {
 
 /** The panel as plain text, which is what the copy button takes. */
 function entangleText(box) {
-  return [...box.querySelectorAll('h4, p, .ent-blocks, .ent-split, .ent-stats, tr')]
+  return [...box.querySelectorAll('h4, p, .ent-blocks, .ent-cuts, .ent-split, .ent-stats, tr')]
     .map((e) => {
       if (e.tagName === 'TR') return [...e.children].map((c) => c.textContent).join('\t');
       if (e.tagName === 'DL') {
