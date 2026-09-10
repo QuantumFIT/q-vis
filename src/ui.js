@@ -12,6 +12,7 @@ import { randomCircuit, GATE_SETS } from './random.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
+import * as Ent from './entangle.js';
 import * as Order from './order.js';
 import * as Pauli from './pauli.js';
 import * as Z from './zomega.js';
@@ -1609,6 +1610,111 @@ function showTableau() {
     tableauText(app.limdd, app.layout, app.index, opts));
 }
 
+/**
+ * How entangled the state at this step is, in the two ways worth asking.
+ *
+ * The depth is exact — it is built from rank-one tests, which are statements about
+ * products being equal and need no tolerance. The Schmidt coefficients are not: they are
+ * square roots of eigenvalues and leave the ring, so that half is floating point and the
+ * panel says so rather than letting the reader assume otherwise.
+ */
+function showEntanglement() {
+  if (!app.dd || !app.circuit || !app.frames.length) return;
+  const n = app.circuit.nqubits;
+  const labels = app.circuit.qubits.map((q) => q.label);
+  const root = app.frames[app.index].root;
+  const amps = Ent.amplitudes(app.dd, root, n, app.levelOf);
+  const symbolic = amps.some((a) => P.symbols(a).size > 0);
+  const numeric = symbolic ? null : amps.map((a) => P.evaluate(a, {}));
+
+  const box = el('div', 'ent');
+  const name = (q) => labels[q];
+  const listOf = (qs) => qs.map(name).join(' ');
+
+  box.append(el('h4', null, 'Entanglement depth'));
+  const found = Ent.productPartition(P.Ring, amps, n, { numeric });
+  if (found.exhausted) {
+    box.append(el('p', 'ent-note',
+      `${n} qubits is too many to search: the blocks are found by trying subsets, and this `
+      + 'state would need more of them than is reasonable to do while you wait.'));
+  } else {
+    box.append(el('p', 'ent-big',
+      found.depth === 1 ? '1 — a product state, no two qubits entangled'
+        : `${found.depth} — the most qubits that have to be entangled at once`));
+    const parts = el('div', 'ent-blocks');
+    found.blocks.forEach((b, i) => {
+      if (i) parts.append(el('span', 'ent-bar', '⊗'));
+      parts.append(el('span', 'ent-block', listOf(b)));
+    });
+    box.append(parts);
+    box.append(el('p', 'ent-note', found.blocks.length === 1
+      ? 'The state is a single block: no set of qubits factors out of it.'
+      : `The finest partition the state is a product over — ${found.blocks.length} factors.`));
+  }
+
+  box.append(el('h4', null, 'Schmidt decomposition'));
+  if (symbolic) {
+    box.append(el('p', 'ent-note',
+      'Not for a state with free symbols: Schmidt coefficients are square roots of '
+      + 'eigenvalues, which needs numbers. The depth above does not, and holds.'));
+    showRich(`Entanglement · step ${app.index} of ${app.frames.length - 1}`, box, entangleText(box));
+    return;
+  }
+
+  const row = el('div', 'ent-input');
+  const field = el('input');
+  field.type = 'text';
+  field.spellcheck = false;
+  field.setAttribute('aria-label', 'the qubits on one side of the split');
+  field.value = listOf(found.exhausted || found.blocks.length === 1
+    ? Array.from({ length: Math.floor(n / 2) }, (_, i) => i)
+    : found.blocks[0]);
+  row.append(el('span', 'ent-label', 'one side'), field);
+  box.append(row);
+  const out = el('div', 'ent-out');
+  box.append(out);
+
+  const recompute = () => {
+    const got = Ent.parseSubset(field.value, labels);
+    out.replaceChildren();
+    field.classList.toggle('bad', !!got.error);
+    if (got.error) { out.append(el('p', 'ent-bad', got.error)); return; }
+    const other = Array.from({ length: n }, (_, i) => i).filter((q) => !got.part.includes(q));
+    const s = Ent.schmidt(numeric, n, got.part);
+    out.append(el('p', 'ent-split', `${listOf(got.part)}  │  ${listOf(other)}`));
+    out.append(el('p', 'ent-big', s.rank === 1
+      ? 'rank 1 — this split factors, the two sides are not entangled'
+      : `rank ${s.rank} of ${s.maxRank} — ${s.entropy.toFixed(4)} bits of entanglement entropy`));
+    const table = el('table', 'ent-table');
+    const head = el('tr');
+    head.append(el('th', null, 'i'), el('th', null, 'λ'), el('th', null, 'λ²'));
+    table.append(head);
+    s.coefficients.forEach((c, i) => {
+      const tr = el('tr');
+      tr.append(el('td', null, String(i)), el('td', null, c.toFixed(6)),
+        el('td', null, s.probabilities[i].toFixed(6)));
+      table.append(tr);
+    });
+    out.append(table);
+    out.append(el('p', 'ent-note',
+      'Coefficients in floating point: they are square roots of eigenvalues and are not '
+      + 'ring elements in general, unlike every amplitude the tool computes.'));
+  };
+  field.addEventListener('input', recompute);
+  recompute();
+
+  showRich(`Entanglement · step ${app.index} of ${app.frames.length - 1}`, box, entangleText(box));
+}
+
+/** The panel as plain text, which is what the copy button takes. */
+function entangleText(box) {
+  return [...box.querySelectorAll('h4, p, .ent-blocks, .ent-split, tr')]
+    .map((e) => (e.tagName === 'TR'
+      ? [...e.children].map((c) => c.textContent).join('\t')
+      : e.textContent.replace(/\s+/g, ' ').trim()))
+    .filter(Boolean).join('\n');
+}
+
 /** The tableau as elements. Pure over the structure `tableauFrame` returns. */
 function tableauDom(f, formatWeight) {
   const box = el('div');
@@ -2031,6 +2137,7 @@ export function boot() {
   $('tikzDiagram').addEventListener('click', () => showTikz('diagram'));
   $('tikzCircuit').addEventListener('click', () => showTikz('circuit'));
   $('tableau').addEventListener('click', showTableau);
+  $('entangle').addEventListener('click', showEntanglement);
 
   for (const [key, preset] of Object.entries(Order.PRESETS)) {
     $('order').append(new Option(preset.name, key));

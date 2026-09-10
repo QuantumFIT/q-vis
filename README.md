@@ -165,6 +165,35 @@ prints as eight amplitudes of identical magnitude and eight different angles. Ev
 in this ring is π times a dyadic rational, so the π form stays exact where the other two
 round.
 
+## How entangled is it
+
+`entanglement`, in the transport, answers that in the two ways worth asking about the
+state at the current step.
+
+**Entanglement depth** is the size of the largest group of qubits that has to be entangled
+at once — the finest partition the state is a product over, which the panel shows. A depth
+of 1 is a product state; a depth of *n* means nothing at all factors out.
+
+This half is **exact**. "These qubits factor out" is a Schmidt rank of one, and a rank of
+one says only that certain products are equal, so it is decided on the ring with no
+tolerance anywhere — symbolic amplitudes included.
+
+The blocks are found by searching subsets, and there is no shortcut through pairwise
+tests. Take `q2 = q0 XOR q1` on three uniform qubits: every *pair* of its qubits is
+completely uncorrelated, and yet no qubit factors out and its depth is three. The search
+is exhaustive because anything cheaper gets that state wrong. Past about twelve qubits it
+says so rather than making you wait.
+
+**A Schmidt decomposition** of any split you name — type the qubits on one side, in the
+circuit's own names or as bare indices — gives the Schmidt rank, the coefficients, and the
+entanglement entropy across it.
+
+This half is **floating point**, and the panel says so. Schmidt coefficients are square
+roots of eigenvalues and are not ring elements even when every amplitude is, so there is
+nothing exact to be had. Where the two halves overlap they agree: rank 1 from the
+numerical side is exactly the case the ring can decide, and a test checks that on every
+bipartition of every worked example.
+
 ## Sharing a view
 
 **copy link** puts the whole view in the URL — circuit, input state, which gate you are
