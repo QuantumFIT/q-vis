@@ -14,7 +14,7 @@ import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
 import { EXAMPLES, instantiate, identify } from './aut-examples.js';
 import { HslError, parseHsl, toVector } from './aut-hsl.js';
-import { fanAngles, layoutAutomaton } from './aut-layout.js';
+import { fanAngles, layoutAutomaton, spread } from './aut-layout.js';
 import { TA } from './aut-ta.js';
 import * as P from './poly.js';
 
@@ -55,6 +55,48 @@ const GEO = {
  * if it is drawn further out.
  */
 const runOf = (k) => Math.min(30, 16 + 2.2 * (k - 2));
+
+/** How far around a state's rim an edge may arrive, and how far apart two arrivals sit. */
+const ENTRY_LIMIT = 66;
+const ENTRY_GAP = 36;
+
+/**
+ * How far out the edge straightens for its final approach.
+ *
+ * Spreading arrivals around the rim is only half the job. An edge that has been pushed
+ * round to the side of a state still has to *get* there, and if its last stretch aimed
+ * straight from where it left its parent it would cut across the circle and land pointing
+ * outwards — the arrowhead marking a state it had already passed through. So the last
+ * stretch is radial: the curve is steered onto the line through the middle of what it is
+ * entering, and comes in along it. That is also what makes every arrowhead point at the
+ * state it enters, wherever on the rim it lands.
+ */
+const APPROACH = 15;
+
+/**
+ * The arrowhead every edge ends in.
+ *
+ * A transition is written `q → f(q₁, q₂)` and the picture is drawn the same way round —
+ * the root on top, a run descending — so an arrow points from a state into a child.
+ * `refX` at the tip puts that tip exactly where the edge ends, on the rim of the state
+ * it is entering rather than eight pixels past it.
+ */
+function arrowhead() {
+  const marker = svgEl('marker', {
+    id: 'aut-arrow',
+    viewBox: '0 0 8 5.4',
+    refX: 8,
+    refY: 2.7,
+    markerWidth: 8,
+    markerHeight: 5.4,
+    markerUnits: 'userSpaceOnUse',
+    orient: 'auto',
+  });
+  marker.append(svgEl('path', { class: 'aut-head', d: 'M 0 0 L 8 2.7 L 0 5.4 Z' }));
+  const defs = svgEl('defs');
+  defs.append(marker);
+  return defs;
+}
 
 const DEG = 180 / Math.PI;
 
@@ -178,6 +220,7 @@ function drawAutomaton(layout, labels) {
   const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, class: 'aut-svg' });
   svg.style.width = `${width}px`;
   svg.style.height = `${height}px`;
+  svg.append(arrowhead());
 
   // The gutter: which qubit each row decides, and what the last row holds.
   for (let level = 0; level < layout.height; level++) {
@@ -193,8 +236,9 @@ function drawAutomaton(layout, labels) {
   const arcs = svgEl('g');
   const edges = svgEl('g');
 
-  // One state at a time, because the fan is a property of the state and not of any one
-  // edge: where an edge leaves depends on what else leaves with it.
+  // Both ends of an edge depend on what else is at that end — the fan on how many edges
+  // leave the state, the arrival on how many reach it — so the whole picture is planned
+  // and only then drawn.
   const leaving = new Map();
   for (const e of layout.edges) {
     if (!at.has(e.from) || !at.has(e.to)) continue;
@@ -202,6 +246,7 @@ function drawAutomaton(layout, labels) {
     leaving.get(e.from).push(e);
   }
 
+  const plan = new Map();
   for (const [from, out] of leaving) {
     const a = at.get(from);
     const cx = xOf(a.x);
@@ -224,18 +269,11 @@ function drawAutomaton(layout, labels) {
     groups.forEach((pair, t) => {
       pair.forEach((e, i) => {
         const angle = given[t][i];
-        const [px, py] = onCircle(cx, cy, GEO.r, angle);
-        const [sx, sy] = onCircle(cx, cy, GEO.r + run, angle);
-        const [hx, hy] = onCircle(cx, cy, GEO.r + run + GEO.handle, angle);
-        const b = at.get(e.to);
-        const ty = yOf(b.y) - (b.terminal ? GEO.termH / 2 : GEO.r);
-        // Out along the ray, then a quadratic whose handle continues it: the edge leaves
-        // radially — which is what makes two exit points read as two — turns once, and
-        // is near enough straight by the time it arrives.
-        edges.append(svgEl('path', {
-          class: `aut-edge ${e.high ? 'high' : 'low'}`,
-          d: `M ${px} ${py} L ${sx} ${sy} Q ${hx} ${hy} ${xOf(b.x)} ${ty}`,
-        }));
+        plan.set(e, {
+          leave: onCircle(cx, cy, GEO.r, angle),
+          turn: onCircle(cx, cy, GEO.r + run, angle),
+          handle: onCircle(cx, cy, GEO.r + run + GEO.handle, angle),
+        });
       });
       if (groups.length > 1 && pair.length === 2) {
         const lo = Math.min(given[t][0], given[t][1]);
@@ -249,6 +287,63 @@ function drawAutomaton(layout, labels) {
         }));
       }
     });
+  }
+
+  // Where each edge arrives. Every edge used to end at the one point on top of whatever
+  // it pointed at, so edges reaching the same state piled onto each other and the ones
+  // coming from the side grazed the circle on their way in. Now each ends on the rim
+  // facing where it came from, spread apart from its neighbours — so it arrives head-on
+  // and its arrowhead points at the middle of the state it is entering.
+  const arriving = new Map();
+  for (const e of layout.edges) {
+    if (!plan.has(e)) continue;
+    if (!arriving.has(e.to)) arriving.set(e.to, []);
+    arriving.get(e.to).push(e);
+  }
+  for (const [to, incoming] of arriving) {
+    const b = at.get(to);
+    const bx = xOf(b.x);
+    const by = yOf(b.y);
+    if (b.terminal) {
+      // An amplitude is a box, not a circle, so its edges land along the top of it, and
+      // come straight down onto it.
+      const given = spread(incoming.map((e) => plan.get(e).handle[0] - bx),
+        { limit: GEO.termW / 2 - 7, gap: 9 });
+      incoming.forEach((e, i) => {
+        const where = plan.get(e);
+        where.meet = [bx + given[i], by - GEO.termH / 2];
+        where.approach = [bx + given[i], by - GEO.termH / 2 - APPROACH];
+      });
+    } else {
+      const given = spread(incoming.map((e) => {
+        const [hx, hy] = plan.get(e).handle;
+        return DEG * Math.atan2(hx - bx, by - hy);
+      }), { limit: ENTRY_LIMIT, gap: ENTRY_GAP });
+      incoming.forEach((e, i) => {
+        const t = given[i] / DEG;
+        const where = plan.get(e);
+        where.meet = [bx + GEO.r * Math.sin(t), by - GEO.r * Math.cos(t)];
+        where.approach = [bx + (GEO.r + APPROACH) * Math.sin(t),
+          by - (GEO.r + APPROACH) * Math.cos(t)];
+      });
+    }
+  }
+
+  for (const [e, where] of plan) {
+    // Straight out along the ray it left on, then one cubic between two handles — the
+    // first continuing that ray, the second on the ray it arrives along. So an edge
+    // leaves radially, which is what makes two exit points read as two, and arrives
+    // radially, which is what keeps it off the circle it is pointing at.
+    const [px, py] = where.leave;
+    const [sx, sy] = where.turn;
+    const [hx, hy] = where.handle;
+    const [ax, ay] = where.approach;
+    const [mx, my] = where.meet;
+    edges.append(svgEl('path', {
+      class: `aut-edge ${e.high ? 'high' : 'low'}`,
+      'marker-end': 'url(#aut-arrow)',
+      d: `M ${px} ${py} L ${sx} ${sy} C ${hx} ${hy} ${ax} ${ay} ${mx} ${my}`,
+    }));
   }
   svg.append(edges, arcs);
 

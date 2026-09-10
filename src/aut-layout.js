@@ -69,6 +69,50 @@ export function fanAngles(groups) {
 }
 
 /**
+ * Place things that each want to be somewhere in particular, keeping them apart.
+ *
+ * This is the arriving half of the same problem `fanAngles` solves for the leaving half,
+ * and it is a different problem: an edge coming *in* belongs to no group, and where it
+ * wants to arrive is wherever it is coming from. So each keeps as near to that as it can
+ * while staying `gap` from its neighbours and inside ±`limit`, and the order they wanted
+ * is the order they get — which is what stops one edge crossing another to get in.
+ *
+ * The units are the caller's: degrees around a state's rim, pixels along the top of an
+ * amplitude box.
+ *
+ * @param {number[]} wanted where each would go if it were the only one
+ * @param {{limit: number, gap: number}} room how far out they may sit, and how far apart
+ * @returns {number[]} where each goes, in the order they came in
+ */
+export function spread(wanted, { limit, gap }) {
+  const k = wanted.length;
+  if (!k) return [];
+  const clamp = (v) => Math.max(-limit, Math.min(limit, v));
+  if (k === 1) return [clamp(wanted[0])];
+
+  const step = Math.min(gap, (2 * limit) / (k - 1));
+  const order = wanted.map((w, i) => i).sort((a, b) => wanted[a] - wanted[b] || a - b);
+
+  // The i-th of k things, kept in order and `step` apart, cannot sit below -limit + i
+  // steps nor above limit less the steps still to come. Clamping to *that* window before
+  // pushing anything apart is what keeps the whole row inside the wall: the forward pass
+  // can only raise a value to its predecessor plus a step, and the windows are exactly a
+  // step apart, so it can never raise one past its own ceiling.
+  const at = order.map((idx, i) => Math.max(-limit + i * step,
+    Math.min(limit - (k - 1 - i) * step, wanted[idx])));
+  const middle = (clamp(wanted[order[0]]) + clamp(wanted[order[k - 1]])) / 2;
+  for (let i = 1; i < k; i++) at[i] = Math.max(at[i], at[i - 1] + step);
+
+  // Pushing things apart drifts the whole row one way; put it back where it wanted to be,
+  // as far as the walls allow. Both walls are reachable, so the two bounds cannot cross.
+  const shift = Math.max(-limit - at[0],
+    Math.min(limit - at[k - 1], middle - (at[0] + at[k - 1]) / 2));
+  const out = new Array(k);
+  order.forEach((idx, i) => { out[idx] = at[i] + shift; });
+  return out;
+}
+
+/**
  * Lay out one automaton.
  *
  * @param {import('./aut-ta.js').TA} ta

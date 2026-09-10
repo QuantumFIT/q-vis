@@ -84,6 +84,10 @@
 
 .aut-edge.low { stroke-dasharray: 3 2.5; }
 
+/* Filled, not stroked, so the dash on a 0-edge stops at the head rather than running
+   through it. Its own colour, because a marker inherits nothing from the path. */
+.aut-head { fill: var(--ink-soft); }
+
 /* The two edges of one transition, joined near the state they leave. Which transition a
    run takes is a choice, and the arc is what says that this pair is one of them — the
    notation the tree-automata papers use. A deterministic state has nothing to tell apart

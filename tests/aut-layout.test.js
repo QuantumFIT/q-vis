@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fanAngles, layoutAutomaton } from '../src/aut-layout.js';
+import { fanAngles, layoutAutomaton, spread } from '../src/aut-layout.js';
 import { TA } from '../src/aut-ta.js';
 import * as P from '../src/poly.js';
 import { rng, randInt, CLOSE } from './helpers.js';
@@ -115,4 +115,44 @@ test('a state that survives stays where it was', () => {
       `state ${id} was overtaken by something that was to its left`);
   }
   assert.ok(second.nodes.some((n) => n.fresh), 'and what is new is marked as new');
+});
+
+test('edges arriving at one node arrive apart, in the order they came from', () => {
+  // The other half of the same complaint. Every edge used to end at the one point on top
+  // of its target, so several arriving at one state landed on each other; and one coming
+  // from the side grazed the circle instead of entering it.
+  const r = rng(20260913);
+  for (let iter = 0; iter < 300; iter++) {
+    const limit = [15, 66][randInt(r, 0, 1)];
+    const gap = limit === 15 ? 9 : 30;
+    const wanted = Array.from({ length: randInt(r, 1, 6) }, () => r() * 260 - 130);
+    const given = spread(wanted, { limit, gap });
+
+    assert.equal(given.length, wanted.length);
+    for (const at of given) assert.ok(Math.abs(at) <= limit + CLOSE, `${at} is outside ±${limit}`);
+
+    const step = Math.min(gap, (2 * limit) / Math.max(1, wanted.length - 1));
+    const sorted = [...given].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) {
+      assert.ok(sorted[i] - sorted[i - 1] > step - CLOSE,
+        `${sorted[i - 1]} and ${sorted[i]} are closer than ${step}`);
+    }
+    // Order preserved, so no edge crosses another on the way in.
+    const byWant = wanted.map((w, i) => i).sort((a, b) => wanted[a] - wanted[b] || a - b);
+    for (let i = 1; i < byWant.length; i++) {
+      assert.ok(given[byWant[i]] >= given[byWant[i - 1]],
+        `${wanted[byWant[i - 1]]} < ${wanted[byWant[i]]} but they arrived the other way round`);
+    }
+  }
+});
+
+test('one edge arriving arrives where it wanted, and a crowd stays centred', () => {
+  assert.deepEqual(spread([12], { limit: 66, gap: 30 }), [12], 'nothing to make room for');
+  assert.deepEqual(spread([200], { limit: 66, gap: 30 }), [66], 'but the rim is the rim');
+  assert.deepEqual(spread([], { limit: 66, gap: 30 }), []);
+
+  // Everything wanting the same place is the case that used to draw one point.
+  const crowd = spread([0, 0, 0, 0], { limit: 66, gap: 30 });
+  assert.ok(Math.abs(crowd[0] + crowd[3]) < CLOSE, `not centred: ${crowd.join(', ')}`);
+  assert.equal(new Set(crowd).size, 4, 'and four distinct places');
 });
