@@ -392,6 +392,41 @@ function setPanelHeight(panel, px) {
   return h;
 }
 
+/** A panel's own floor, whatever set it: the drag minimum or the stylesheet's. */
+function panelFloor(panel) {
+  const css = parseFloat(getComputedStyle(panel).minHeight);
+  return Math.max(Number(panel.dataset.min) || PANEL_MIN, Number.isFinite(css) ? css : 0);
+}
+
+/**
+ * Freeze a column so that moving one divider moves one boundary.
+ *
+ * Flex does not do this on its own: every panel with a grow factor takes a share of
+ * whatever the dragged panel gives up. Both the Circuit panel and an open Amplitudes
+ * panel grow, so dragging the divider above Amplitudes resized the *Circuit* panel by
+ * half the movement and Amplitudes by the other half — the reader grabs one boundary and
+ * watches a different one move.
+ *
+ * So every panel but the two either side of this divider is pinned where it is, leaving
+ * the one below as the only one that can give or take. Returns how much it has left to
+ * give, so the drag can stop at that panel's floor rather than pushing past it and taking
+ * the difference out of the pinned ones.
+ */
+function pinColumn(el) {
+  if (!el.parentElement.classList.contains('inputs')) return Infinity;
+  const below = el.nextElementSibling;
+  const above = el.previousElementSibling;
+  // A folded fold is only its own header and has nothing to trade with.
+  if (!below || (below.tagName === 'DETAILS' && !below.open)) return Infinity;
+  for (const panel of el.parentElement.children) {
+    if (panel === below || panel === above || !panel.classList.contains('panel')) continue;
+    panel.style.flex = `0 1 ${Math.round(panel.getBoundingClientRect().height)}px`;
+    panel.style.maxHeight = 'none';
+  }
+  below.style.flex = '1 1 auto';
+  return Math.max(0, below.getBoundingClientRect().height - panelFloor(below));
+}
+
 /** What the panels are doing now, as something small enough to store. */
 function layoutState() {
   const col = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--col'), 10);
@@ -430,6 +465,15 @@ function loadLayout() {
 function resetSplit(el) {
   if (el.id === 'vsplit') {
     document.documentElement.style.removeProperty('--col');
+  } else if (el.parentElement.classList.contains('inputs')) {
+    // Dragging pins the rest of the column, so evening out means releasing all of it —
+    // putting one panel back while its neighbours stay pinned is not a layout anyone asked
+    // for. Each panel that had a flex of its own says so in `data-flex`.
+    for (const panel of el.parentElement.children) {
+      if (!panel.classList.contains('panel')) continue;
+      panel.style.flex = panel.dataset.flex || '';
+      panel.style.maxHeight = '';
+    }
   } else {
     const target = el.previousElementSibling;
     target.style.flex = target.dataset.flex || '';
@@ -451,13 +495,14 @@ function armSplitter(el) {
   const vertical = el.id === 'vsplit';
   let start = 0;
   let base = 0;
+  let room = Infinity;
   let live = false;
 
   const move = (e) => {
     if (!live) return;
     const delta = (vertical ? e.clientX : e.clientY) - start;
     if (vertical) setColumn(base + delta);
-    else setPanelHeight(el.previousElementSibling, base + delta);
+    else setPanelHeight(el.previousElementSibling, Math.min(base + delta, base + room));
     fitCanvas();
   };
 
@@ -480,6 +525,7 @@ function armSplitter(el) {
     base = vertical
       ? $('inputs').getBoundingClientRect().width
       : el.previousElementSibling.getBoundingClientRect().height;
+    room = vertical ? Infinity : pinColumn(el);
     document.body.classList.add('dragging');
     document.body.style.cursor = vertical ? 'col-resize' : 'row-resize';
     window.addEventListener('pointermove', move);
@@ -501,8 +547,10 @@ function armSplitter(el) {
     e.preventDefault();
     if (vertical) setColumn($('inputs').getBoundingClientRect().width + keys[e.key]);
     else {
+      const give = pinColumn(el);
       const panel = el.previousElementSibling;
-      setPanelHeight(panel, panel.getBoundingClientRect().height + keys[e.key]);
+      const now = panel.getBoundingClientRect().height;
+      setPanelHeight(panel, Math.min(now + keys[e.key], now + give));
     }
     saveLayout();
     fitCanvas();
