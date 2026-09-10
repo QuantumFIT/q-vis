@@ -129,3 +129,39 @@ test('generating symbols has a ceiling', () => {
   assert.throws(() => parseState('-'.repeat(10) + ' : ?', 10), /1024 basis states.*at most 256/s);
   assert.equal(parseState('-'.repeat(8) + ' : ?', 8).entries.length, 256, '256 is allowed');
 });
+
+test('the norm is exact however many qubits, and costs nothing', () => {
+  // It used to be summed over the basis states, capped at 2^20 of them, so a normalised
+  // state reported half at 21 qubits and a quarter at 22 — each extra qubit halving an
+  // answer that is always 1. It comes from the compressed paths now: one multiplication
+  // per path rather than 2^k additions, so the ceiling is gone rather than raised.
+  for (const n of [4, 19, 20, 21, 22, 31, 32]) {
+    const dd = new MTBDD(P.Ring, n);
+    const root = buildState(dd, parseState(`${'-'.repeat(n)} : 1/sqrt(2)^${n}`, n).entries);
+    const norm = squaredNorm(dd, root);
+    assert.ok(Math.abs(norm - 1) < 1e-9, `${n} qubits: norm is ${norm}, not 1`);
+  }
+});
+
+test("a '?' names every unknown once, across the whole state", () => {
+  // The letters used to restart at 'a' on each line, so two wildcard lines shared names
+  // and asserted an equality nobody wrote. These two spellings partition the same space,
+  // so they have to describe the same state.
+  const dense = parseState('--- : ?', 3);
+  const split = parseState('0-- : ?\n1-- : ?', 3);
+  assert.deepEqual(split.symbols, dense.symbols, 'the same eight unknowns either way');
+  assert.equal(split.symbols.length, 8);
+
+  const build = (r) => {
+    const dd = new MTBDD(P.Ring, 3);
+    const root = buildState(dd, r.entries);
+    return Array.from({ length: 8 },
+      (_, b) => P.key(dd.evaluate(root, b.toString(2).padStart(3, '0')))).join(' ');
+  };
+  assert.equal(build(split), build(dense), 'and the same state');
+
+  // A generated name must also dodge one the reader already used.
+  const mixed = parseState('|00> : a\n|11> : ?', 2);
+  assert.equal(mixed.symbols.length, 2, "the '?' must not be handed the name 'a'");
+  assert.ok(mixed.symbols.includes('a'));
+});

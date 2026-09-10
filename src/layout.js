@@ -257,6 +257,10 @@ function layoutTrees(dd, frames, labels, show, weighting) {
     const weightOf = weighted && weighted.weightOf;
     const rootWeight = weighted && weighted.rootWeight;
     const weightKey = (id) => weightOf.get(id).map((w) => dd.ring.key(w)).join('|');
+    // The factor on the root arrow is not any node's weight, so a step whose whole change
+    // lands there used to move every amplitude on the plate while the strip reported that
+    // nothing had changed. It belongs to the root node for the purpose of noticing.
+    const rootKey = weighting ? dd.ring.key(rootWeight) : null;
 
     const nodes = [];
     const edges = [];
@@ -278,7 +282,8 @@ function layoutTrees(dd, frames, labels, show, weighting) {
           // An unreduced tree never changes shape, so "new" can only mean that what it
           // carries is not what it was — an amplitude, or a pair of edge weights.
           fresh: prev !== null && (weighting
-            ? !terminal && prev.weights.get(id) !== weightKey(id)
+            ? !terminal && (prev.weights.get(id) !== weightKey(id)
+              || (id === idOf(0, 0) && prev.rootWeight !== rootKey))
             : terminal && dd.ring.key(prev.values[path]) !== dd.ring.key(value)),
         });
         if (terminal) continue;
@@ -303,7 +308,7 @@ function layoutTrees(dd, frames, labels, show, weighting) {
       ...(weighting ? { rootWeight: show(rootWeight, frame.index) } : {}),
     });
     prev = weighting
-      ? { weights: new Map([...weightOf.keys()].map((id) => [id, weightKey(id)])) }
+      ? { weights: new Map([...weightOf.keys()].map((id) => [id, weightKey(id)])), rootWeight: rootKey }
       : { values };
   }
 

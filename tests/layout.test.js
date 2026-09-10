@@ -5,6 +5,7 @@ import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
 import { simulate } from '../src/sim.js';
 import { scanOrder, stableOrder, layoutFrames } from '../src/layout.js';
+import { unitNormaliser } from '../src/evdd.js';
 import { rng, randInt } from './helpers.js';
 
 test('scan order follows low before high', () => {
@@ -183,4 +184,26 @@ test('the unreduced tree marks every subtree that is entirely zero', () => {
   // Hiding them leaves only the paths the state occupies.
   const kept = f.nodes.filter((nd) => !nd.zero);
   assert.deepEqual(kept.map((nd) => nd.id).sort((a, b) => a - b), [0, 1, 3, 7, 8]);
+});
+
+test('a change that lands on the root weight is still a change', () => {
+  // The edge-valued tree noticed a step by comparing each node's own edge weights. The
+  // factor on the root arrow is not any node's weight, so a step whose whole change landed
+  // there moved every amplitude on the plate while the strip reported nothing changed.
+  const n = 1;
+  const dd = new MTBDD(P.Ring, n);
+  const before = dd.fromAmplitudes([['0', P.one], ['1', P.one]]);
+  //  a global phase: every amplitude moves, the shape does not
+  const after = dd.fromAmplitudes([['0', P.fromZ(Z.I)], ['1', P.fromZ(Z.I)]]);
+  const frames = [{ index: 0, gate: null, root: before }, { index: 1, gate: null, root: after }];
+
+  const laid = layoutFrames(dd, frames, {
+    qubitLabels: ['q0'],
+    expand: true,
+    formatValue: (v) => P.format(v, 'exact'),
+    weighting: { ring: P.Ring, normalise: unitNormaliser(P, Z, 'max') },
+  });
+  assert.notEqual(laid.frames[0].rootWeight, laid.frames[1].rootWeight,
+    'the root weight really does move');
+  assert.ok(laid.frames[1].changed > 0, 'and the frame has to say so');
 });

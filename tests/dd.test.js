@@ -146,3 +146,15 @@ test('dot output mentions every reachable node exactly once', () => {
   }
   assert.match(dot, /style=dashed/);
 });
+
+test('amplitudes yields what it was asked for, however many don\'t-cares', () => {
+  // The span was computed with a 32-bit shift, so 31 don't-care levels made it negative
+  // and the generator yielded nothing at all rather than the first `limit` states.
+  for (const n of [30, 31, 32]) {
+    const m = new MTBDD(P.Ring, n);
+    const root = m.patternState('-'.repeat(n), P.one);
+    let count = 0;
+    for (const _ of m.amplitudes(root, 500)) count++;
+    assert.equal(count, 500, `${n} don't-care levels`);
+  }
+});

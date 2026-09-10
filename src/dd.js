@@ -250,7 +250,10 @@ export class MTBDD {
     let n = 0;
     for (const { path, value } of this.paths(root)) {
       const free = [...path].map((c, i) => (c === '-' ? i : -1)).filter((i) => i >= 0);
-      for (let m = 0; m < (1 << free.length); m++) {
+      // 2 ** k, not 1 << k: a shift is 32-bit, so 31 don't-care levels made the count
+      // negative and the loop yielded nothing at all instead of the first `limit` states.
+      const span = 2 ** free.length;
+      for (let m = 0; m < span; m++) {
         if (++n > limit) return;
         const bits = [...path];
         free.forEach((pos, j) => { bits[pos] = String((m >> j) & 1); });

@@ -158,6 +158,15 @@ export function parseAmplitude(text, line) {
 export function parseState(text, nqubits) {
   const entries = [];
   const symbols = new Set();
+  // Every identifier written anywhere in the text. A generated name must dodge these, or
+  // `|00> : a` followed by `|11> : ?` would hand the unknown the name `a` and quietly
+  // assert that the two amplitudes are equal.
+  const taken = new Set(text.replace(/(\/\/|#).*$/gm, '').match(/[A-Za-z_][A-Za-z0-9_]*/g) || []);
+  // One pool for the whole state, not one per line. Restarting at `a` on every line made
+  // two `?` lines share names, so `0-- : ?` with `1-- : ?` claimed the two halves had
+  // equal amplitudes — while `--- : ?`, which describes the same thing, did not.
+  const pool = LETTERS.filter((c) => !taken.has(c));
+  let generated = 0;
   text.split('\n').forEach((raw, idx) => {
     const line = idx + 1;
     const stripped = raw.replace(/(\/\/|#).*$/, '').trim();
@@ -190,12 +199,11 @@ export function parseState(text, nqubits) {
       // Plain letters while there are enough of them; past that, name each unknown after
       // the basis state it belongs to, so a terminal still says which amplitude it is
       // rather than merely that it is the seventeenth.
-      const byLetter = count <= LETTERS.length && !PREFIXED_WILDCARD.test(rhs);
-      let index = 0;
+      const byLetter = generated + count <= pool.length && !PREFIXED_WILDCARD.test(rhs);
       for (const bits of matching(pattern)) {
-        const nth = index++;
+        const nth = generated++;
         const amplitude = parseAmplitude(
-          rhs.replace(WILDCARD, (_, name) => (byLetter ? LETTERS[nth] : (name || 'a') + bits)), line);
+          rhs.replace(WILDCARD, (_, name) => (byLetter ? pool[nth] : (name || 'a') + bits)), line);
         for (const sym of P.symbols(amplitude)) symbols.add(sym);
         entries.push({ pattern: bits, amplitude, line });
       }
@@ -234,10 +242,17 @@ export function symbolicStateText(nqubits) { return `${'-'.repeat(nqubits)} : ?`
  */
 export function squaredNorm(dd, root) {
   let total = 0;
-  for (const { value } of dd.amplitudes(root, 1 << 20)) {
+  // From the *compressed* paths, not from the basis states they stand for. Enumerating
+  // them meant a cap, and a cap meant a normalised state quietly reporting half: 21 qubits
+  // gave 0.5, 22 gave 0.25, each extra qubit halving an answer that is always 1. A path
+  // with k don't-cares stands for 2^k basis states of the same amplitude, which is one
+  // multiplication rather than 2^k additions — so the ceiling goes altogether.
+  for (const { path, value } of dd.paths(root)) {
     if (P.symbols(value).size) return null;
     const c = P.evaluate(value, {});
-    total += c.re * c.re + c.im * c.im;
+    let free = 0;
+    for (const ch of path) if (ch === '-') free++;
+    total += 2 ** free * (c.re * c.re + c.im * c.im);
   }
   return total;
 }
