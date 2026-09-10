@@ -399,7 +399,8 @@ function panelFloor(panel) {
 }
 
 /**
- * Freeze a column so that moving one divider moves one boundary.
+ * Freeze a column so that moving one divider moves one boundary, and report the pair of
+ * panels the divider sits between.
  *
  * Flex does not do this on its own: every panel with a grow factor takes a share of
  * whatever the dragged panel gives up. Both the Circuit panel and an open Amplitudes
@@ -407,24 +408,37 @@ function panelFloor(panel) {
  * half the movement and Amplitudes by the other half — the reader grabs one boundary and
  * watches a different one move.
  *
- * So every panel but the two either side of this divider is pinned where it is, leaving
- * the one below as the only one that can give or take. Returns how much it has left to
- * give, so the drag can stop at that panel's floor rather than pushing past it and taking
- * the difference out of the pinned ones.
+ * So every other panel is pinned where it is, and the two either side of the divider are
+ * then set explicitly by the drag, keeping their sum. Leaving the difference to flex does
+ * not work even with the rest pinned: the absorbing panel needs a basis, and `auto` means
+ * its *content* height rather than where it is actually sitting, so the column jumped the
+ * moment a drag began.
+ *
+ * Returns null when there is nothing to trade with — a folded fold is only its own header
+ * — and the drag then falls back to sizing the panel above on its own.
  */
 function pinColumn(el) {
-  if (!el.parentElement.classList.contains('inputs')) return Infinity;
+  if (!el.parentElement.classList.contains('inputs')) return null;
   const below = el.nextElementSibling;
   const above = el.previousElementSibling;
-  // A folded fold is only its own header and has nothing to trade with.
-  if (!below || (below.tagName === 'DETAILS' && !below.open)) return Infinity;
+  if (!below || !above || (below.tagName === 'DETAILS' && !below.open)) return null;
   for (const panel of el.parentElement.children) {
     if (panel === below || panel === above || !panel.classList.contains('panel')) continue;
     panel.style.flex = `0 1 ${Math.round(panel.getBoundingClientRect().height)}px`;
     panel.style.maxHeight = 'none';
   }
-  below.style.flex = '1 1 auto';
-  return Math.max(0, below.getBoundingClientRect().height - panelFloor(below));
+  const top = above.getBoundingClientRect().height;
+  const bottom = below.getBoundingClientRect().height;
+  return {
+    above, below, sum: top + bottom, lo: panelFloor(above), hi: top + bottom - panelFloor(below),
+  };
+}
+
+/** Put the boundary `pair` describes at `px`, as far as the two panels' floors allow. */
+function setBoundary(pair, px) {
+  const h = Math.round(Math.min(Math.max(px, pair.lo), Math.max(pair.lo, pair.hi)));
+  setPanelHeight(pair.above, h);
+  setPanelHeight(pair.below, pair.sum - h);
 }
 
 /** What the panels are doing now, as something small enough to store. */
@@ -495,14 +509,15 @@ function armSplitter(el) {
   const vertical = el.id === 'vsplit';
   let start = 0;
   let base = 0;
-  let room = Infinity;
+  let pair = null;
   let live = false;
 
   const move = (e) => {
     if (!live) return;
     const delta = (vertical ? e.clientX : e.clientY) - start;
     if (vertical) setColumn(base + delta);
-    else setPanelHeight(el.previousElementSibling, Math.min(base + delta, base + room));
+    else if (pair) setBoundary(pair, base + delta);
+    else setPanelHeight(el.previousElementSibling, base + delta);
     fitCanvas();
   };
 
@@ -525,7 +540,7 @@ function armSplitter(el) {
     base = vertical
       ? $('inputs').getBoundingClientRect().width
       : el.previousElementSibling.getBoundingClientRect().height;
-    room = vertical ? Infinity : pinColumn(el);
+    pair = vertical ? null : pinColumn(el);
     document.body.classList.add('dragging');
     document.body.style.cursor = vertical ? 'col-resize' : 'row-resize';
     window.addEventListener('pointermove', move);
@@ -547,10 +562,11 @@ function armSplitter(el) {
     e.preventDefault();
     if (vertical) setColumn($('inputs').getBoundingClientRect().width + keys[e.key]);
     else {
-      const give = pinColumn(el);
+      const pair = pinColumn(el);
       const panel = el.previousElementSibling;
       const now = panel.getBoundingClientRect().height;
-      setPanelHeight(panel, Math.min(now + keys[e.key], now + give));
+      if (pair) setBoundary(pair, now + keys[e.key]);
+      else setPanelHeight(panel, now + keys[e.key]);
     }
     saveLayout();
     fitCanvas();
@@ -2018,7 +2034,14 @@ export function boot() {
 
   for (const el of document.querySelectorAll('.vsplit, .hsplit, .psplit')) armSplitter(el);
   for (const el of document.querySelectorAll('.panel.foldable')) {
-    el.addEventListener('toggle', saveLayout);
+    el.addEventListener('toggle', () => {
+      // A drag leaves an explicit height behind, and it would otherwise survive the fold
+      // and hold a folded panel open over an empty box. Folded and open sizing belongs to
+      // the stylesheet, so give it back.
+      el.style.flex = '';
+      el.style.maxHeight = '';
+      saveLayout();
+    });
   }
   loadLayout();
   $('codeCopy').addEventListener('click', copyCode);
