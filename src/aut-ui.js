@@ -10,8 +10,12 @@
 // specification language (`aut-hsl.js`), and the picture (`aut-layout.js`). See the plan.
 
 import { parseQasm, QasmError } from './qasm.js';
-import { circuitStrip } from './circuit-view.js';
+import { circuitStrip, svgEl } from './circuit-view.js';
 import { EXAMPLES, instantiate, identify } from './aut-examples.js';
+import { HslError, parseHsl, toVector } from './aut-hsl.js';
+import { layoutAutomaton } from './aut-layout.js';
+import { TA } from './aut-ta.js';
+import * as P from './poly.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,7 +28,13 @@ const app = {
   circuit: null,
   index: 0,
   columns: [],
+  ta: null,
+  root: null,
+  rank: new Map(),      // where each node sat last time, so a survivor stays put
 };
+
+/** The plate's geometry, in the same spirit as the other page's. */
+const GEO = { rowH: 78, colW: 66, padX: 34, padY: 34, gutter: 62, r: 11, termW: 46, termH: 22 };
 
 /** 'auto' follows the system; the other two pin it. Kept per viewer, not in the file. */
 function applyTheme(name) {
@@ -108,6 +118,110 @@ function compile() {
   const g = app.circuit.gates.length;
   $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · ${g} gate${g === 1 ? '' : 's'}`;
   setStep(Math.min(app.index, g));
+  showAutomaton();
+}
+
+// ---- the automaton ------------------------------------------------------
+
+/**
+ * Draw the automaton the specification denotes.
+ *
+ * A state is a circle, a leaf is its amplitude in a box, a 0-edge is dashed and a 1-edge
+ * solid — all of it the same vocabulary the other page uses, so that a reader who knows
+ * one picture can read the other. What is new is the junction: a state with more than one
+ * transition has each of them drawn as a small square, because *which* transition a run
+ * takes is a choice, and a choice is a thing rather than an absence.
+ */
+function drawAutomaton(layout, labels) {
+  const xOf = (x) => GEO.padX + GEO.gutter + (x - layout.xMin) * GEO.colW;
+  const yOf = (y) => GEO.padY + y * GEO.rowH;
+  const width = xOf(layout.xMax) + GEO.padX + GEO.termW;
+  const height = yOf(layout.height) + GEO.padY + GEO.termH;
+  const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, class: 'aut-svg' });
+  svg.style.width = `${width}px`;
+  svg.style.height = `${height}px`;
+
+  // The gutter: which qubit each row decides, and what the last row holds.
+  for (let level = 0; level < layout.height; level++) {
+    const t = svgEl('text', { class: 'gutter', x: GEO.padX + GEO.gutter - 18, y: yOf(level) });
+    t.textContent = labels[level] ?? `q[${level}]`;
+    svg.append(t);
+  }
+  const amp = svgEl('text', { class: 'gutter band', x: GEO.padX + GEO.gutter - 18, y: yOf(layout.height) });
+  amp.textContent = 'AMPLITUDE';
+  svg.append(amp);
+
+  const at = new Map(layout.nodes.map((n) => [n.id, n]));
+  const edges = svgEl('g');
+  for (const e of layout.edges) {
+    const a = at.get(e.from);
+    const b = at.get(e.to);
+    if (!a || !b) continue;
+    const cls = e.kind === 'stem' ? 'aut-edge stem'
+      : `aut-edge ${e.high ? 'high' : 'low'}`;
+    edges.append(svgEl('path', {
+      class: cls,
+      d: `M ${xOf(a.x)} ${yOf(a.y) + (a.kind === 'junction' ? 5 : GEO.r)}`
+        + ` L ${xOf(b.x)} ${yOf(b.y) - (b.terminal ? GEO.termH / 2 : GEO.r)}`,
+    }));
+  }
+  svg.append(edges);
+
+  for (const n of layout.nodes) {
+    const g = svgEl('g', { class: `aut-node ${n.kind}${n.fresh ? ' fresh' : ''}` });
+    if (n.kind === 'junction') {
+      g.append(svgEl('rect', { class: 'aut-junction', x: xOf(n.x) - 4, y: yOf(n.y) - 4, width: 8, height: 8, rx: 1.5 }));
+    } else if (n.terminal) {
+      g.append(svgEl('rect', {
+        class: 'aut-leaf', x: xOf(n.x) - GEO.termW / 2, y: yOf(n.y) - GEO.termH / 2,
+        width: GEO.termW, height: GEO.termH, rx: 2,
+      }));
+      const t = svgEl('text', { class: 'aut-cap', x: xOf(n.x), y: yOf(n.y) });
+      t.textContent = n.label;
+      g.append(t);
+    } else {
+      g.append(svgEl('circle', { class: 'aut-state', cx: xOf(n.x), cy: yOf(n.y), r: GEO.r }));
+    }
+    svg.append(g);
+  }
+  return svg;
+}
+
+/** Read the specification and show what it denotes, or say why it cannot be read. */
+function showAutomaton() {
+  if (!app.circuit) return;
+  const n = app.circuit.nqubits;
+  try {
+    const spec = parseHsl($('specText').value, n);
+    const ta = new TA(P.Ring, n);
+    const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, P.Ring)));
+    app.ta = ta;
+    app.root = root;
+    const layout = layoutAutomaton(ta, root, {
+      formatValue: (v) => P.format(v, 'exact'),
+      prevRank: app.rank,
+    });
+    app.rank = layout.rank;
+    $('canvas').replaceChildren(drawAutomaton(layout,
+      app.circuit.qubits.map((q) => q.label)));
+    const states = ta.size(root);
+    const inSet = spec.vectors.length;
+    $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · `
+      + `${app.circuit.gates.length} gate${app.circuit.gates.length === 1 ? '' : 's'} · `
+      + `${states} automaton state${states === 1 ? '' : 's'} · `
+      + `${inSet} quantum state${inSet === 1 ? '' : 's'}`;
+    if (spec.constraints.length) {
+      $('error').textContent = `${spec.constraints.length} constraint`
+        + `${spec.constraints.length === 1 ? '' : 's'} shown but not checked — `
+        + 'that needs a solver';
+    }
+  } catch (e) {
+    if (!(e instanceof HslError)) throw e;
+    app.ta = null;
+    app.root = null;
+    $('error').textContent = `specification — ${e.message}`;
+    showPlaceholder();
+  }
 }
 
 /** What is not built yet, said plainly rather than left as an empty plate. */
@@ -115,16 +229,14 @@ function showPlaceholder() {
   const box = document.createElement('div');
   box.className = 'aut-placeholder';
   const h = document.createElement('h2');
-  h.textContent = 'No automaton yet';
+  h.textContent = 'Nothing to draw';
   box.append(h);
   for (const text of [
-    'The circuit above is drawn and steppable, and the specification beside it says which '
-    + 'set of states this run starts from. What is missing is the middle: the tree '
-    + 'automaton that set compiles to, and the transformer that carries it through each '
-    + 'gate.',
-    'Until then the two boxes are a reference for the input languages — the circuits are '
-    + 'the ones the decision-diagram page offers, so the same problem can be put side by '
-    + 'side in both.',
+    'The circuit or the specification beside it cannot be read, so there is no set of '
+    + 'states to build an automaton from. The message under the specification says what '
+    + 'stopped it.',
+    'What is still to come is the middle of the story: the transformer that carries the '
+    + 'automaton through each gate, so that stepping the circuit moves the picture.',
   ]) {
     const p = document.createElement('p');
     p.textContent = text;

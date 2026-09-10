@@ -50,3 +50,62 @@
 .hsplit:focus-visible::after {
   opacity: 0;
 }
+
+/* ---- the automaton ----------------------------------------------------- */
+
+.aut-svg { display: block; }
+
+/* A state is a circle and a leaf is its amplitude in a box — the same vocabulary the
+   decision-diagram page uses, so a reader who knows one picture can read the other. */
+.aut-state {
+  fill: var(--plate);
+  stroke: var(--ink);
+  stroke-width: 1.4;
+}
+
+.aut-leaf {
+  fill: var(--plate);
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+
+.aut-cap {
+  fill: var(--ink);
+  font: 12px/1 var(--mono);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* A transition, where a state has more than one. Which of them a run takes is a choice,
+   and a choice deserves to be a thing on the page rather than an absence. */
+.aut-junction {
+  fill: var(--ink-soft);
+  stroke: none;
+}
+
+.aut-edge {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.1;
+}
+
+.aut-edge.low { stroke-dasharray: 3 2.5; }
+.aut-edge.stem { stroke: var(--ink-faint); stroke-width: 0.9; }
+
+/* The one colour on the page marks what changed, as it does on the other. */
+.aut-node.fresh .aut-state,
+.aut-node.fresh .aut-leaf { stroke: var(--accent); }
+.aut-node.fresh .aut-junction { fill: var(--accent); }
+
+.aut-svg .gutter {
+  fill: var(--ink-soft);
+  font: 11px/1 var(--mono);
+  text-anchor: end;
+  dominant-baseline: central;
+}
+
+.aut-svg .gutter.band {
+  font: 600 9px/1 var(--sans);
+  letter-spacing: 0.14em;
+  fill: var(--ink-faint);
+}

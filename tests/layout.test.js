@@ -4,7 +4,8 @@ import { MTBDD } from '../src/dd.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
 import { simulate } from '../src/sim.js';
-import { scanOrder, stableOrder, layoutFrames } from '../src/layout.js';
+import { scanOrder, layoutFrames } from '../src/layout.js';
+import { stableOrder } from '../src/stable-order.js';
 import { unitNormaliser } from '../src/evdd.js';
 import { rng, randInt } from './helpers.js';
 

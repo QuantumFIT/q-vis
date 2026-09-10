@@ -12,7 +12,8 @@ test('the bundle evaluates and the engine still works inside it', () => {
     ['circuit-view.js', 'dd.js', 'entangle.js', 'evdd.js', 'examples.js', 'gates.js', 'layout.js',
       'limdd.js', 'order.js',
       'pauli.js', 'stabilizer.js',
-      'poly.js', 'qasm.js', 'random.js', 'sim.js', 'state.js', 'tableau.js', 'tikz.js', 'ui.js',
+      'poly.js', 'qasm.js', 'random.js', 'sim.js', 'stable-order.js', 'state.js', 'tableau.js',
+      'tikz.js', 'ui.js',
       'zomega.js'].sort());
   assert.equal(typeof registry['ui.js'].boot, 'function');
 
