@@ -26,3 +26,27 @@
   line-height: 1.65;
   max-width: 62ch;
 }
+
+/* The other page's second box is sized by `#stateText`, an id this page does not have —
+   so without this the Specification box is a two-line slit that no amount of dragging
+   opens, and a four-line HSL set does not fit in it. */
+#specText {
+  /* Enough for the four lines a set of one takes, with room for the fifth a Constants
+     section adds. A longer specification scrolls, as a longer circuit does. */
+  min-height: 152px;
+  flex: 1 1 auto;
+}
+
+/* The splitters are structure here, not controls: the grid needs the track, but nothing
+   is wired to drag yet. Until it is, they should not offer a handle they do not have. */
+.vsplit,
+.hsplit {
+  cursor: default;
+}
+
+.vsplit:hover::after,
+.hsplit:hover::after,
+.vsplit:focus-visible::after,
+.hsplit:focus-visible::after {
+  opacity: 0;
+}

@@ -13,10 +13,19 @@ test('the two pages are built from the same bundler and share no engine', () => 
   const one = bundle(APPS['q-vis'].entry);
   const two = bundle(APPS.aut.entry);
   assert.ok(one.modules.includes('dd.js'), 'the decision-diagram page has the engine');
-  for (const engine of ['dd.js', 'evdd.js', 'limdd.js', 'gates.js', 'sim.js', 'entangle.js']) {
+  // The line is drawn at the *diagram*, not at everything quantum. The ring, the circuit
+  // parser and the gate matrices are shared ground that an automaton needs just as much;
+  // what must not cross is the decision diagram itself and what is built on it.
+  for (const engine of ['dd.js', 'evdd.js', 'limdd.js', 'layout.js', 'sim.js',
+    'tableau.js', 'entangle.js', 'pauli.js', 'stabilizer.js', 'ui.js']) {
     assert.ok(!two.modules.includes(engine), `${engine} reached the automata page`);
   }
   assert.equal(two.modules[two.modules.length - 1], 'aut-ui.js', 'its entry is built last');
+  // What it does share is the ground both sit on, and the circuit drawn the same way.
+  for (const shared of ['qasm.js', 'gates.js', 'circuit-view.js']) {
+    assert.ok(one.modules.includes(shared) && two.modules.includes(shared),
+      `${shared} should be common ground`);
+  }
 });
 
 test('no page is built over its own shell', () => {
