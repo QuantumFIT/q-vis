@@ -35,7 +35,12 @@ const THEME_GLYPH = { auto: '◐', light: '☀', dark: '☾' };
  */
 const MAX_NODE_PX = 52;
 const MIN_FIT_SCALE = 0.12;
-const ZOOM_RANGE = [0.15, 8];
+// The floor of an explicit zoom is the floor of `fit`, and it has to be: with a higher
+// floor, an automaton fitted below it answers the − button by getting *bigger* — the
+// clamp raising 0.096 to the floor — and then sticks there. The other page carries the
+// two apart, at 0.12 and 0.15, and is wrong in the same way when its plate is tall
+// enough against a short window.
+const ZOOM_RANGE = [MIN_FIT_SCALE, 8];
 const ZOOM_STEP = 1.25;
 
 const app = {
@@ -73,6 +78,9 @@ const GEO = {
  * if it is drawn further out.
  */
 const runOf = (k) => Math.min(30, 16 + 2.2 * (k - 2));
+
+/** Where a gutter label sits on the plate: right-aligned, just left of the first column. */
+const GUTTER_X = 78;
 
 /** How far around a state's rim an edge may arrive, and how far apart two arrivals sit. */
 const ENTRY_LIMIT = 66;
@@ -248,22 +256,24 @@ function drawAutomaton(layout, labels) {
   const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, class: 'aut-svg' });
   svg.append(arrowhead());
 
-  // The gutter: which qubit each row decides, and what the last row holds. It is a strip
-  // rather than plain text, held at the left edge of the view while the plate scrolls
-  // under it, so a zoomed-in reader can still see which row they are looking at. Built
-  // here and appended last, so it covers what slides beneath it.
-  const strip = GEO.padX + GEO.gutter - 10;
+  // The gutter: which qubit each row decides, and what the last row holds. It is held at
+  // the left edge of the view while the plate scrolls under it, so a zoomed-in reader can
+  // still see which row they are looking at, and appended last so it floats over what
+  // slides beneath.
+  //
+  // Labels with a halo, not a strip on a background. The other page backs its gutter with
+  // an opaque band, and that band is measured in the plate's own units — so it grows with
+  // the zoom while the labels on it do not. There the plate is many columns wide and the
+  // band is a margin; here an automaton is often one or two columns, the band would be a
+  // third of the picture, and past about 7x on a laptop it covers the whole view. A halo
+  // costs nothing and hides nothing.
   const sticky = svgEl('g', { class: 'sticky' });
-  sticky.append(
-    svgEl('rect', { class: 'gutter-bg', x: -1, y: 0, width: strip + 1, height }),
-    svgEl('line', { class: 'gutter-edge', x1: strip, y1: 0, x2: strip, y2: height }),
-  );
   for (let level = 0; level < layout.height; level++) {
-    const t = svgEl('text', { class: 'gutter', x: GEO.padX + GEO.gutter - 18, y: yOf(level) });
+    const t = svgEl('text', { class: 'gutter', x: GUTTER_X, y: yOf(level) });
     t.textContent = labels[level] ?? `q[${level}]`;
     sticky.append(t);
   }
-  const amp = svgEl('text', { class: 'gutter band', x: GEO.padX + GEO.gutter - 18, y: yOf(layout.height) });
+  const amp = svgEl('text', { class: 'gutter band', x: GUTTER_X, y: yOf(layout.height) });
   amp.textContent = 'AMPLITUDE';
   sticky.append(amp);
 
@@ -435,10 +445,21 @@ function fitCanvas() {
   updateSticky();
 }
 
-/** Hold the gutter at the left edge of the view while the plate scrolls under it. */
+/**
+ * Hold the gutter at the left edge of the view while the plate scrolls under it.
+ *
+ * A label sits `GUTTER_X` into the plate, and that offset is magnified along with
+ * everything else — so simply undoing the scroll would leave the label `GUTTER_X * scale`
+ * from the edge of the view, which at 8x is most of the way across it. The extra term
+ * takes that magnification back out, so a floating label lands the same distance from the
+ * edge whatever the zoom. Clamped at zero, because before anything has scrolled the label
+ * belongs where it was drawn, in the plate's own left margin.
+ */
 function updateSticky() {
   if (!app.sticky) return;
-  const dx = $('canvas').scrollLeft / (app.scale || 1);
+  const scale = app.scale || 1;
+  const unzoom = 1 / Math.max(1, scale);
+  const dx = Math.max(0, $('canvas').scrollLeft / scale - GUTTER_X * (1 - unzoom));
   app.sticky.setAttribute('transform', `translate(${dx},0)`);
   app.sticky.classList.toggle('floating', dx > 0.5);
 }
@@ -653,13 +674,17 @@ export function boot() {
   addEventListener('keydown', (e) => {
     const t = e.target;
     if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-    // Alt+Left is Back and Cmd+Left is Home; a step of a circuit is not worth either.
-    if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    // ctrl and ⌘ belong to the browser. Shift does not: on most layouts `+` *is* shift
+    // and `=`, so a guard that turned Shift away turned away the one key the button
+    // advertises, while its undocumented twin `=` went on working.
+    if (e.metaKey || e.ctrlKey) return;
     const zooms = {
       '+': () => zoomBy(ZOOM_STEP), '=': () => zoomBy(ZOOM_STEP),
       '-': () => zoomBy(1 / ZOOM_STEP), 0: () => setZoom('fit'),
     };
     if (zooms[e.key]) { e.preventDefault(); zooms[e.key](); return; }
+    // Alt+Left is Back and Shift+Left extends a selection; a step is not worth either.
+    if (e.altKey || e.shiftKey) return;
     if (e.key === 'ArrowLeft') setStep(app.index - 1);
     else if (e.key === 'ArrowRight') setStep(app.index + 1);
     else return;

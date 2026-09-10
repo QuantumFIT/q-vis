@@ -112,13 +112,16 @@
 .aut-node.fresh .aut-state,
 .aut-node.fresh .aut-leaf { stroke: var(--accent); }
 
-/* The plate slides under the gutter when it is zoomed and scrolled, so the strip needs a
-   ground of its own and an edge to say it is floating over something. */
-.aut-svg .gutter-bg { fill: var(--plate); }
-.aut-svg .gutter-edge { stroke: none; }
-.aut-svg .sticky.floating .gutter-edge {
-  stroke: var(--rule-soft);
-  stroke-width: calc(1px * var(--unzoom, 1));
+/* The plate slides under the gutter when it is zoomed and scrolled, so a label needs its
+   own ground — but only as much of one as the glyphs occupy. A halo, painted under the
+   fill, rather than a band across the view: at rest it sits on the plate's own colour
+   and cannot be seen, and floating it keeps the label readable without hiding the
+   automaton the reader zoomed in to look at. */
+.aut-svg .sticky .gutter {
+  paint-order: stroke;
+  stroke: var(--plate);
+  stroke-width: calc(3px * var(--unzoom, 1));
+  stroke-linejoin: round;
 }
 
 .aut-svg .gutter {
