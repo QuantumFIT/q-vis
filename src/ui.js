@@ -13,6 +13,7 @@ import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
+import { armPanels } from './shell.js';
 import * as Ent from './entangle.js';
 import * as Order from './order.js';
 import * as Pauli from './pauli.js';
@@ -353,261 +354,8 @@ function sift() {
   showOrder();
 }
 
-// ---- resizing -----------------------------------------------------------
-
-const COL_MIN = 220;
-const PANEL_MIN = 64;
-const LAYOUT_STORE = 'q-vis.layout';
-
-/**
- * The panel column's width, and the heights of the panels stacked in it.
- *
- * Two things are dragged and they work differently. The column is one number, the grid's
- * `--col`. A panel boundary is a *pair* of numbers — the panel above takes a fixed height
- * and the one below goes back to absorbing the slack — so the drag is expressed as "the
- * panel above is this tall" and the rest of the column follows from flex.
- *
- * Both are clamped so a panel can never be dragged out of existence, and both are stored,
- * because a layout you set and then lost on reload is worse than one you cannot set.
- */
-function setColumn(px) {
-  const max = Math.max(COL_MIN, window.innerWidth - 320);
-  const w = Math.round(Math.max(COL_MIN, Math.min(px, max)));
-  document.documentElement.style.setProperty('--col', `${w}px`);
-  return w;
-}
-
-function setPanelHeight(panel, px) {
-  const min = Number(panel.dataset.min) || PANEL_MIN;
-  const h = Math.round(Math.max(min, px));
-  // Shrink 1, not 0: a dragged panel keeps the height it was given while the column has
-  // room for it, and gives way when it does not. With shrink 0 the panels below were
-  // simply pushed out of the column — on a short window the folded Amplitudes bar ended
-  // up drawn over the transport.
-  panel.style.flex = `0 1 ${h}px`;
-  // The circuit strip is capped by a max-height until someone drags it. An explicit
-  // height has to beat that cap or the drag would stop dead at 190px.
-  panel.style.maxHeight = 'none';
-  return h;
-}
-
-/** A panel's own floor, whatever set it: the drag minimum or the stylesheet's. */
-function panelFloor(panel) {
-  const css = parseFloat(getComputedStyle(panel).minHeight);
-  return Math.max(Number(panel.dataset.min) || PANEL_MIN, Number.isFinite(css) ? css : 0);
-}
-
-/**
- * Freeze a column so that moving one divider moves one boundary, and report the pair of
- * panels the divider sits between.
- *
- * Flex does not do this on its own: every panel with a grow factor takes a share of
- * whatever the dragged panel gives up. Both the Circuit panel and an open Amplitudes
- * panel grow, so dragging the divider above Amplitudes resized the *Circuit* panel by
- * half the movement and Amplitudes by the other half — the reader grabs one boundary and
- * watches a different one move.
- *
- * So every other panel is pinned where it is, and the two either side of the divider are
- * then set explicitly by the drag, keeping their sum. Leaving the difference to flex does
- * not work even with the rest pinned: the absorbing panel needs a basis, and `auto` means
- * its *content* height rather than where it is actually sitting, so the column jumped the
- * moment a drag began.
- *
- * Returns null when there is nothing to trade with — a folded fold is only its own header
- * — and the drag then falls back to sizing the panel above on its own.
- */
-function pinColumn(el) {
-  if (!el.parentElement.classList.contains('inputs')) return null;
-  const below = el.nextElementSibling;
-  const above = el.previousElementSibling;
-  if (!below || !above || (below.tagName === 'DETAILS' && !below.open)) return null;
-  for (const panel of el.parentElement.children) {
-    if (panel === below || panel === above || !panel.classList.contains('panel')) continue;
-    panel.style.flex = `0 1 ${Math.round(panel.getBoundingClientRect().height)}px`;
-    panel.style.maxHeight = 'none';
-  }
-  const top = above.getBoundingClientRect().height;
-  const bottom = below.getBoundingClientRect().height;
-  return {
-    above, below, sum: top + bottom, lo: panelFloor(above), hi: top + bottom - panelFloor(below),
-  };
-}
-
-/**
- * Make sure something in the column takes the leftover, or the panels stop short of the
- * bottom and the column ends in dead space. That is what folding Amplitudes did once
- * anything had been dragged: a drag gives a panel an exact height and no appetite for
- * more, so with the fold shut nothing was left that wanted the room.
- *
- * The bottom-most panel that is not a folded fold takes it. Its lower edge is the column's
- * own, so growing it is the only change that does not move a boundary the reader placed.
- * Nothing is taken away from a panel that already grows — by default the Circuit panel
- * does, and that is the layout the tool opens with.
- */
-function fillColumn() {
-  const panels = [...$('inputs').children].filter((e) => e.classList.contains('panel'));
-  const sized = (p) => /\d+px/.test(p.style.flex || '');
-  const appetite = (p, grow) => {
-    p.style.flex = sized(p) ? p.style.flex.replace(/^\S+/, grow) : (grow === '1' ? '1 1 auto' : p.dataset.flex || '');
-  };
-  // Whoever was filling last time stops, so the choice below is made afresh rather than
-  // against a panel that is already growing because of it.
-  for (const p of panels) {
-    if (p.dataset.filler === undefined) continue;
-    delete p.dataset.filler;
-    appetite(p, '0');
-  }
-  if (panels.some((p) => parseFloat(getComputedStyle(p).flexGrow) > 0)) return;
-  const open = panels.filter((p) => !(p.tagName === 'DETAILS' && !p.open));
-  const filler = open[open.length - 1];
-  if (!filler) return;
-  filler.dataset.filler = '1';
-  appetite(filler, '1');
-}
-
-/** Put the boundary `pair` describes at `px`, as far as the two panels' floors allow. */
-function setBoundary(pair, px) {
-  const h = Math.round(Math.min(Math.max(px, pair.lo), Math.max(pair.lo, pair.hi)));
-  setPanelHeight(pair.above, h);
-  setPanelHeight(pair.below, pair.sum - h);
-}
-
-/** What the panels are doing now, as something small enough to store. */
-function layoutState() {
-  const col = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--col'), 10);
-  const heights = {};
-  for (const id of ['panelCircuit', 'panelState', 'circuit']) {
-    const m = /(\d+)px/.exec($(id).style.flex || '');
-    if (m) heights[id] = +m[1];
-  }
-  // Which panels are folded is the reader's own choice, so it is kept like a size.
-  return { col, heights, folded: { panelAmps: !$('panelAmps').open } };
-}
-
-function saveLayout() {
-  try { localStorage.setItem(LAYOUT_STORE, JSON.stringify(layoutState())); }
-  catch { /* private windows are fine; the layout is just not remembered */ }
-}
-
-function loadLayout() {
-  let v;
-  try { v = JSON.parse(localStorage.getItem(LAYOUT_STORE) || 'null'); } catch { return; }
-  if (!v) return;
-  if (Number.isFinite(v.col)) setColumn(v.col);
-  for (const [id, h] of Object.entries(v.heights || {})) {
-    if ($(id) && Number.isFinite(h)) setPanelHeight($(id), h);
-  }
-  for (const [id, shut] of Object.entries(v.folded || {})) {
-    if ($(id)) $(id).open = !shut;
-  }
-  fillColumn();
-}
-
-/**
- * Put a boundary back the way it started. What "the way it started" is belongs to the
- * element rather than to this function, so each one that had a flex of its own says so in
- * `data-flex` and the rest go back to being sized by their content.
- */
-function resetSplit(el) {
-  if (el.id === 'vsplit') {
-    document.documentElement.style.removeProperty('--col');
-  } else if (el.parentElement.classList.contains('inputs')) {
-    // Dragging pins the rest of the column, so evening out means releasing all of it —
-    // putting one panel back while its neighbours stay pinned is not a layout anyone asked
-    // for. Each panel that had a flex of its own says so in `data-flex`.
-    for (const panel of el.parentElement.children) {
-      if (!panel.classList.contains('panel')) continue;
-      panel.style.flex = panel.dataset.flex || '';
-      panel.style.maxHeight = '';
-      delete panel.dataset.filler;
-    }
-    fillColumn();
-  } else {
-    const target = el.previousElementSibling;
-    target.style.flex = target.dataset.flex || '';
-    target.style.maxHeight = '';
-  }
-  saveLayout();
-  fitCanvas();
-}
-
-/**
- * Dragging, for both kinds of splitter. Pointer events rather than mouse events so a
- * trackpad, a touchscreen and a pen all work alike, and the move and release are listened
- * for on the window rather than on the handle: a drag that outruns the pointer then keeps
- * going instead of stopping wherever the cursor left the 8px strip. Pointer capture would
- * do the same thing and is the more obvious way to write it, but it can refuse — and a
- * splitter that silently does nothing is worse than one written the long way.
- */
-function armSplitter(el) {
-  const vertical = el.id === 'vsplit';
-  let start = 0;
-  let base = 0;
-  let pair = null;
-  let live = false;
-
-  const move = (e) => {
-    if (!live) return;
-    const delta = (vertical ? e.clientX : e.clientY) - start;
-    if (vertical) setColumn(base + delta);
-    else if (pair) setBoundary(pair, base + delta);
-    else setPanelHeight(el.previousElementSibling, base + delta);
-    fitCanvas();
-  };
-
-  const finish = () => {
-    if (!live) return;
-    live = false;
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', finish);
-    window.removeEventListener('pointercancel', finish);
-    document.body.classList.remove('dragging');
-    document.body.style.cursor = '';
-    fillColumn();
-    saveLayout();
-  };
-
-  el.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    live = true;
-    start = vertical ? e.clientX : e.clientY;
-    base = vertical
-      ? $('inputs').getBoundingClientRect().width
-      : el.previousElementSibling.getBoundingClientRect().height;
-    pair = vertical ? null : pinColumn(el);
-    document.body.classList.add('dragging');
-    document.body.style.cursor = vertical ? 'col-resize' : 'row-resize';
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', finish);
-    window.addEventListener('pointercancel', finish);
-  });
-
-  el.addEventListener('dblclick', () => resetSplit(el));
-
-  // A splitter is a separator, so the arrow keys move it — the one way to set a layout
-  // without a pointer at all.
-  el.addEventListener('keydown', (e) => {
-    const step = e.shiftKey ? 40 : 10;
-    const keys = vertical
-      ? { ArrowLeft: -step, ArrowRight: step }
-      : { ArrowUp: -step, ArrowDown: step };
-    if (e.key === 'Home') { e.preventDefault(); resetSplit(el); return; }
-    if (!(e.key in keys)) return;
-    e.preventDefault();
-    if (vertical) setColumn($('inputs').getBoundingClientRect().width + keys[e.key]);
-    else {
-      const pair = pinColumn(el);
-      const panel = el.previousElementSibling;
-      const now = panel.getBoundingClientRect().height;
-      if (pair) setBoundary(pair, now + keys[e.key]);
-      else setPanelHeight(panel, now + keys[e.key]);
-    }
-    fillColumn();
-    saveLayout();
-    fitCanvas();
-  });
-}
+// The panels and their splitters live in `shell.js`: the same behaviour is wanted on the
+// automata page, and it asks nothing of this one but the ids it is given in `boot`.
 
 function fail(e, where) {
   stop();
@@ -2150,20 +1898,12 @@ export function boot() {
   });
   $('sift').addEventListener('click', sift);
 
-  for (const el of document.querySelectorAll('.vsplit, .hsplit, .psplit')) armSplitter(el);
-  for (const el of document.querySelectorAll('.panel.foldable')) {
-    el.addEventListener('toggle', () => {
-      // A drag leaves an explicit height behind, and it would otherwise survive the fold
-      // and hold a folded panel open over an empty box. Folded and open sizing belongs to
-      // the stylesheet, so give it back.
-      el.style.flex = '';
-      el.style.maxHeight = '';
-      delete el.dataset.filler;
-      fillColumn();
-      saveLayout();
-    });
-  }
-  loadLayout();
+  armPanels({
+    store: 'q-vis.layout',
+    sized: ['panelCircuit', 'panelState', 'circuit'],
+    folds: ['panelAmps'],
+    onResize: fitCanvas,
+  });
   $('codeCopy').addEventListener('click', copyCode);
   $('codeClose').addEventListener('click', () => $('codeDialog').close());
   $('codeDialog').addEventListener('click', (e) => {

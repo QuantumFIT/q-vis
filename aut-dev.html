@@ -35,7 +35,8 @@
       <textarea id="qasm" spellcheck="false" aria-label="circuit in OpenQASM 2.0"></textarea>
     </div>
 
-    <div class="hsplit" role="separator" aria-orientation="horizontal"></div>
+    <div class="hsplit" role="separator" aria-orientation="horizontal" tabindex="0"
+      aria-label="resize the panel above" title="drag to resize · double-click to even out"></div>
     <div class="panel" id="panelSpec">
       <header>
         <span class="label">Specification</span>
@@ -51,11 +52,15 @@
     </div>
   </section>
 
-  <div class="vsplit" id="vsplit" role="separator" aria-orientation="vertical"></div>
+  <div class="vsplit" id="vsplit" role="separator" aria-orientation="vertical" tabindex="0"
+    aria-label="resize the input column" title="drag to resize · double-click to reset"></div>
 
   <main class="plate">
     <nav class="circuit" id="circuit" data-min="36"
       aria-label="circuit; click a column to pick that step"></nav>
+    <div class="psplit" id="psplit" role="separator" aria-orientation="horizontal" tabindex="0"
+      aria-label="resize the circuit against the automaton"
+      title="drag to resize · double-click to fit the circuit"></div>
     <div class="canvas" id="canvas"></div>
   </main>
 

@@ -13,6 +13,7 @@
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
+import { armPanels } from './shell.js';
 import { EXAMPLES, SPECIALS, instantiate, identify } from './aut-examples.js';
 import { HslError, MAX_STATES, parseHsl, toVector } from './aut-hsl.js';
 import { simulate } from './aut-gates.js';
@@ -758,6 +759,14 @@ export function boot() {
 
   // Fit follows the box: a fitted plate is fitted to whatever size the box now is.
   new ResizeObserver(() => { if (app.zoom === 'fit') fitCanvas(); }).observe(box);
+
+  // The panels are the other page's, and so is the behaviour: drag a splitter, or put
+  // the focus on one and use the arrow keys; double-click puts a boundary back.
+  armPanels({
+    store: 'q-vis:aut.layout',
+    sized: ['panelCircuit', 'panelSpec', 'circuit'],
+    onResize: fitCanvas,
+  });
 
   addEventListener('keydown', (e) => {
     const t = e.target;

@@ -22,7 +22,7 @@ test('the two pages are built from the same bundler and share no engine', () => 
   }
   assert.equal(two.modules[two.modules.length - 1], 'aut-ui.js', 'its entry is built last');
   // What it does share is the ground both sit on, and the circuit drawn the same way.
-  for (const shared of ['qasm.js', 'gates.js', 'circuit-view.js']) {
+  for (const shared of ['qasm.js', 'gates.js', 'circuit-view.js', 'shell.js']) {
     assert.ok(one.modules.includes(shared) && two.modules.includes(shared),
       `${shared} should be common ground`);
   }
