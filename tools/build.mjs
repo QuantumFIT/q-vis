@@ -109,17 +109,33 @@ export function bundle(entry) {
 }
 
 /**
+ * The pages this repository builds. Each is a shell, the module whose `boot` starts it,
+ * and the file it is written to. They share `src/` and this bundler and nothing else —
+ * two separate pages, so neither one's engine can reach into the other's.
+ *
+ * The keys are the site paths: 'q-vis' is the root, 'aut' is /aut/.
+ */
+export const APPS = {
+  'q-vis': { shell: 'dev.html', entry: 'ui.js', out: 'q-vis.html' },
+  // The shell and the output must not share a name, or building overwrites the source.
+  aut: { shell: 'aut-dev.html', entry: 'aut-ui.js', out: 'aut.html' },
+};
+
+/**
  * @param {string} version the tag being built, 'preview', or 'dev'. It is stamped into
  *   the page so that a copied link can point at this exact build, which is archived under
  *   /v/<tag>/ and never changes again. See docs/VERSIONS.md.
+ * @param {string} app which of `APPS` to build. Version stays the first argument so that
+ *   every existing caller keeps building what it did.
  */
-export function buildHtml(version = 'dev') {
+export function buildHtml(version = 'dev', app = 'q-vis') {
   if (!/^(dev|preview|v\d+)$/.test(version)) {
     throw new Error(`version must be 'dev', 'preview' or a release tag like v3, got '${version}'`);
   }
-  const { code, modules } = bundle('ui.js');
-  const css = readFileSync(resolve(SRC, 'app.css'), 'utf8');
-  let html = readFileSync(resolve(ROOT, 'dev.html'), 'utf8');
+  if (!Object.hasOwn(APPS, app)) throw new Error(`no such app '${app}'`);
+  const { shell, entry } = APPS[app];
+  const { code, modules } = bundle(entry);
+  let html = readFileSync(resolve(ROOT, shell), 'utf8');
 
   // Every replacement below passes a *function*, never a string: in a string replacement
   // `$&`, `$'` and `$\`` are substitution patterns, so any source containing one would be
@@ -130,11 +146,19 @@ export function buildHtml(version = 'dev') {
   if (stamped === html && version !== 'dev') throw new Error('no version meta tag to stamp');
   html = stamped;
 
-  html = html.replace('<link rel="stylesheet" href="src/app.css">',
-    () => `<style>\n${css}\n</style>`);
+  // Every stylesheet the shell links, in the order it links them, so a page can carry a
+  // shared sheet and its own. Matching each link rather than one literal path is what
+  // lets the two apps share `shell.css` without either of them inlining the other's.
+  let sheets = 0;
+  html = html.replace(/<link rel="stylesheet" href="src\/([\w.-]+\.css)">/g, (_, name) => {
+    sheets += 1;
+    return `<style>\n${readFileSync(resolve(SRC, name), 'utf8')}\n</style>`;
+  });
+  if (!sheets) throw new Error(`${shell} links no stylesheet from src/`);
+
   html = html.replace(
     /<script type="module">[\s\S]*?<\/script>/,
-    () => `<script>\n(function () {\n${code}\n__m['ui.js'].boot();\n})();\n</script>`,
+    () => `<script>\n(function () {\n${code}\n__m['${entry}'].boot();\n})();\n</script>`,
   );
 
   if (/(?:src|href)="(?!data:)(?:\.\/)?src\//.test(html)) {
@@ -144,10 +168,17 @@ export function buildHtml(version = 'dev') {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const out = resolve(ROOT, 'q-vis.html');
+  // Named apps, or all of them. A release names them one at a time so that a build which
+  // cannot produce one — an old tag has no second app — does not take the other with it.
+  const want = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  const names = want.length ? want : Object.keys(APPS);
   const version = process.env.Q_VIS_VERSION || 'dev';
-  const { html, modules } = buildHtml(version);
-  writeFileSync(out, html);
-  const kb = (Buffer.byteLength(html) / 1024).toFixed(1);
-  console.log(`${out}  ${version}  ${kb} kB  (${modules.length} modules: ${modules.join(' ')})`);
+  for (const name of names) {
+    if (!Object.hasOwn(APPS, name)) throw new Error(`no such app '${name}'`);
+    const out = resolve(ROOT, APPS[name].out);
+    const { html, modules } = buildHtml(version, name);
+    writeFileSync(out, html);
+    const kb = (Buffer.byteLength(html) / 1024).toFixed(1);
+    console.log(`${out}  ${version}  ${kb} kB  (${modules.length} modules: ${modules.join(' ')})`);
+  }
 }

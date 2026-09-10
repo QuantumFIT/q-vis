@@ -2,6 +2,7 @@ node_modules/
 *.log
 .DS_Store
 /q-vis.html
+/aut.html
 /out/
 _site/
 # git worktrees live here; they are checkouts, never content

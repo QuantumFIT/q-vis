@@ -1,0 +1,28 @@
+/* q-vis/aut — what this page adds to the shared shell.
+ *
+ * The chrome comes from app.css, which the decision-diagram page owns; this sheet holds
+ * only what is this page's own. When the shell is split out in its own right (stage 2)
+ * app.css stops being the sheet both pages read and this one stays as it is.
+ */
+
+/* Said plainly, in the middle of the plate, rather than left as an empty rectangle for
+   the reader to wonder about. Goes away with the first automaton. */
+.aut-placeholder {
+  max-width: 46em;
+  margin: 0 auto;
+  padding: clamp(24px, 8vh, 72px) 28px;
+  color: var(--ink-soft);
+}
+
+.aut-placeholder h2 {
+  margin: 0 0 12px;
+  font: 500 17px/1.3 var(--serif);
+  color: var(--ink);
+}
+
+.aut-placeholder p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.65;
+  max-width: 62ch;
+}

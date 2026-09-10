@@ -91,6 +91,38 @@ git push origin --delete preview
 A preview branch that does not build is survivable: the release script skips `/preview/`
 and says so, and the site and the archive go out regardless.
 
+## Two pages, two archives
+
+This repository builds more than one page. `tools/build.mjs` lists them in `APPS`: each is
+a shell, the module whose `boot` starts it, and the file it is written to.
+
+| page | shell | entry | site path |
+| --- | --- | --- | --- |
+| the decision diagram | `dev.html` | `src/ui.js` | `/` |
+| the automata tool | `aut-dev.html` | `src/aut-ui.js` | `/aut/` |
+
+**Everything belonging to a page lives under that page's own base** — the build, its
+archive, and its preview:
+
+```
+/            /v/<tag>/            /preview/
+/aut/        /aut/v/<tag>/        /aut/preview/
+```
+
+That is not a filing preference. `archiveUrl` and `liveUrl` build their URLs *relative to
+the page's own directory*, so a page served from `/aut/` already looks for `/aut/v/<tag>/`
+and `/aut/preview/`. Laying the site out this way is what lets both pages share those two
+functions untouched; the other arrangement, `/v/<tag>/aut/`, would mean rewriting them.
+
+A tag older than a page cannot build it, since every ref is built by its own copy of
+`tools/build.mjs`. Nothing insists that it can: whatever a tag's build script produced is
+published and the rest is quietly absent, so a page's archive begins at the first release
+that shipped it. Each page gets its own `/v/` index, and only once it has something to
+index.
+
+Both pages are built from the same tag and share one version sequence. `npm run build`
+with no arguments builds every page; naming one builds only that one.
+
 ## How a build knows its own version
 
 `tools/build.mjs` stamps `Q_VIS_VERSION` into a meta tag, defaulting to `dev`;
