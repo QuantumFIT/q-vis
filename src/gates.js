@@ -4,9 +4,11 @@
 // with the *first* qubit passed to the gate as the most significant bit: for a CX
 // applied to [control, target], index 2 = |10> = "control set, target clear".
 //
-// Only gates whose entries lie in the ring are expressible. That is exactly Clifford+T
-// (plus controlled versions, SWAP, iSWAP, sqrt(X)); parametrised rotations rx/ry/rz
-// with an arbitrary angle are deliberately not supported — see CLAUDE.md.
+// Only gates whose entries lie in the ring are expressible. The fixed table below is
+// Clifford+T (plus controlled versions, SWAP, iSWAP, sqrt(X)); the parametrised gates
+// built further down cover rx/ry/rz/u and friends at any angle that is pi times a
+// dyadic rational, which is exactly the set the ring reaches. An angle like pi/3 has no
+// form here at any level and is refused rather than rounded — see CLAUDE.md.
 
 import * as Z from './zomega.js';
 
@@ -104,6 +106,83 @@ export const omegaPow = Z.omegaPow;   // e^{i*m*pi/4}
  * turn it always was, diag(1, w^m).
  */
 export function phaseGate(j, d = Z.BASE_LEVEL) { return [[L, O], [O, Z.rootPow(j, d)]]; }
+
+// ---- parametrised rotations ------------------------------------------------
+//
+// An angle of pi*j/d is a root of unity, which is why `phaseGate` above is exact. A
+// *rotation* by that angle is not made of roots of unity at all — its entries are the
+// cosine and sine of the half angle. They are still in the ring, and for a reason worth
+// stating: with z = e^{i*pi/D},
+//
+//     cos(pi*j/D) = (z^j + z^-j)/2      sin(pi*j/D) = -i (z^j - z^-j)/2
+//
+// so the only thing needed beyond a root of unity is a division by two — and 1/2 is
+// (1/sqrt(2))^2, which the ring has. Every rotation by pi times a dyadic rational is
+// therefore exact here, one level finer than the angle itself: rx(pi/4) is built at
+// level 8, not 4.
+//
+// Angles arrive as `{ j, d }` meaning pi*j/d, the form `dyadicTurns` in qasm.js produces.
+
+/** Divide by two: two factors of 1/sqrt(2), which is exact. */
+const half = (a) => Z.mul(Z.mul(a, H2), H2);
+
+/** cos and sin of half of pi*j/d, exactly. */
+function cosSin({ j, d }) {
+  const D = 2 * d;
+  const up = Z.rootPow(j, D);
+  const down = Z.rootPow(-j, D);
+  return { c: half(Z.add(up, down)), s: half(Z.mul(NI, Z.sub(up, down))) };
+}
+
+/** Rx(t) = exp(-i t X/2), the rotation about x. */
+export function rxGate(t) {
+  const { c, s } = cosSin(t);
+  const m = Z.mul(NI, s);
+  return [[c, m], [m, c]];
+}
+
+/** Ry(t) = exp(-i t Y/2). Real, and the only rotation that is. */
+export function ryGate(t) {
+  const { c, s } = cosSin(t);
+  return [[c, Z.neg(s)], [s, c]];
+}
+
+/**
+ * Rz(t) = exp(-i t Z/2) = diag(e^{-it/2}, e^{it/2}).
+ *
+ * Note this is the *rotation*, not qelib1's `gate rz(t) a { u1(t) a; }`, which differs
+ * from it by a global phase of e^{-it/2}. The two are the same operation on a state
+ * vector up to that phase, and this tool draws the phase, so they are drawn differently.
+ * The rotation is what `rz` means in every current toolchain, so it is what is meant here.
+ */
+export function rzGate({ j, d }) {
+  return [[Z.rootPow(-j, 2 * d), O], [O, Z.rootPow(j, 2 * d)]];
+}
+
+/** Rxx(t) = exp(-i t X⊗X/2). */
+export function rxxGate(t) {
+  const { c, s } = cosSin(t);
+  const m = Z.mul(NI, s);
+  return [[c, O, O, m], [O, c, m, O], [O, m, c, O], [m, O, O, c]];
+}
+
+/** Rzz(t) = exp(-i t Z⊗Z/2), diagonal. */
+export function rzzGate({ j, d }) {
+  const a = Z.rootPow(-j, 2 * d);
+  const b = Z.rootPow(j, 2 * d);
+  return [[a, O, O, O], [O, b, O, O], [O, O, b, O], [O, O, O, a]];
+}
+
+/**
+ * The general single-qubit gate of qelib1: U(t, p, l), which u3 and u are spellings of
+ * and u2/u1 are special cases of. The matrix is the one in the OpenQASM 2 spec.
+ */
+export function uGate(t, p, l) {
+  const { c, s } = cosSin(t);
+  const ep = Z.rootPow(p.j, p.d);
+  const el = Z.rootPow(l.j, l.d);
+  return [[c, Z.neg(Z.mul(el, s))], [Z.mul(ep, s), Z.mul(Z.mul(ep, el), c)]];
+}
 
 /** Numeric matrix, for the floating-point oracle. */
 export function toComplexMatrix(m) {

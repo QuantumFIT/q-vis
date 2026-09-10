@@ -9,10 +9,11 @@
 // whose inverse stays in Z[1/sqrt(2), i], so 1/sqrt(2) and 1/2 work and 1/3 does not.
 //
 // A '?' in the amplitude gives every basis state the pattern matches its *own* symbol:
-// "0- : ?" is a, b; "--0-- : ?" needs sixteen and falls back to naming each after its
-// basis state, a00000 ... a11011, with zero wherever the middle qubit is 1. Write "x?" to
-// force that naming under a chosen prefix. The rest of the expression still applies, so
-// "?/2" halves each of them.
+// "0- : ?" is a, b; "--0-- : ?" needs sixteen, which the letters still cover (a..q, since
+// i and w already mean the imaginary unit and omega). A pattern needing more than the
+// letters left falls back to naming each after its basis state instead, a00000 ...
+// a11111. Write "x?" to force that naming under a chosen prefix. The rest of the
+// expression still applies, so "?/2" halves each of them.
 
 import * as Z from './zomega.js';
 import { toLevels } from './order.js';

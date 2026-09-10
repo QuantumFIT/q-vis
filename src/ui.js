@@ -1248,16 +1248,29 @@ function buildHelp() {
       .map(([name, g]) => [`${name} ${args};`, g.doc])));
   }
 
-  body.append(el('h3', null, 'Phases'));
+  body.append(el('h3', null, 'Phases and rotations'));
   body.append(el('p', 'help-note',
     'Any angle that is π times a dyadic rational — π/4, π/8, π/256 — which is exactly when '
     + 'the phase stays exact. A finer phase moves the amplitude ring up a level rather than '
     + 'rounding it, so ω means e^(iπ/4) in a Clifford+T circuit and e^(iπ/16) in one that '
-    + 'asked for π/16. The plate says which. '
+    + 'asked for π/16. The plate says which. An angle like π/3 is refused outright. '
     + 'Enough to write a QFT.'));
   body.append(helpTable([
     ['u1(pi/4) q[0];', 'multiplies |1> by e^(iπ/4); p is a synonym'],
     ['cu1(pi/2) q[0],q[1];', 'the same phase, applied when the control is 1; cp is a synonym'],
+  ]));
+  body.append(el('p', 'help-note',
+    'A rotation turns through half its angle, so its entries are a cosine and a sine rather '
+    + 'than a root of unity. Those are still exact — halving is two factors of 1/√2 — but at '
+    + 'one level finer, so a rotation reaches π/256 where a phase reaches π/512. rz is the '
+    + 'rotation diag(e^(-iθ/2), e^(iθ/2)), which is u1 up to a global phase; this tool draws '
+    + 'global phase, so the two are not the same picture.'));
+  body.append(helpTable([
+    ['rx(pi/2) q[0];', 'rotation about x by π/2; ry and rz likewise'],
+    ['crz(pi/4) q[0],q[1];', 'the same rotation under a control; crx and cry likewise'],
+    ['u3(pi/2,0,pi) q[0];', 'the general one-qubit gate — here, H; u and cu3 likewise'],
+    ['u2(0,pi) q[0];', 'u3 with a first angle of π/2'],
+    ['rxx(pi/2) q[0],q[1];', 'the two-qubit rotation exp(-iθ X⊗X/2); rzz likewise'],
   ]));
 
   body.append(el('h3', null, 'The input state'));
@@ -1269,7 +1282,8 @@ function buildHelp() {
     ['0-1 : 1/2', "'-' matches either value of that qubit — two states, one line, no extra nodes"],
     ['|00> : a', 'a free symbol, carried through the circuit unevaluated'],
     ['-- : ?', "'?' gives every matched state its own symbol: a, b, c, d"],
-    ['--0-- : ?', 'past the letters, each is named after its basis state: a00000, a00001, ...'],
+    ['--0-- : ?', 'sixteen unknowns, a..q — the letters skip i and w, which are already taken'],
+    ['----- : ?', 'past the letters, each is named after its basis state: a00000, a00001, ...'],
     ['-- : x?', 'a chosen prefix forces that naming; ?/2 halves each of them'],
   ]));
 

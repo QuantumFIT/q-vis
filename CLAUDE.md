@@ -101,10 +101,13 @@ Clifford+T amplitudes, and is the floor and the default.
 - `poly.js`: multivariate polynomials over that scalar ring, canonical normal form
   (zero coefficients dropped, monomials sorted). Gates are linear, so in practice
   amplitudes stay linear in the input symbols — but the implementation is general.
-- Supported gate set is **Clifford+T and finer phases** (plus controlled/multi-controlled versions,
-  SWAP, and any gate whose matrix entries lie in the ring): a phase is exact when its
-  angle is `pi` times a dyadic rational. Arbitrary `rx/ry/rz(theta)`
-  is deliberately **out of scope**: it would break exactness and canonicity.
+- Supported gate set is **everything whose matrix entries lie in the ring**: Clifford+T
+  (plus controlled/multi-controlled versions, SWAP), phases `u1/p/cu1/cp`, and the
+  parametrised gates `rx ry rz crx cry crz rxx rzz u u2 u3 cu3`. A phase is exact when its
+  angle is `pi` times a dyadic rational; a *rotation* turns through half its angle, so its
+  entries are a cosine and a sine, exact at one level finer because halving is two factors
+  of `1/sqrt(2)`. An angle off that grid — `pi/3` — is **out of scope** at every level and
+  is refused rather than rounded: it would break exactness and canonicity.
 
 ## Style
 

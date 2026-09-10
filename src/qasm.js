@@ -11,6 +11,7 @@
 // an error message.
 
 import { GATES, controlled, phaseGate } from './gates.js';
+import { rxGate, ryGate, rzGate, rxxGate, rzzGate, uGate } from './gates.js';
 
 export class QasmError extends Error {
   constructor(message, line) {
@@ -107,8 +108,8 @@ const FINEST_LEVEL = 512;
  * it as `{ j, d }` meaning pi*j/d with d a power of two, which is exactly the level of
  * the ring that holds it. An angle like pi/3 has no form here at any level.
  */
-function dyadicTurns(theta, name, line) {
-  for (let d = 4; d <= FINEST_LEVEL; d *= 2) {
+function dyadicTurns(theta, name, line, finest = FINEST_LEVEL) {
+  for (let d = 4; d <= finest; d *= 2) {
     const j = (theta * d) / Math.PI;
     const r = Math.round(j);
     // The tolerance is the representational noise in `j` itself, never a fraction of it.
@@ -123,8 +124,26 @@ function dyadicTurns(theta, name, line) {
   }
   throw new QasmError(
     `${name}(${theta.toFixed(6)}) is not expressible exactly: the angle must be pi times a ` +
-    `dyadic rational — pi/4, pi/8, pi/16 and so on down to pi/${FINEST_LEVEL} (this tool keeps ` +
+    `dyadic rational — pi/4, pi/8, pi/16 and so on down to pi/${finest} (this tool keeps ` +
     `amplitudes exact, so an angle like pi/3 is not supported at all)`, line);
+}
+
+/**
+ * A gate that takes half its angle needs the ring one level finer than the angle itself,
+ * so the grid it may be placed on is half as coarse: rx goes down to pi/256 where u1
+ * goes down to pi/512. The limit is stated in the error rather than left to be inferred.
+ */
+const halfTurns = (theta, name, line) => dyadicTurns(theta, name, line, FINEST_LEVEL / 2);
+
+/** pi*j/d in lowest terms, as text: "0", "π/2", "-3π/4", "2π". */
+function angleText(j, d) {
+  if (j === 0) return '0';
+  let num = j;
+  let den = d;
+  while (num % 2 === 0 && den % 2 === 0) { num /= 2; den /= 2; }
+  const mag = Math.abs(num);
+  const head = `${num < 0 ? '-' : ''}${mag === 1 ? '' : mag}π`;
+  return den === 1 ? head : `${head}/${den}`;
 }
 
 const REJECTED = {
@@ -134,7 +153,35 @@ const REJECTED = {
   opaque: 'opaque gates have no matrix to apply',
 };
 
-const ROTATIONS = new Set(['rx', 'ry', 'rz', 'u', 'u1', 'u2', 'u3', 'p', 'crz', 'cu1', 'cp', 'cu3', 'rxx', 'rzz']);
+/** The phase gates: an angle used as a phase, not rotated through. */
+const PHASE_GATES = { u1: { controls: 0 }, p: { controls: 0 }, cu1: { controls: 1 }, cp: { controls: 1 } };
+
+/** u2's fixed first angle: U2(p, l) is U(pi/2, p, l). */
+const QUARTER = { j: 2, d: 4 };
+
+/**
+ * The parametrised gates of qelib1 whose angle is genuinely rotated through rather than
+ * used as a phase — everything but u1/p/cu1/cp, which are handled separately because
+ * their labels name S, T and friends.
+ *
+ * `half` is how many leading angles the gate takes half of (one, always, when it takes
+ * any): those are the ones that need the finer level. `cap` is what the box is labelled
+ * with, before the angles are appended.
+ */
+const ROTATION_GATES = {
+  rx: { angles: 1, half: 1, controls: 0, cap: 'Rx', make: (a) => rxGate(a[0]) },
+  ry: { angles: 1, half: 1, controls: 0, cap: 'Ry', make: (a) => ryGate(a[0]) },
+  rz: { angles: 1, half: 1, controls: 0, cap: 'Rz', make: (a) => rzGate(a[0]) },
+  crx: { angles: 1, half: 1, controls: 1, cap: 'Rx', make: (a) => controlled(rxGate(a[0])) },
+  cry: { angles: 1, half: 1, controls: 1, cap: 'Ry', make: (a) => controlled(ryGate(a[0])) },
+  crz: { angles: 1, half: 1, controls: 1, cap: 'Rz', make: (a) => controlled(rzGate(a[0])) },
+  rxx: { angles: 1, half: 1, controls: 0, cap: 'Rxx', make: (a) => rxxGate(a[0]) },
+  rzz: { angles: 1, half: 1, controls: 0, cap: 'Rzz', make: (a) => rzzGate(a[0]) },
+  u: { angles: 3, half: 1, controls: 0, cap: 'U', make: (a) => uGate(a[0], a[1], a[2]) },
+  u3: { angles: 3, half: 1, controls: 0, cap: 'U', make: (a) => uGate(a[0], a[1], a[2]) },
+  cu3: { angles: 3, half: 1, controls: 1, cap: 'U', make: (a) => controlled(uGate(a[0], a[1], a[2])) },
+  u2: { angles: 2, half: 0, controls: 0, cap: 'U2', make: (a) => uGate(QUARTER, a[0], a[1]) },
+};
 
 /**
  * @param {string} src
@@ -190,27 +237,34 @@ export function parseQasm(src) {
       return;
     }
 
-    if (ROTATIONS.has(name)) {
-      // The only rotations in the ring are phases by a multiple of pi/4.
-      if ((name === 'u1' || name === 'p') && angles.length === 1) {
-        const { j, d } = dyadicTurns(angles[0], name, line);
-        emit(name, phaseGate(j, d), phaseLabel(j, d, ''), args, line,
-          { controls: 0, target: 'box', symbol: phaseLabel(j, d, '') });
-        return;
+    if (Object.hasOwn(ROTATION_GATES, name)) {
+      const spec = ROTATION_GATES[name];
+      if (angles.length !== spec.angles) {
+        throw new QasmError(`gate '${name}' takes ${spec.angles} angle(s), got ${angles.length}`, line);
       }
-      if ((name === 'cu1' || name === 'cp') && angles.length === 1) {
-        const { j, d } = dyadicTurns(angles[0], name, line);
-        emit(name, controlled(phaseGate(j, d)), phaseLabel(j, d, 'C'), args, line,
-          { controls: 1, target: 'box', symbol: phaseLabel(j, d, '') });
-        return;
-      }
-      throw new QasmError(
-        `'${name}' is a parametrised rotation and is not supported: its matrix entries leave ` +
-        `the ring whatever its level. Use the exact gates (h, s, sdg, t, tdg, z, ...) or a ` +
-        `phase u1/p with an angle that is pi times a dyadic rational`, line);
+      const turns = angles.map((t, i) => (i < spec.half ? halfTurns(t, name, line)
+        : dyadicTurns(t, name, line)));
+      const text = `${spec.cap}(${turns.map(({ j, d }) => angleText(j, d)).join(',')})`;
+      emit(name, spec.make(turns), (spec.controls ? 'C' : '') + text, args, line,
+        { controls: spec.controls, target: 'box', symbol: text });
+      return;
     }
 
-    const g = GATES[name];
+    // The phase gates are apart from the table above because their label names the gate
+    // it happens to be — S, T, Z — rather than the angle.
+    if (Object.hasOwn(PHASE_GATES, name)) {
+      const { controls } = PHASE_GATES[name];
+      if (angles.length !== 1) {
+        throw new QasmError(`gate '${name}' takes 1 angle, got ${angles.length}`, line);
+      }
+      const { j, d } = dyadicTurns(angles[0], name, line);
+      const gate = controls ? controlled(phaseGate(j, d)) : phaseGate(j, d);
+      emit(name, gate, phaseLabel(j, d, controls ? 'C' : ''), args, line,
+        { controls, target: 'box', symbol: phaseLabel(j, d, '') });
+      return;
+    }
+
+    const g = Object.hasOwn(GATES, name) ? GATES[name] : null;
     if (!g) throw new QasmError(`unknown gate '${name}'`, line);
     if (angles.length) throw new QasmError(`gate '${name}' takes no parameters`, line);
     emit(name, g.matrix, g.label, args, line, g.draw);

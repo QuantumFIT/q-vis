@@ -6,7 +6,7 @@ import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
 import { assertClose } from './helpers.js';
 import { simulate } from '../src/sim.js';
-import { GATES, omegaPow } from '../src/gates.js';
+import { GATES, omegaPow, matMul, dagger } from '../src/gates.js';
 
 const HEAD = 'OPENQASM 2.0;\ninclude "qelib1.inc";\n';
 
@@ -82,8 +82,11 @@ test('phases by a dyadic multiple of pi are exact; other angles are refused', ()
     { re: Math.cos(53 * Math.PI / 512), im: Math.sin(53 * Math.PI / 512) });
   assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/1024) q[0];\n`), /dyadic rational/,
     'finer than the tool is willing to go is still refused');
-  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrz(pi/2) q[0];\n`), /parametrised rotation/);
-  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrx(pi) q[0];\n`), /leave\s+the ring/);
+
+  // rx(pi) used to be refused here, on the claim that its entries "leave the ring
+  // whatever its level". They do not: it is exactly -i X. See the rotation test below.
+  const flip = parseQasm(`${HEAD}qreg q[1];\nrx(pi) q[0];\n`).gates[0].matrix;
+  assert.ok(Z.isZero(flip[0][0]) && Z.eq(flip[0][1], Z.MINUS_I), 'rx(pi) is -i X');
 });
 
 test('non-unitary and unsupported constructs are refused with a reason', () => {
@@ -147,4 +150,62 @@ swap q[0],q[2];
     }
     assert.equal(frames.length, c.gates.length + 1);
   }
+});
+
+test('rotations are exact at a dyadic angle, and refused off the grid', () => {
+  // A rotation turns through *half* its angle, so its entries are a cosine and a sine
+  // rather than a root of unity. They are still in the ring — halving is two factors of
+  // 1/sqrt(2) — which is why these gates exist at all; the parser used to reject them
+  // with the claim that they "leave the ring whatever its level", which was false.
+  const c = Math.cos, s = Math.sin;
+  const cases = [
+    ['rx(pi/2) q[0];', (t) => [[[c(t / 2), 0], [0, -s(t / 2)]], [[0, -s(t / 2)], [c(t / 2), 0]]]],
+    ['ry(pi/4) q[0];', (t) => [[[c(t / 2), 0], [-s(t / 2), 0]], [[s(t / 2), 0], [c(t / 2), 0]]]],
+    ['rz(3*pi/4) q[0];', (t) => [[[c(t / 2), -s(t / 2)], [0, 0]], [[0, 0], [c(t / 2), s(t / 2)]]]],
+    ['rx(-pi/8) q[0];', (t) => [[[c(t / 2), 0], [0, -s(t / 2)]], [[0, -s(t / 2)], [c(t / 2), 0]]]],
+  ];
+  const angleOf = { 'rx(pi/2) q[0];': Math.PI / 2, 'ry(pi/4) q[0];': Math.PI / 4,
+    'rz(3*pi/4) q[0];': 3 * Math.PI / 4, 'rx(-pi/8) q[0];': -Math.PI / 8 };
+  for (const [line, want] of cases) {
+    const m = parseQasm(`${HEAD}qreg q[1];\n${line}`).gates[0].matrix;
+    want(angleOf[line]).forEach((row, r) => row.forEach(([re, im], k) => {
+      assertClose(Z.toComplex(m[r][k]), { re, im }, `${line} entry ${r}${k}`);
+    }));
+  }
+
+  // Exactness is the point, so check it as an identity in the ring rather than in floats:
+  // M* M is the identity on the nose, with no tolerance anywhere.
+  for (const line of ['rx(pi/8) q[0];', 'ry(3*pi/16) q[0];', 'rz(pi/4) q[0];',
+    'u3(pi/2,pi/4,pi) q[0];', 'u2(pi/4,pi/2) q[0];']) {
+    const m = parseQasm(`${HEAD}qreg q[1];\n${line}`).gates[0].matrix;
+    const id = matMul(dagger(m), m);
+    assert.ok(Z.eq(id[0][0], Z.ONE) && Z.eq(id[1][1], Z.ONE)
+      && Z.isZero(id[0][1]) && Z.isZero(id[1][0]), `${line} is exactly unitary`);
+  }
+
+  // u3 spells out every gate it generalises, exactly.
+  const named = [['u3(pi/2,0,pi) q[0];', GATES.h], ['u3(pi,0,pi) q[0];', GATES.x],
+    ['u3(pi,pi/2,pi/2) q[0];', GATES.y], ['u2(0,pi) q[0];', GATES.h]];
+  for (const [line, gate] of named) {
+    const m = parseQasm(`${HEAD}qreg q[1];\n${line}`).gates[0].matrix;
+    for (let r = 0; r < 2; r++) {
+      for (let k = 0; k < 2; k++) assert.ok(Z.eq(m[r][k], gate.matrix[r][k]), line);
+    }
+  }
+
+  // rz is the rotation, not qelib1's alias for u1: they differ by e^{-i*theta/2}, a global
+  // phase this tool draws. Asserted so the choice cannot drift silently.
+  const rz = parseQasm(`${HEAD}qreg q[1];\nrz(pi/2) q[0];\n`).gates[0].matrix;
+  const u1 = parseQasm(`${HEAD}qreg q[1];\nu1(pi/2) q[0];\n`).gates[0].matrix;
+  assert.ok(!Z.eq(rz[0][0], u1[0][0]), 'rz is not u1');
+  assert.ok(Z.eq(Z.mul(rz[0][0], u1[1][1]), rz[1][1]), 'rz = u1 times e^{-i*theta/2}');
+
+  // A rotation needs the ring one level finer than its angle, so it stops one level short
+  // of where a phase does. Both limits are real and both are stated in the message.
+  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrx(pi/512) q[0];\n`), /pi\/256/);
+  assert.doesNotThrow(() => parseQasm(`${HEAD}qreg q[1];\nrx(pi/256) q[0];\n`));
+  assert.doesNotThrow(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/512) q[0];\n`));
+  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrz(pi/3) q[0];\n`), /dyadic rational/);
+  assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrx q[0];\n`), /takes 1 angle/);
+  assert.throws(() => parseQasm(`${HEAD}qreg q[2];\nrx(pi/2) q[0],q[1];\n`), /takes 1 qubit/);
 });

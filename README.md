@@ -71,13 +71,25 @@ and `u1`/`p`/`cu1`/`cp` when the angle is π times a dyadic rational — π/4, �
 A finer phase moves the ring up a level instead of rounding, so a QFT is exact at any
 width; `π/3` is refused at every level.
 
+The parametrised rotations are there too — `rx ry rz`, their controlled forms `crx cry
+crz`, the two-qubit `rxx rzz`, and the general one-qubit gate `u`/`u2`/`u3`/`cu3` — at the
+same kind of angle. A rotation turns through *half* its angle, so its entries are a cosine
+and a sine rather than a root of unity; those are exact here too, because
+cos(θ/2) = (z + z̄)/2 and halving is two factors of 1/√2, which the ring has. The cost is
+one level: a rotation reaches π/256 where a phase reaches π/512.
+
+Note that `rz(θ)` is the rotation `diag(e^{-iθ/2}, e^{iθ/2})`, not qelib1's
+`gate rz(θ) a { u1(θ) a; }`. The two differ by a global phase, which this tool draws, so
+they are not the same picture. The rotation is what `rz` means in current toolchains.
+
 `barrier` is accepted and drawn as a divider between steps in the circuit strip. It has
 no effect on the state, since there is no compiler here for it to constrain.
 
-Arbitrary rotations such as `rz(π/3)` are **deliberately unsupported**: their entries leave
-the ring, which would cost both exactness and the property that equal states have identical
-diagrams. `measure`, `reset` and classical control are rejected for a related reason — this
-tool shows unitary evolution of a pure state.
+An angle off the dyadic grid, such as `rz(π/3)`, is **deliberately unsupported** at every
+level: its entries leave the ring, which would cost both exactness and the property that
+equal states have identical diagrams. It is refused rather than rounded. `measure`, `reset`
+and classical control are rejected for a related reason — this tool shows unitary evolution
+of a pure state.
 
 ## Three ways to draw one state, times a toggle
 
