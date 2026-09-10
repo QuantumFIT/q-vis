@@ -1682,9 +1682,23 @@ function showEntanglement() {
     const other = Array.from({ length: n }, (_, i) => i).filter((q) => !got.part.includes(q));
     const s = Ent.schmidt(numeric, n, got.part);
     out.append(el('p', 'ent-split', `${listOf(got.part)}  │  ${listOf(other)}`));
-    out.append(el('p', 'ent-big', s.rank === 1
-      ? 'rank 1 — this split factors, the two sides are not entangled'
-      : `rank ${s.rank} of ${s.maxRank} — ${s.entropy.toFixed(4)} bits of entanglement entropy`));
+    // Named figures rather than a sentence: the rank is the thing most often being
+    // looked up, and it should be findable without reading a line of prose first.
+    const stats = el('dl', 'ent-stats');
+    const stat = (term, value, aside) => {
+      stats.append(el('dt', null, term));
+      const d = el('dd', null, value);
+      if (aside) d.append(el('span', 'ent-aside', aside));
+      stats.append(d);
+    };
+    stat('Schmidt rank', String(s.rank), `of at most ${s.maxRank}`);
+    stat('entanglement entropy', `${s.entropy.toFixed(4)} bits`,
+      `of at most ${Math.log2(s.maxRank).toFixed(4)}`);
+    out.append(stats);
+    if (s.rank === 1) {
+      out.append(el('p', 'ent-big', 'Rank one: this split factors, and the two sides are '
+        + 'not entangled with one another.'));
+    }
     const table = el('table', 'ent-table');
     const head = el('tr');
     head.append(el('th', null, 'i'), el('th', null, 'λ'), el('th', null, 'λ²'));
@@ -1708,10 +1722,18 @@ function showEntanglement() {
 
 /** The panel as plain text, which is what the copy button takes. */
 function entangleText(box) {
-  return [...box.querySelectorAll('h4, p, .ent-blocks, .ent-split, tr')]
-    .map((e) => (e.tagName === 'TR'
-      ? [...e.children].map((c) => c.textContent).join('\t')
-      : e.textContent.replace(/\s+/g, ' ').trim()))
+  return [...box.querySelectorAll('h4, p, .ent-blocks, .ent-split, .ent-stats, tr')]
+    .map((e) => {
+      if (e.tagName === 'TR') return [...e.children].map((c) => c.textContent).join('\t');
+      if (e.tagName === 'DL') {
+        return [...e.children].reduce((lines, kid) => {
+          if (kid.tagName === 'DT') lines.push(`${kid.textContent}: `);
+          else lines[lines.length - 1] += kid.textContent.replace(/\s+/g, ' ').trim();
+          return lines;
+        }, []).join('\n');
+      }
+      return e.textContent.replace(/\s+/g, ' ').trim();
+    })
     .filter(Boolean).join('\n');
 }
 
