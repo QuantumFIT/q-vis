@@ -244,3 +244,35 @@ test('the tree stays complete where the diagram takes shortcuts', () => {
   assert.ok(frame.edges.filter((e) => dead.has(e.from)).every((e) => e.toZero),
     'the dead branch is dead all the way down');
 });
+
+test('the diagram is a function of the state, not of what was built before it', () => {
+  // Low precedence used to be settled by comparing hash-cons node ids — creation order —
+  // so converting an unrelated state first could change which branch became low, and with
+  // it every label above. A node is compared by what it contains now.
+  const r = rng(31337);
+  const random = (dd, n) => dd.fromAmplitudes(allBits(n)
+    .filter(() => r() < 0.6)
+    .map((b) => [b, P.fromZ(Z.zo(randInt(r, -3, 3), randInt(r, -3, 3), 0, 0, randInt(r, 0, 3)))]));
+
+  for (const kind of ['low', 'max', 'min', 'none']) {
+    for (let iter = 0; iter < 30; iter++) {
+      const n = randInt(r, 1, 5);
+      const dd = new MTBDD(P.Ring, n);
+      const other = random(dd, n);
+      const target = random(dd, n);
+
+      const alone = make(n, kind);
+      const a = alone.fromMTBDD(dd, target);
+
+      const warm = make(n, kind);
+      const memo = new Map();
+      warm.fromMTBDD(dd, other, memo);
+      const b = warm.fromMTBDD(dd, target, memo);
+
+      assert.equal(alone.size(a), warm.size(b), `${kind}: size depends on build history`);
+      // The labels have to match too, not merely the shape.
+      assert.equal(P.Ring.key(a.w), P.Ring.key(b.w), `${kind}: root weight depends on history`);
+      assert.equal(`${a.x}.${a.z}`, `${b.x}.${b.z}`, `${kind}: root Pauli depends on history`);
+    }
+  }
+});

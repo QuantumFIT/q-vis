@@ -43,7 +43,7 @@ export class LIMDD {
     this.tryInvert = ring.tryInvert ? (w) => ring.tryInvert(w) : () => null;
     this.stabCache = new Map();
     /** @type {Array<{level:number, low:?object, high:?object}>} */
-    this.nodes = [{ level: nvars, low: null, high: null }];   // node 0: the terminal, denoting 1
+    this.nodes = [{ level: nvars, low: null, high: null, sig: '1' }];   // node 0: the terminal, denoting 1
     this.unique = new Map();
     this.one = 0;
     this.zeroEdge = Object.freeze({ w: ring.zero, x: 0, z: 0, node: 0 });
@@ -55,6 +55,31 @@ export class LIMDD {
   highOf(id) { return this.nodes[id].high; }
 
   edgeKey(e) { return `${this.ring.key(e.w)}.${e.x}.${e.z}@${e.node}`; }
+
+  /**
+   * What a node *contains*, folded into a number, as against the id that says when it was
+   * built. Two structurally identical nodes have the same signature in any manager and
+   * whatever was built before them, which is what the orientation rule below needs: a
+   * diagram that is a function of the state cannot be settled by creation order.
+   *
+   * A Merkle fold — each node's signature is taken over its children's — so it costs O(1)
+   * per node and is computed once, when the node is made.
+   */
+  sigOf(id) { return this.nodes[id].sig; }
+
+  signature(level, low, high) {
+    const part = (e) => `${this.ring.key(e.w)}.${e.x}.${e.z}.${this.sigOf(e.node)}`;
+    const text = `${level}|${part(low)}|${part(high)}`;
+    // Two 32-bit FNV-1a variants, so a collision would need both to agree at once.
+    let a = 0x811c9dc5;
+    let b = 0x01000193;
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      a = Math.imul(a ^ c, 0x01000193) >>> 0;
+      b = Math.imul(b + c, 0x85ebca6b) >>> 0;
+    }
+    return `${a.toString(36)}.${b.toString(36)}`;
+  }
 
   /** The reduced edge for `level` with the given child edges (MakeEdge, Alg. 11). */
   mk(level, e0, e1) {
@@ -69,7 +94,7 @@ export class LIMDD {
     // has something to factor. Paid for with an X on this level's qubit, which is what
     // exchanging the two branches means. Never swapped when the *high* edge is zero: rule
     // 2 below settles that case, and swapping there would bounce back and forth.
-    if (zero0 || (!zero1 && e1.node < e0.node)) {
+    if (zero0 || (!zero1 && this.sigOf(e1.node) < this.sigOf(e0.node))) {
       const e = this.mk(level, e1, e0);
       return Object.freeze({ ...Pauli.mul(R, Pauli.xOn(R, level), e), node: e.node });
     }
@@ -106,7 +131,12 @@ export class LIMDD {
     let id = this.unique.get(k);
     if (id === undefined) {
       id = this.nodes.length;
-      this.nodes.push({ level, low: Object.freeze(low), high: Object.freeze(chosen) });
+      this.nodes.push({
+        level,
+        low: Object.freeze(low),
+        high: Object.freeze(chosen),
+        sig: this.signature(level, low, chosen),
+      });
       this.unique.set(k, id);
     }
     // The root carries what low factoring took off, then the high rule's correction.

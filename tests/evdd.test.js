@@ -185,3 +185,69 @@ test('ties are broken deterministically, not by whichever edge came first', () =
   };
   assert.equal(once(), once());
 });
+
+/** A random state, built the way the round-trip test above builds one. */
+function randomState(dd, n, r) {
+  return dd.fromAmplitudes(allBits(n)
+    .filter(() => r() < 0.6)
+    .map((b) => [b, P.fromZ(Z.zo(randInt(r, -3, 3), randInt(r, -3, 3), 0, 0, randInt(r, 0, 3)))]));
+}
+
+test('the canonical form is a function of the state, not of what was built before it', () => {
+  // It used to break ties on hash-cons node ids, which are creation order: the same state
+  // came out with different weights depending on what the manager had converted earlier,
+  // so the "canonical" form was not canonical. Converting something else first must not
+  // change the answer.
+  const r = rng(90210);
+  for (const kind of Object.keys(NORMALISERS)) {
+    for (let iter = 0; iter < 40; iter++) {
+      const n = randInt(r, 1, 4);
+      const dd = new MTBDD(P.Ring, n);
+      const other = randomState(dd, n, r);
+      const target = randomState(dd, n, r);
+
+      const alone = new EVDD(P.Ring, n, unitNormaliser(P, Z, kind));
+      const a = alone.fromMTBDD(dd, target);
+
+      const warm = new EVDD(P.Ring, n, unitNormaliser(P, Z, kind));
+      const memo = new Map();
+      warm.fromMTBDD(dd, other, memo);
+      const b = warm.fromMTBDD(dd, target, memo);
+
+      assert.equal(P.Ring.key(a.w), P.Ring.key(b.w),
+        `${kind}: root weight depends on build history`);
+      assert.equal(alone.size(a), warm.size(b), `${kind}: size depends on build history`);
+    }
+  }
+});
+
+test('the two edge-valued views agree on the weight they show', () => {
+  // The shared diagram and the unfolded tree normalise the same state with the same rule,
+  // so they must put the same factor on the root. They did not: the tree numbers its
+  // positions rather than its nodes, and the tie-break read those numbers, so the tree's
+  // 'max' was the diagram's 'min'.
+  //
+  // Only where the diagram skips a level does a difference remain, and that one is
+  // structural: the tree has to expand a level the diagram drops, so the two factor
+  // across different shapes. Those frames are excluded here and checked by amplitude.
+  const skipsALevel = (dd, root) => dd.reachable(root).some((id) => !dd.isTerminal(id)
+    && [dd.lowOf(id), dd.highOf(id)].some((c) => dd.levelOf(c) > dd.levelOf(id) + 1));
+
+  const r = rng(4711);
+  for (const kind of ['low', 'max', 'min']) {
+    for (let iter = 0; iter < 40; iter++) {
+      const n = randInt(r, 1, 4);
+      const dd = new MTBDD(P.Ring, n);
+      const root = randomState(dd, n, r);
+      if (skipsALevel(dd, root)) continue;
+      const normalise = unitNormaliser(P, Z, kind);
+      const ev = new EVDD(P.Ring, n, normalise);
+      const shared = ev.fromMTBDD(dd, root);
+      const values = Array.from({ length: 1 << n },
+        (_, b) => dd.evaluate(root, b.toString(2).padStart(n, '0')));
+      const tree = treeEdgeWeights(dd, values, { ring: P.Ring, normalise });
+      assert.equal(P.Ring.key(shared.w), P.Ring.key(tree.rootWeight),
+        `${kind}: the shared diagram and the tree disagree on the root weight`);
+    }
+  }
+});

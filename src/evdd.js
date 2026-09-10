@@ -159,16 +159,26 @@ function chooseEdge(P, Z, pick, e0, e1) {
   const m0 = magnitudeSquared(P, Z, e0.w);
   const m1 = magnitudeSquared(P, Z, e1.w);
   if (m0 === null || m1 === null) return e0;   // symbolic: no magnitude to compare
-  // Compared as |w|^2 so no square root is needed. Equality is decided exactly, on the
-  // ring elements; only the ordering of unequal magnitudes goes through floating point,
-  // where it cannot change the answer.
-  if (Z.eq(m0, m1)) {
-    const bigger = e0.node >= e1.node ? e0 : e1;
-    const smaller = e0.node >= e1.node ? e1 : e0;
-    return pick === 'max' ? bigger : smaller;
-  }
+
+  // Whatever this decides must be a function of the two weights and nothing else. Two
+  // subfunctions that differ by a unit have to normalise the same way or they will not
+  // merge, and the same state converted twice has to be drawn the same way both times.
+  //
+  // That rules out the node ids this used to break ties on: they are creation order, so
+  // the same state came out differently depending on what the manager had converted
+  // earlier, and the unfolded tree — which numbers its positions rather than its nodes —
+  // disagreed with the shared diagram on every tie. A tie now goes to the low edge, which
+  // is intrinsic, and which the two views therefore agree on.
+  if (Z.eq(m0, m1)) return e0;
+
+  // Only the ordering of *unequal* magnitudes is left to floating point. That is safe
+  // because a unit's squared magnitude is a power of two, so scaling both sides by one
+  // scales both doubles exactly and cannot change their order — but only if the
+  // comparison is relative. Two magnitudes that are exactly unequal and yet a bit apart
+  // as doubles are treated as a tie, rather than ordered on a bit of rounding noise.
   const c0 = Z.toComplex(m0).re;
   const c1 = Z.toComplex(m1).re;
+  if (Math.abs(c0 - c1) <= 1e-12 * Math.max(Math.abs(c0), Math.abs(c1))) return e0;
   return (pick === 'max') === (c0 > c1) ? e0 : e1;
 }
 
@@ -189,7 +199,7 @@ export const NORMALISERS = {
   max: {
     label: 'larger edge',
     note: "Q-Sylvan's norm-max, its default: the factor comes from the edge of larger "
-      + '|w|², so the larger values stay low in the diagram. Ties go to the larger child id.',
+      + '|w|², so the larger values stay low in the diagram. Ties go to the low edge.',
     make: (P, Z) => (e0, e1) => unitFactor(P, Z, chooseEdge(P, Z, 'max', e0, e1).w),
   },
   min: {
