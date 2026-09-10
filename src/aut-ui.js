@@ -25,6 +25,19 @@ const STORE = 'q-vis:aut';               // its own text, though — different s
 const THEMES = ['auto', 'light', 'dark'];
 const THEME_GLYPH = { auto: '◐', light: '☀', dark: '☾' };
 
+/**
+ * How far `fit` may scale, and how far the buttons may go.
+ *
+ * The same numbers and the same reasoning as the other page. The floor stops a large
+ * automaton shrinking into illegibility — past it, it scrolls instead. The ceiling is
+ * expressed as the widest a state may be drawn, so a two-qubit automaton on a large
+ * screen is not blown up until its strokes look like a magnified screenshot.
+ */
+const MAX_NODE_PX = 52;
+const MIN_FIT_SCALE = 0.12;
+const ZOOM_RANGE = [0.15, 8];
+const ZOOM_STEP = 1.25;
+
 const app = {
   circuit: null,
   index: 0,
@@ -32,6 +45,11 @@ const app = {
   ta: null,
   root: null,
   rank: new Map(),      // where each node sat last time, so a survivor stays put
+  svg: null,            // the plate, once there is one to zoom
+  sticky: null,         // the gutter strip, held at the left edge of the view
+  plate: null,          // its size in its own coordinates
+  zoom: 'fit',
+  scale: 1,
 };
 
 /**
@@ -87,9 +105,12 @@ function arrowhead() {
     viewBox: '0 0 8 5.4',
     refX: 8,
     refY: 2.7,
-    markerWidth: 8,
-    markerHeight: 5.4,
-    markerUnits: 'userSpaceOnUse',
+    markerWidth: 7.3,
+    markerHeight: 4.9,
+    // In multiples of the stroke width, so that zooming in — which holds a stroke at a
+    // hairline through `--unzoom` — holds the head it ends in at its size too. In
+    // absolute units the arrows would grow with the diagram and swamp the lines.
+    markerUnits: 'strokeWidth',
     orient: 'auto',
   });
   marker.append(svgEl('path', { class: 'aut-head', d: 'M 0 0 L 8 2.7 L 0 5.4 Z' }));
@@ -181,6 +202,10 @@ function compile() {
     return;
   }
   $('error').textContent = '';
+  // Back to fit on every recompile, as the other page does: the automaton a new
+  // specification denotes can be a different size entirely, and holding a zoom chosen
+  // for the old one would leave the new one half off the plate.
+  app.zoom = 'fit';
   const { svg, columns } = circuitStrip(app.circuit, (i) => setStep(i + 1));
   app.columns = columns;
   $('circuit').replaceChildren(svg);
@@ -202,13 +227,16 @@ function compile() {
  *
  * Two things it says that a decision diagram never has to. Edges leave a state at
  * *different points* on its circle, fanned around the bottom, rather than all from the
- * one spot underneath it. And when a state has more than one transition, the two edges of
- * each are joined by an arc close to the state — the notation the tree-automata papers
- * use, and the one AND/OR graphs have used for far longer. Without it a state with three
- * transitions is six loose lines and nothing on the page says which go together.
+ * one spot underneath it. And the two edges of each transition are joined by an arc close
+ * to the state — the notation the tree-automata papers use, and the one AND/OR graphs
+ * have used for far longer. Without it a state with three transitions is six loose lines
+ * and nothing on the page says which go together.
  *
- * A deterministic state gets the fan but no arc: with one transition there is nothing to
- * tell apart, and the picture stays the diagram it is.
+ * The arc is drawn on a deterministic state too, where there is nothing to tell apart.
+ * What it marks is not the ambiguity but the transition: `q → f(q₀, q₁)` takes *both*
+ * children at once, and that is as true of a state with one transition as of a state
+ * with five. A picture that only drew it where it was strictly needed would be teaching
+ * that an arc means nondeterminism, which is not what it means.
  */
 function drawAutomaton(layout, labels) {
   // Half a terminal box of margin on each side, or the leftmost amplitude sits on top of
@@ -218,19 +246,26 @@ function drawAutomaton(layout, labels) {
   const width = xOf(layout.xMax) + GEO.termW / 2 + GEO.padX;
   const height = yOf(layout.height) + GEO.padY + GEO.termH;
   const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, class: 'aut-svg' });
-  svg.style.width = `${width}px`;
-  svg.style.height = `${height}px`;
   svg.append(arrowhead());
 
-  // The gutter: which qubit each row decides, and what the last row holds.
+  // The gutter: which qubit each row decides, and what the last row holds. It is a strip
+  // rather than plain text, held at the left edge of the view while the plate scrolls
+  // under it, so a zoomed-in reader can still see which row they are looking at. Built
+  // here and appended last, so it covers what slides beneath it.
+  const strip = GEO.padX + GEO.gutter - 10;
+  const sticky = svgEl('g', { class: 'sticky' });
+  sticky.append(
+    svgEl('rect', { class: 'gutter-bg', x: -1, y: 0, width: strip + 1, height }),
+    svgEl('line', { class: 'gutter-edge', x1: strip, y1: 0, x2: strip, y2: height }),
+  );
   for (let level = 0; level < layout.height; level++) {
     const t = svgEl('text', { class: 'gutter', x: GEO.padX + GEO.gutter - 18, y: yOf(level) });
     t.textContent = labels[level] ?? `q[${level}]`;
-    svg.append(t);
+    sticky.append(t);
   }
   const amp = svgEl('text', { class: 'gutter band', x: GEO.padX + GEO.gutter - 18, y: yOf(layout.height) });
   amp.textContent = 'AMPLITUDE';
-  svg.append(amp);
+  sticky.append(amp);
 
   const at = new Map(layout.nodes.map((n) => [n.id, n]));
   const arcs = svgEl('g');
@@ -275,7 +310,7 @@ function drawAutomaton(layout, labels) {
           handle: onCircle(cx, cy, GEO.r + run + GEO.handle, angle),
         });
       });
-      if (groups.length > 1 && pair.length === 2) {
+      if (pair.length === 2) {
         const lo = Math.min(given[t][0], given[t][1]);
         const hi = Math.max(given[t][0], given[t][1]);
         const r = GEO.r + run - 5;
@@ -362,8 +397,81 @@ function drawAutomaton(layout, labels) {
     }
     svg.append(g);
   }
-  return svg;
+  svg.append(sticky);
+  return { svg, sticky, width, height };
 }
+
+// ---- the zoom -----------------------------------------------------------
+
+/**
+ * Apply the current zoom, and say what it is.
+ *
+ * Simpler than the other page's: there the plate is as wide as the widest frame of a
+ * whole run, so `fit` has to window the viewBox onto the frame in front of you. Here
+ * there is one picture and the viewBox is all of it, so fitting is one division.
+ */
+function fitCanvas() {
+  const has = Boolean(app.svg && app.plate);
+  for (const id of ['zoomIn', 'zoomOut', 'zoomLevel']) $(id).disabled = !has;
+  if (!has) { $('zoomLevel').textContent = 'fit'; return; }
+  const box = $('canvas');
+  const { width: W, height: H } = app.plate;
+  let scale;
+  if (app.zoom === 'fit') {
+    const raw = Math.min((box.clientWidth - 16) / W, (box.clientHeight - 16) / H);
+    scale = Math.max(MIN_FIT_SCALE, Math.min(raw || 1, MAX_NODE_PX / (2 * GEO.r)));
+  } else {
+    scale = app.zoom;
+  }
+  app.scale = scale;
+  app.svg.style.width = `${Math.round(W * scale)}px`;
+  app.svg.style.height = `${Math.round(H * scale)}px`;
+  // Counter the magnification for the furniture — gutter labels, strokes, arrowheads —
+  // so zooming in grows the automaton and not its annotations. Only above 1: below it
+  // everything shrinks together, as it should.
+  app.svg.style.setProperty('--unzoom', String(1 / Math.max(1, scale)));
+  $('zoomLevel').textContent = app.zoom === 'fit' ? 'fit' : `${Math.round(scale * 100)}%`;
+  if (app.zoom === 'fit') box.scrollLeft = 0;
+  updateSticky();
+}
+
+/** Hold the gutter at the left edge of the view while the plate scrolls under it. */
+function updateSticky() {
+  if (!app.sticky) return;
+  const dx = $('canvas').scrollLeft / (app.scale || 1);
+  app.sticky.setAttribute('transform', `translate(${dx},0)`);
+  app.sticky.classList.toggle('floating', dx > 0.5);
+}
+
+/**
+ * Zoom, keeping the point under `clientX/clientY` fixed — otherwise zooming in on a
+ * detail throws it off screen and the reader has to hunt for it again.
+ * @param {number|'fit'} next
+ */
+function setZoom(next, clientX, clientY) {
+  if (!app.svg || !app.plate) return;
+  const box = $('canvas');
+  // Both measured before the view changes under us.
+  const rect = app.svg.getBoundingClientRect();
+  const boxRect = box.getBoundingClientRect();
+  const before = app.scale;
+  const ax = clientX === undefined ? rect.left + rect.width / 2 : clientX;
+  const ay = clientY === undefined ? rect.top + rect.height / 2 : clientY;
+  // The point of the plate under the pointer, in the plate's own coordinates, which is
+  // what has to be put back under the pointer once the scale has changed.
+  const plateX = (ax - rect.left) / before;
+  const plateY = (ay - rect.top) / before;
+  app.zoom = next === 'fit' ? 'fit' : Math.max(ZOOM_RANGE[0], Math.min(next, ZOOM_RANGE[1]));
+  fitCanvas();
+  if (app.zoom !== 'fit') {
+    box.scrollLeft = plateX * app.scale - (ax - boxRect.left);
+    box.scrollTop = plateY * app.scale - (ay - boxRect.top);
+    updateSticky();
+  }
+}
+
+const zoomBy = (factor) => setZoom(app.scale * factor);
+const zoomAt = (factor, x, y) => setZoom(app.scale * factor, x, y);
 
 /** Read the specification and show what it denotes, or say why it cannot be read. */
 function showAutomaton() {
@@ -380,8 +488,12 @@ function showAutomaton() {
       prevRank: app.rank,
     });
     app.rank = layout.rank;
-    $('canvas').replaceChildren(drawAutomaton(layout,
-      app.circuit.qubits.map((q) => q.label)));
+    const drawn = drawAutomaton(layout, app.circuit.qubits.map((q) => q.label));
+    app.svg = drawn.svg;
+    app.sticky = drawn.sticky;
+    app.plate = { width: drawn.width, height: drawn.height };
+    $('canvas').replaceChildren(drawn.svg);
+    fitCanvas();
     const states = ta.size(root);
     const inSet = spec.vectors.length;
     $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · `
@@ -404,6 +516,9 @@ function showAutomaton() {
 
 /** What is not built yet, said plainly rather than left as an empty plate. */
 function showPlaceholder() {
+  app.svg = null;
+  app.sticky = null;
+  app.plate = null;
   const box = document.createElement('div');
   box.className = 'aut-placeholder';
   const h = document.createElement('h2');
@@ -421,6 +536,7 @@ function showPlaceholder() {
     box.append(p);
   }
   $('canvas').replaceChildren(box);
+  fitCanvas();
 }
 
 // ---- examples -----------------------------------------------------------
@@ -500,11 +616,50 @@ export function boot() {
   }
   $('prev').addEventListener('click', () => setStep(app.index - 1));
   $('next').addEventListener('click', () => setStep(app.index + 1));
+
+  $('zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
+  $('zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
+  $('zoomLevel').addEventListener('click', () => setZoom('fit'));
+
+  // Wheel scrolls, ctrl/⌘ + wheel zooms — which is also what a trackpad pinch sends.
+  $('canvas').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY / 300), e.clientX, e.clientY);
+  }, { passive: false });
+  $('canvas').addEventListener('scroll', updateSticky);
+
+  // Drag anywhere on the plate to pan, which beats hunting for a scrollbar.
+  const box = $('canvas');
+  let panning = null;
+  box.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    panning = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+    box.setPointerCapture(e.pointerId);
+    box.classList.add('panning');
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (!panning) return;
+    box.scrollLeft = panning.left - (e.clientX - panning.x);
+    box.scrollTop = panning.top - (e.clientY - panning.y);
+  });
+  for (const ev of ['pointerup', 'pointercancel']) {
+    box.addEventListener(ev, () => { panning = null; box.classList.remove('panning'); });
+  }
+
+  // Fit follows the box: a fitted plate is fitted to whatever size the box now is.
+  new ResizeObserver(() => { if (app.zoom === 'fit') fitCanvas(); }).observe(box);
+
   addEventListener('keydown', (e) => {
     const t = e.target;
     if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
     // Alt+Left is Back and Cmd+Left is Home; a step of a circuit is not worth either.
     if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const zooms = {
+      '+': () => zoomBy(ZOOM_STEP), '=': () => zoomBy(ZOOM_STEP),
+      '-': () => zoomBy(1 / ZOOM_STEP), 0: () => setZoom('fit'),
+    };
+    if (zooms[e.key]) { e.preventDefault(); zooms[e.key](); return; }
     if (e.key === 'ArrowLeft') setStep(app.index - 1);
     else if (e.key === 'ArrowRight') setStep(app.index + 1);
     else return;
