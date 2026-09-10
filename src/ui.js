@@ -434,6 +434,38 @@ function pinColumn(el) {
   };
 }
 
+/**
+ * Make sure something in the column takes the leftover, or the panels stop short of the
+ * bottom and the column ends in dead space. That is what folding Amplitudes did once
+ * anything had been dragged: a drag gives a panel an exact height and no appetite for
+ * more, so with the fold shut nothing was left that wanted the room.
+ *
+ * The bottom-most panel that is not a folded fold takes it. Its lower edge is the column's
+ * own, so growing it is the only change that does not move a boundary the reader placed.
+ * Nothing is taken away from a panel that already grows — by default the Circuit panel
+ * does, and that is the layout the tool opens with.
+ */
+function fillColumn() {
+  const panels = [...$('inputs').children].filter((e) => e.classList.contains('panel'));
+  const sized = (p) => /\d+px/.test(p.style.flex || '');
+  const appetite = (p, grow) => {
+    p.style.flex = sized(p) ? p.style.flex.replace(/^\S+/, grow) : (grow === '1' ? '1 1 auto' : p.dataset.flex || '');
+  };
+  // Whoever was filling last time stops, so the choice below is made afresh rather than
+  // against a panel that is already growing because of it.
+  for (const p of panels) {
+    if (p.dataset.filler === undefined) continue;
+    delete p.dataset.filler;
+    appetite(p, '0');
+  }
+  if (panels.some((p) => parseFloat(getComputedStyle(p).flexGrow) > 0)) return;
+  const open = panels.filter((p) => !(p.tagName === 'DETAILS' && !p.open));
+  const filler = open[open.length - 1];
+  if (!filler) return;
+  filler.dataset.filler = '1';
+  appetite(filler, '1');
+}
+
 /** Put the boundary `pair` describes at `px`, as far as the two panels' floors allow. */
 function setBoundary(pair, px) {
   const h = Math.round(Math.min(Math.max(px, pair.lo), Math.max(pair.lo, pair.hi)));
@@ -469,6 +501,7 @@ function loadLayout() {
   for (const [id, shut] of Object.entries(v.folded || {})) {
     if ($(id)) $(id).open = !shut;
   }
+  fillColumn();
 }
 
 /**
@@ -487,7 +520,9 @@ function resetSplit(el) {
       if (!panel.classList.contains('panel')) continue;
       panel.style.flex = panel.dataset.flex || '';
       panel.style.maxHeight = '';
+      delete panel.dataset.filler;
     }
+    fillColumn();
   } else {
     const target = el.previousElementSibling;
     target.style.flex = target.dataset.flex || '';
@@ -529,6 +564,7 @@ function armSplitter(el) {
     window.removeEventListener('pointercancel', finish);
     document.body.classList.remove('dragging');
     document.body.style.cursor = '';
+    fillColumn();
     saveLayout();
   };
 
@@ -568,6 +604,7 @@ function armSplitter(el) {
       if (pair) setBoundary(pair, now + keys[e.key]);
       else setPanelHeight(panel, now + keys[e.key]);
     }
+    fillColumn();
     saveLayout();
     fitCanvas();
   });
@@ -2040,6 +2077,8 @@ export function boot() {
       // the stylesheet, so give it back.
       el.style.flex = '';
       el.style.maxHeight = '';
+      delete el.dataset.filler;
+      fillColumn();
       saveLayout();
     });
   }
