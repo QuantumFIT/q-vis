@@ -296,3 +296,56 @@ export function armPanels({ store, sized, folds = [], onResize = () => {} }) {
   }
   loadLayout();
 }
+
+// ---- the dialog ----------------------------------------------------------
+//
+// One dialog per page, and everything worth reading before it is taken goes through it:
+// a TikZ figure, an automaton's specification, a tableau. It is here rather than on
+// either page because both wanted it and neither wanted a copy.
+
+/** What the copy button would take — the text, even when what is shown is drawn. */
+let code = '';
+
+/** Text worth reading before it is taken. */
+export function showCode(title, text) {
+  code = text;
+  $('codeTitle').textContent = title;
+  $('codeBody').textContent = text;
+  $('codeBody').hidden = false;
+  if ($('codeRich')) $('codeRich').hidden = true;
+  $('codeBody').scrollTop = 0;
+  $('codeDialog').showModal();
+}
+
+/** The same dialog, showing something drawn. `text` is what the copy button takes. */
+export function showRich(title, node, text) {
+  code = text;
+  $('codeTitle').textContent = title;
+  $('codeBody').hidden = true;
+  const rich = $('codeRich');
+  rich.hidden = false;
+  rich.replaceChildren(node);
+  rich.scrollTop = 0;
+  $('codeDialog').showModal();
+}
+
+async function copyCode() {
+  const button = $('codeCopy');
+  let ok = true;
+  try {
+    await navigator.clipboard.writeText(code || '');
+  } catch {
+    ok = false;   // no permission, or an insecure context such as file://
+  }
+  button.textContent = ok ? 'copied' : 'select and copy';
+  setTimeout(() => { button.textContent = 'copy'; }, 1800);
+}
+
+/** Wire the dialog's own buttons, and the backdrop, which is the dialog outside its box. */
+export function armDialog() {
+  $('codeCopy').addEventListener('click', copyCode);
+  $('codeClose').addEventListener('click', () => $('codeDialog').close());
+  $('codeDialog').addEventListener('click', (e) => {
+    if (e.target === $('codeDialog')) $('codeDialog').close();
+  });
+}

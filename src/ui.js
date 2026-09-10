@@ -13,7 +13,7 @@ import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
-import { armPanels } from './shell.js';
+import { armDialog, armPanels, showCode, showRich } from './shell.js';
 import * as Ent from './entangle.js';
 import * as Order from './order.js';
 import * as Pauli from './pauli.js';
@@ -1534,40 +1534,7 @@ function tableauDom(f, formatWeight) {
   return box;
 }
 
-/** Text worth reading before it is taken, in the one dialog both such things share. */
-function showCode(title, text) {
-  app.code = text;
-  $('codeTitle').textContent = title;
-  $('codeBody').textContent = text;
-  $('codeBody').hidden = false;
-  $('codeRich').hidden = true;
-  $('codeBody').scrollTop = 0;
-  $('codeDialog').showModal();
-}
-
-/** The same dialog, showing something drawn. `text` is what the copy button takes. */
-function showRich(title, node, text) {
-  app.code = text;
-  $('codeTitle').textContent = title;
-  $('codeBody').hidden = true;
-  const rich = $('codeRich');
-  rich.hidden = false;
-  rich.replaceChildren(node);
-  rich.scrollTop = 0;
-  $('codeDialog').showModal();
-}
-
-async function copyCode() {
-  const button = $('codeCopy');
-  let ok = true;
-  try {
-    await navigator.clipboard.writeText(app.code || '');
-  } catch {
-    ok = false;   // no permission, or an insecure context such as file://
-  }
-  button.textContent = ok ? 'copied' : 'select and copy';
-  setTimeout(() => { button.textContent = 'copy'; }, 1800);
-}
+// The dialog those two write into is `shell.js`'s: both pages have one.
 
 // ---- wiring -------------------------------------------------------------
 
@@ -1904,11 +1871,7 @@ export function boot() {
     folds: ['panelAmps'],
     onResize: fitCanvas,
   });
-  $('codeCopy').addEventListener('click', copyCode);
-  $('codeClose').addEventListener('click', () => $('codeDialog').close());
-  $('codeDialog').addEventListener('click', (e) => {
-    if (e.target === $('codeDialog')) $('codeDialog').close();
-  });
+  armDialog();
   $('permalink').addEventListener('click', copyPermalink);
   // Both state buttons are written for the circuit as currently *typed*, not the last one
   // that compiled: after editing the register the old state no longer parses, and that is

@@ -13,11 +13,12 @@
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
-import { armPanels } from './shell.js';
+import { armDialog, armPanels, showCode } from './shell.js';
 import { EXAMPLES, SPECIALS, instantiate, identify } from './aut-examples.js';
 import { HslError, MAX_STATES, parseHsl, toVector } from './aut-hsl.js';
 import { simulate } from './aut-gates.js';
 import { fanAngles, layoutAutomaton, spread } from './aut-layout.js';
+import { automatonTikz, circuitTikz } from './tikz.js';
 import { TA } from './aut-ta.js';
 import * as P from './poly.js';
 
@@ -612,6 +613,33 @@ function showFrame(index) {
   }
 }
 
+/**
+ * The current view as TikZ, in a dialog so it can be read before it is taken.
+ *
+ * An SVG is the wrong thing to put in a paper and this is the right one — and seeing it
+ * first matters, because the amplitudes have been through a Unicode-to-LaTeX pass on the
+ * way. The circuit goes through the other page's exporter unchanged; the automaton has
+ * its own, because a decision diagram's node has one pair of children and needs no arc
+ * to say so.
+ */
+function showTikz(what) {
+  if (!app.circuit) return;
+  if (what === 'circuit') {
+    showCode('TikZ · circuit, as quantikz', circuitTikz(app.circuit));
+    return;
+  }
+  const layout = app.layouts[app.index];
+  if (!layout) return;
+  showCode(`TikZ · automaton, step ${app.index} of ${app.circuit.gates.length}`,
+    automatonTikz(layout, {
+      qubitLabels: app.circuit.qubits.map((q) => q.label),
+      bandLabel: 'amplitude',
+      fanAngles,
+      spread,
+      entry: { limit: ENTRY_LIMIT, gap: ENTRY_GAP },
+    }));
+}
+
 /** What is not built yet, said plainly rather than left as an empty plate. */
 function showPlaceholder() {
   app.svg = null;
@@ -762,6 +790,10 @@ export function boot() {
 
   // The panels are the other page's, and so is the behaviour: drag a splitter, or put
   // the focus on one and use the arrow keys; double-click puts a boundary back.
+  $('tikzAutomaton').addEventListener('click', () => showTikz('automaton'));
+  $('tikzCircuit').addEventListener('click', () => showTikz('circuit'));
+  armDialog();
+
   armPanels({
     store: 'q-vis:aut.layout',
     sized: ['panelCircuit', 'panelSpec', 'circuit'],

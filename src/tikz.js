@@ -341,3 +341,168 @@ export function diagramTikz(layout, index, opts = {}) {
     ...footer,
   ].join('\n');
 }
+
+// ---- the automaton -------------------------------------------------------
+
+const AUT_STYLES = [
+  '    aut/.style={circle, draw, minimum size=6mm, inner sep=0pt},',
+  '    autterm/.style={rectangle, rounded corners=1pt, draw, inner xsep=3pt, inner ysep=2pt},',
+  '    low/.style={densely dashed, ->, >=stealth, shorten >=1pt},',
+  '    high/.style={->, >=stealth, shorten >=1pt},',
+  '    trans/.style={semithick},',
+  '    gut/.style={anchor=east, font=\\scriptsize\\ttfamily, text=black!55},',
+];
+
+/** The row spacing the picture is drawn at; the column spacing is worked out per figure. */
+const AUT_ASPECT = { y: 1.25 };
+
+/**
+ * An exit angle, as TikZ measures them: from east, and whole.
+ *
+ * Whole because `(s3.247.027)` is a node name, a dot and an anchor of `247.027`, and
+ * asking a reader to trust that parse for a fifteenth of a degree is a poor trade.
+ */
+const anchor = (fromBelow) => Math.round(270 + fromBelow);
+
+/**
+ * One step of the automaton as a tikzpicture.
+ *
+ * The same picture the plate draws, and for the same reasons — a state is a circle, a
+ * leaf is its amplitude in a box, a 0-edge is dashed and a 1-edge solid, and the two
+ * edges of a transition are joined by an arc near the state they leave. The arc is why
+ * this cannot be `diagramTikz` with different labels: a decision diagram's node has one
+ * pair of children and needs nothing to say so.
+ *
+ * Exit angles come from `fanAngles`, the same function the renderer uses, so a transition
+ * owns the same contiguous sector on the page as it does on screen. TikZ measures from
+ * east and the plate measures from straight down, hence the 270.
+ *
+ * Arrivals are spread too, the same way and for the same reason: several edges reaching
+ * one state used to land on the one point at the top of it, and one coming from the side
+ * grazed the circle rather than entering it.
+ *
+ * `fanAngles`, `spread` and the entry limits are passed in rather than imported, because
+ * this module is shared with the decision-diagram page and must not drag the automaton's
+ * layout into that bundle to draw a picture it never asks for.
+ *
+ * @param {object} layout from `layoutAutomaton`
+ * @param {{qubitLabels: string[], bandLabel?: string, link?: string,
+ *          fanAngles: Function, spread: Function, entry?: {limit: number, gap: number}}} opts
+ */
+export function automatonTikz(layout, opts = {}) {
+  const {
+    qubitLabels = [], bandLabel = 'amplitude', link, fanAngles, spread,
+    entry = { limit: 66, gap: 36 },
+  } = opts;
+  const at = new Map(layout.nodes.map((nd) => [nd.id, nd]));
+  const lines = [];
+  const left = layout.xMin - 1.1;
+
+  // A column has to be wide enough for the widest amplitude, or two of them collide at
+  // the bottom of the picture. Estimated from the label, because the only thing that
+  // knows the real width is LaTeX and it is not here yet.
+  const widest = Math.max(0, ...layout.nodes.filter((nd) => nd.terminal)
+    .map((nd) => toLatex(nd.label).length));
+  const xUnit = Math.max(1.15, Math.round((0.45 + 0.18 * widest) * 100) / 100);
+
+  lines.push('% The qubit each level decides, and the row the amplitudes sit on.');
+  for (let q = 0; q < qubitLabels.length; q++) {
+    lines.push(`  \\node[gut] at (${coord(left)},${q}) {${toLatex(qubitLabels[q])}};`);
+  }
+  if (layout.nodes.some((nd) => nd.terminal)) {
+    lines.push(`  \\node[gut] at (${coord(left)},${layout.height}) {${toLatex(bandLabel)}};`);
+  }
+
+  lines.push('', '% States, and the amplitudes they end in.');
+  for (const nd of layout.nodes) {
+    const text = nd.terminal ? `$${toLatex(nd.label)}$` : '';
+    lines.push(`  \\node[${nd.terminal ? 'autterm' : 'aut'}] (s${nd.id}) `
+      + `at (${coord(nd.x)},${coord(nd.y)}) {${text}};`);
+  }
+
+  // Grouped by the state they leave and then by transition, because where an edge leaves
+  // depends on what leaves with it — exactly as on the plate.
+  const leaving = new Map();
+  for (const e of layout.edges) {
+    if (!at.has(e.from) || !at.has(e.to)) continue;
+    if (!leaving.has(e.from)) leaving.set(e.from, []);
+    leaving.get(e.from).push(e);
+  }
+
+  // Where each edge arrives, spread around the top of what it enters. A state is a
+  // circle and takes an angle; an amplitude is a box and takes a place along its top.
+  const arriving = new Map();
+  for (const e of layout.edges) {
+    if (!at.has(e.from) || !at.has(e.to)) continue;
+    if (!arriving.has(e.to)) arriving.set(e.to, []);
+    arriving.get(e.to).push(e);
+  }
+  const meets = new Map();
+  for (const [to, incoming] of arriving) {
+    const b = at.get(to);
+    if (b.terminal) {
+      // A box takes its arrivals along the top, so what each one wants is an offset in
+      // millimetres — how far the state it comes from sits to one side — and not an
+      // angle. Kept clear of the corners by the limit.
+      const room = Math.max(2, 1.6 * widest);
+      const wanted = incoming.map((e) => (at.get(e.from).x - b.x) * xUnit * 10);
+      const given = spread(wanted, { limit: room, gap: 2.2 });
+      incoming.forEach((e, i) => {
+        meets.set(e, `([xshift=${coord(Math.round(given[i] * 10) / 10)}mm]s${to}.north)`);
+      });
+    } else {
+      // A circle takes an angle. TikZ measures from east and the plate from straight up,
+      // positive to the right, so the two run opposite ways about 90.
+      const wanted = incoming.map((e) => {
+        const a = at.get(e.from);
+        return (180 / Math.PI) * Math.atan2((a.x - b.x) * xUnit, (b.y - a.y) * AUT_ASPECT.y);
+      });
+      const given = spread(wanted, entry);
+      incoming.forEach((e, i) => { meets.set(e, `(s${to}.${Math.round(90 - given[i])})`); });
+    }
+  }
+
+  lines.push('', '% Transitions: dashed for 0, solid for 1, and an arc over each pair.');
+  for (const [from, out] of leaving) {
+    const a = at.get(from);
+    const groups = [];
+    for (const e of out) {
+      if (!groups[e.transition]) groups[e.transition] = [];
+      groups[e.transition].push(e);
+    }
+    const wanted = groups.map((pair) => pair.map((e) => {
+      const b = at.get(e.to);
+      return (180 / Math.PI) * Math.atan2((b.x - a.x) * xUnit, (b.y - a.y) * AUT_ASPECT.y);
+    }));
+    const given = fanAngles(wanted);
+    groups.forEach((pair, t) => {
+      pair.forEach((e, i) => {
+        lines.push(`  \\draw[${e.high ? 'high' : 'low'}] `
+          + `(s${from}.${anchor(given[t][i])}) -- ${meets.get(e) ?? `(s${e.to})`};`);
+      });
+      if (pair.length === 2) {
+        const lo = anchor(Math.min(given[t][0], given[t][1]));
+        const hi = anchor(Math.max(given[t][0], given[t][1]));
+        lines.push(`  \\draw[trans] (s${from}) ++(${lo}:4.2mm) arc (${lo}:${hi}:4.2mm);`);
+      }
+    });
+  }
+
+  const root = layout.nodes.find((nd) => nd.root);
+  if (root) {
+    lines.push('', '% The root state: a run accepts the tree it read when it ends in one.');
+    lines.push(`  \\draw[->, >=stealth] (${coord(root.x)},${coord(root.y - 0.9)}) -- (s${root.id});`);
+    lines.push(`  \\node[anchor=east, font=\\footnotesize] at `
+      + `(${coord(root.x - 0.08)},${coord(root.y - 0.78)}) {$R$};`);
+  }
+
+  return [
+    ...header('Tree automaton', 'tikz', { link }),
+    `\\begin{tikzpicture}[x=${xUnit}cm, y=-1.25cm,`,
+    ...AUT_STYLES,
+    '  ]',
+    ...lines,
+    '\\end{tikzpicture}',
+    ...footer,
+  ].join('\n');
+}

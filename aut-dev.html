@@ -74,7 +74,19 @@
     <button id="zoomOut" title="zoom out (−)">−</button>
     <button id="zoomLevel" title="fit the whole automaton in view (0)">fit</button>
     <button id="zoomIn" title="zoom in (+)">+</button>
+    <button id="tikzAutomaton" title="the automaton as TikZ, for a paper">TikZ automaton</button>
+    <button id="tikzCircuit" title="the circuit as quantikz, for a paper">TikZ circuit</button>
   </footer>
+
+  <dialog id="codeDialog" aria-labelledby="codeTitle">
+    <header>
+      <span class="label" id="codeTitle">TikZ</span>
+      <span class="spacer"></span>
+      <button id="codeCopy" type="button">copy</button>
+      <button id="codeClose" type="button">close</button>
+    </header>
+    <pre id="codeBody" class="code"></pre>
+  </dialog>
 </div>
 <script type="module">
   import { boot } from './src/aut-ui.js';
