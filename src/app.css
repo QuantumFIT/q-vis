@@ -310,6 +310,20 @@ body.dragging * { cursor: inherit !important; }
 }
 
 .panel > header .spacer { flex: 1; }
+/* The buttons keep their labels whatever the column is doing; the hint is what gives way,
+   since it names a convention the reader can also find in the gates dialog. */
+.panel > header button { flex: 0 0 auto; }
+.panel > header .hint,
+.panel > header .label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The hint gives way long before the label does: it names a convention the gates dialog
+   also carries, while the label is what tells the reader which panel this is. */
+.panel > header .hint { flex: 0 100 auto; }
+.panel > header .label { flex: 0 1 auto; }
 
 .hint {
   font-size: 11px;

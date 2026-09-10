@@ -2089,9 +2089,10 @@ export function boot() {
     if (e.target === $('codeDialog')) $('codeDialog').close();
   });
   $('permalink').addEventListener('click', copyPermalink);
-  $('symbolic').addEventListener('click', () => {
-    // From the circuit as currently typed, not the last one that compiled: after editing
-    // the register the old state no longer parses, and that is exactly when this is used.
+  // Both state buttons are written for the circuit as currently *typed*, not the last one
+  // that compiled: after editing the register the old state no longer parses, and that is
+  // exactly when one of these is reached for.
+  const writeState = (text) => {
     let nqubits;
     try {
       nqubits = parseQasm($('qasm').value).nqubits;
@@ -2099,11 +2100,13 @@ export function boot() {
       if (!app.circuit) return;
       nqubits = app.circuit.nqubits;
     }
-    $('stateText').value = symbolicStateText(nqubits);
+    $('stateText').value = text(nqubits);
     picker.value = '';
     app.index = 0;
     compile();
-  });
+  };
+  $('symbolic').addEventListener('click', () => writeState(symbolicStateText));
+  $('zeroState').addEventListener('click', () => writeState((n) => `|${'0'.repeat(n)}> : 1`));
   $('help').addEventListener('click', () => { buildHelp(); $('helpDialog').showModal(); });
   $('helpClose').addEventListener('click', () => $('helpDialog').close());
   // Clicking the backdrop, which is the dialog element itself outside its own box.
