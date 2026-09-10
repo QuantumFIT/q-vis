@@ -2106,18 +2106,24 @@ export function boot() {
     app.index = 0;
     compile();
   };
-  // 'any' first and selected, since drawing the set is half of what the button is for;
-  // the rest let a reader who wants one kind of diagram keep rolling for it.
-  $('randomSet').append(new Option('any set', ''));
+  // One control rather than a picker and a button: the menu *is* the action, and each
+  // entry says which gate set to draw from. It goes back to reading 'random' after every
+  // pick, which is what makes rolling the same set twice possible at all — a select fires
+  // nothing when the value it is given is the one it already has.
+  $('random').append(new Option('random', ''));
+  $('random').append(new Option('any set', 'any'));
   for (const [key, set] of Object.entries(GATE_SETS)) {
-    $('randomSet').append(new Option(set.short ?? set.label, key));
+    $('random').append(new Option(set.short ?? set.label, key));
   }
-  $('random').addEventListener('click', () => {
-    // A fresh seed per click, written into the circuit's own comment: the text is the
+  $('random').addEventListener('change', (e) => {
+    const want = e.target.value;
+    e.target.value = '';               // back to the resting label, ready to be picked again
+    if (!want) return;
+    // A fresh seed per pick, written into the circuit's own comment: the text is the
     // whole record, so a roll that turns up something worth keeping can be got back by
     // the link like any other circuit.
-    const want = $('randomSet').value;
-    const made = randomCircuit(Math.floor(Math.random() * 2 ** 32), want ? { set: want } : {});
+    const made = randomCircuit(Math.floor(Math.random() * 2 ** 32),
+      want === 'any' ? {} : { set: want });
     $('qasm').value = made.qasm;
     $('stateText').value = made.state;
     picker.value = '';
