@@ -109,6 +109,46 @@ known to be `n+1`.
 The amplitudes are checked the same way as the edge-valued diagram: every basis state of
 every example, under every scalar rule.
 
+## One open question: skipped levels
+
+An audit found a 3-qubit stabilizer state drawn with 5 nodes where a tower would be 4, and
+read it as a reduction bug. It is not. The amplitudes are exact; what is going on is a
+design fork this implementation has never explicitly taken.
+
+`h q[0]; h q[2]; cz q[0],q[2];` comes out as:
+
+```
+node 1  level 1   low -> terminal          (level 2 skipped)
+node 2  level 2   low === high -> terminal (level 2 materialised)
+node 3  level 1   low -> node 2
+```
+
+Nodes 1 and 3 denote **the same function**. One reaches it by skipping level 2, the other
+by materialising level 2 as a node whose two edges agree. They cannot merge, and that is
+the missing node.
+
+The paper has a node on every level and no skipping, so the question never arises there.
+This implementation inherits skipping from the MTBDD it converts, and the Pauli labels can
+carry a dependence on a skipped level anyway — `evaluate` applies a label over the whole
+bit mask before it walks, so a `Z` on a level nothing branches on still multiplies by
+`(-1)^x`. Both representations are therefore legal here, which is exactly the problem.
+
+The two ways out, both measured:
+
+- **Always skip** — collapse a node whose canonical edges agree. Diagrams get *smaller*:
+  the 3-qubit state above becomes 3 nodes, the 6-qubit one 6. Amplitudes stay exact. But a
+  stabilizer state is then no longer `n+1` nodes, and Theorem 1's correspondence — the
+  headline this view exists to show — stops holding as an equality. Six tests encode it.
+- **Never skip** — put a node on every level, as the paper does. Theorem 1 holds exactly,
+  the merge failure disappears, and diagrams grow wherever a qubit is a don't-care (a
+  uniform superposition would go from 1 node to `n+1`).
+
+Nothing here is a wrong amplitude either way, which is why it is a decision rather than a
+bug. Until it is taken, `size === pauliClassCount` in `tests/limdd.test.js` is checking a
+number the oracle derives from the diagram's own nodes rather than from the state, so it
+cannot see the missing merge — a state-derived minimum is not well defined until the
+question above is settled.
+
 ## The tableau
 
 **tableau**, beside the TikZ buttons and shown only in this view, gives the stabilizer
