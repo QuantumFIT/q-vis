@@ -48,18 +48,13 @@ export function applyNamedDense(vec, n, name, qubits) {
 // vectors and by trying all 4^k Pauli strings, so that the diagram's own count can be
 // checked against a number it had no hand in producing.
 
-/** The subfunction at `node` as a dense vector over the ring, qubit `level` first. */
-function subvector(dd, node, n, ring) {
-  const level = dd.levelOf(node);
-  const k = n - level;
+/** The subfunction under the basis prefix `p` at level `L`, as a dense vector. */
+function subfunction(dd, root, n, L, p) {
+  const span = 1 << (n - L);
   const out = [];
-  for (let b = 0; b < (1 << k); b++) {
-    let cur = node;
-    while (!dd.isTerminal(cur)) {
-      const bit = (b >> (k - 1 - (dd.levelOf(cur) - level))) & 1;
-      cur = bit ? dd.highOf(cur) : dd.lowOf(cur);
-    }
-    out.push(dd.valueOf(cur));
+  for (let b = 0; b < span; b++) {
+    const bits = ((p << (n - L)) | b).toString(2).padStart(n, '0');
+    out.push(dd.evaluate(root, bits));
   }
   return out;
 }
@@ -93,20 +88,26 @@ function pauliEquivalent(ring, u, v, k) {
   return false;
 }
 
-/** The fewest nodes any Pauli-LIMDD of this state could have, the terminal included. */
+/**
+ * The fewest nodes any Pauli-LIMDD of this state could have, the terminal included.
+ *
+ * Taken from the *state*, not from the diagram: at every level, the distinct
+ * Pauli-equivalence classes among that level's subfunctions. Reading it off the diagram's
+ * own nodes — which is what this did before — cannot see a node that should not be there,
+ * so the count agreed with the diagram exactly when it should have disagreed.
+ *
+ * A LIMDD here has a node on every level (see docs/LIMDD.md), so every level with a
+ * non-zero subfunction contributes. An all-zero subfunction is reached by a zero edge and
+ * needs no node.
+ */
 export function pauliClassCount(dd, root, n, ring) {
-  const byLevel = new Map();
-  for (const id of dd.reachable(root)) {
-    if (dd.isTerminal(id)) continue;
-    const level = dd.levelOf(id);
-    if (!byLevel.has(level)) byLevel.set(level, []);
-    byLevel.get(level).push(subvector(dd, id, n, ring));
-  }
-  let total = 1;                                    // the terminal
-  for (const [level, vectors] of byLevel) {
+  let total = 1;                                     // the terminal
+  for (let L = 0; L < n; L++) {
     const reps = [];
-    for (const v of vectors) {
-      if (!reps.some((r) => pauliEquivalent(ring, r, v, n - level))) reps.push(v);
+    for (let p = 0; p < (1 << L); p++) {
+      const sub = subfunction(dd, root, n, L, p);
+      if (sub.every((v) => ring.isZero(v))) continue;
+      if (!reps.some((r) => pauliEquivalent(ring, r, sub, n - L))) reps.push(sub);
     }
     total += reps.length;
   }

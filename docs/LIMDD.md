@@ -61,20 +61,13 @@ selectable, and what they cost is worth seeing once.
 | Alg. 14, 15, 17 | `stabilizer.js`: `meetCosets`, `meet`, `argLexMin` |
 | Alg. 16 | `LIMDD.isomorphism` — O(1), since both nodes are already canonical |
 
-Three gaps, all of which cost a merge or a generator and never an amplitude, and all
-decided by the values rather than by the order they were met in, so the diagram stays
+Two gaps, both of which cost a merge and never an amplitude, and both decided by the values rather than by the order they were met in, so the diagram stays
 deterministic:
 
 - Anywhere a weight would have to be inverted and cannot be, that case is skipped: the
   isomorphism between two branches, and `π₁⁻¹` in Alg. 14.
 - The `x = 1` branch of Alg. 12, which inverts the label when the two children coincide,
   additionally needs the low edge to be bare and the string to square to `+I`.
-- **`LIMDD.isomorphism` does not see through a skipped level.** It is `O(1)` because it
-  compares two already-canonical nodes, and a branch that reaches a node directly and one
-  that reaches it past a level the diagram dropped are the same state held by different
-  nodes. The X and Y cases of Alg. 13 go through it, so where that happens the stabilizer
-  group comes back a proper subgroup — the line cluster state is short one generator per
-  node, which is what the **tableau** button's closing note is about.
 
 One thing that was a bug rather than a gap, fixed: **`Pauli.compare` now puts the identity
 weight first.** Alg. 14 asks whether the *minimum* of a set of LIMs is the identity as its
@@ -89,10 +82,9 @@ rather than merges.
 
 Two details the paper does not have to deal with:
 
-- **Skipped levels.** An MTBDD drops a level the state does not depend on; a LIMDD in the
-  paper has a node on every level. Rather than putting the nodes back, a skipped qubit is
-  accounted for where it matters — that factor of the branch is `|0⟩+|1⟩`, which `X`
-  stabilises, so `branchStabilizers` adds one generator per skipped level.
+- **Skipped levels.** An MTBDD drops a level the state does not depend on. This diagram
+  puts them back rather than accounting for them (see above), so `branchStabilizers`'s
+  per-skipped-level generator is now a guard that never fires on a converted diagram.
 - **Ordering.** Their lexicographic order ends with the weight written as floats `(r, θ)`.
   Here the check vector is followed by the ring's own key, which is exact and just as
   total: the only floating point in the comparison is gone.
@@ -109,47 +101,33 @@ known to be `n+1`.
 The amplitudes are checked the same way as the edge-valued diagram: every basis state of
 every example, under every scalar rule.
 
-## One open question: skipped levels
+## Every level carries a node
 
-An audit found a 3-qubit stabilizer state drawn with 5 nodes where a tower would be 4, and
-read it as a reduction bug. It is not. The amplitudes are exact; what is going on is a
-design fork this implementation has never explicitly taken.
+A LIMDD here has a node on **every** level, as the paper's does. An MTBDD drops a level
+nothing depends on; converting one fills those levels back in, `LIMDD.padTo` putting a node
+whose two edges agree wherever the source skipped.
 
-`h q[0]; h q[2]; cz q[0],q[2];` comes out as:
+That is a deliberate choice, and it was not always so. Skipping was inherited from the
+MTBDD, and it cost more than it saved: the same subfunction could be reached both by
+skipping a level and by materialising it, and those two shapes cannot merge. A 3-qubit
+stabilizer state came out as 5 nodes where a tower is 4.
 
 ```
-node 1  level 1   low -> terminal          (level 2 skipped)
-node 2  level 2   low === high -> terminal (level 2 materialised)
-node 3  level 1   low -> node 2
+h q[0]; h q[2]; cz q[0],q[2];      before: 5 nodes      after: 4, a tower
+
+  node 1  level 1   low -> terminal            (level 2 skipped)
+  node 3  level 1   low -> node 2              (level 2 materialised)
+      the same function, two shapes, no merge
 ```
 
-Nodes 1 and 3 denote **the same function**. One reaches it by skipping level 2, the other
-by materialising level 2 as a node whose two edges agree. They cannot merge, and that is
-the missing node.
+What it costs is nodes wherever a qubit is a don't-care. A uniform superposition is one
+node as an MTBDD and `n+1` as a LIMDD, since every level is present and every one of them
+is a don't-care. That is the honest price of Theorem 1 holding as an equality rather than
+as an inequality, and this view exists to show Theorem 1.
 
-The paper has a node on every level and no skipping, so the question never arises there.
-This implementation inherits skipping from the MTBDD it converts, and the Pauli labels can
-carry a dependence on a skipped level anyway — `evaluate` applies a label over the whole
-bit mask before it walks, so a `Z` on a level nothing branches on still multiplies by
-`(-1)^x`. Both representations are therefore legal here, which is exactly the problem.
+Nothing in the table above moved: every state in it depends on all its qubits.
 
-The two ways out, both measured:
-
-- **Always skip** — collapse a node whose canonical edges agree. Diagrams get *smaller*:
-  the 3-qubit state above becomes 3 nodes, the 6-qubit one 6. Amplitudes stay exact. But a
-  stabilizer state is then no longer `n+1` nodes, and Theorem 1's correspondence — the
-  headline this view exists to show — stops holding as an equality. Six tests encode it.
-- **Never skip** — put a node on every level, as the paper does. Theorem 1 holds exactly,
-  the merge failure disappears, and diagrams grow wherever a qubit is a don't-care (a
-  uniform superposition would go from 1 node to `n+1`).
-
-Nothing here is a wrong amplitude either way, which is why it is a decision rather than a
-bug. Until it is taken, `size === pauliClassCount` in `tests/limdd.test.js` is checking a
-number the oracle derives from the diagram's own nodes rather than from the state, so it
-cannot see the missing merge — a state-derived minimum is not well defined until the
-question above is settled.
-
-## The tableau
+## The tableau## The tableau
 
 **tableau**, beside the TikZ buttons and shown only in this view, gives the stabilizer
 group of every node in the current step: the generators the diagram found, each as a sign,

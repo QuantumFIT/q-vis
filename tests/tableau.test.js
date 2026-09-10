@@ -133,26 +133,21 @@ test('GHZ is full rank at every node, and a T gate is not', () => {
   assert.ok(shortfall.length > 0, 'a non-stabilizer state should not read as full rank');
 });
 
-test('a rank short of full is not evidence against a stabilizer state', () => {
-  // A known gap, pinned so that it is a decision rather than a surprise. The cluster state
-  // *is* a stabilizer state, and the diagram knows it — it comes out as a tower — but the
-  // generator search misses one per node, because the X case of Alg. 13 asks
-  // `LIMDD.isomorphism` whether two branches are Pauli-isomorphic and that test compares
-  // node ids: a branch that reaches a node by skipping a level and one that reaches it
-  // directly are the same state and different nodes. Hence the text claims full rank as
-  // proof and never claims the converse.
-  //
-  // If this test starts failing because the ranks came out full, the gap has been closed:
-  // update it, and the note in tableauText and docs/LIMDD.md, rather than the other way.
-  const n = 4;
-  const { li, layout, last } = laidOut(cluster(n), zeros(n));
-  const ids = frameNodes(layout.frames[last]);
-  assert.equal(ids.length, n + 1, 'a tower, so it is a stabilizer state by Theorem 1');
-  const internal = ids.map((id) => nodeTableau(li, id)).filter((t) => !t.terminal);
-  assert.ok(internal.some((t) => t.rank < t.span),
-    'the cluster state is where the skipped-level gap shows');
-  // Whatever it finds is genuinely a subgroup — never a wrong generator.
-  for (const t of internal) assert.ok(t.rank <= t.span, `node ${t.id} claims more than it can`);
+test('a stabilizer state is full rank at every node', () => {
+  // This used to be the other way round: the cluster state came up one generator short at
+  // every node, because the X and Y cases of Alg. 13 go through `LIMDD.isomorphism`, which
+  // could not see that a branch reaching a node directly and one reaching it past a
+  // skipped level are the same state. There are no skipped levels any more — a LIMDD here
+  // carries a node on every level — so that gap is closed, and this guards it.
+  for (const n of [3, 4, 5]) {
+    const { li, layout, last } = laidOut(cluster(n), zeros(n));
+    const ids = frameNodes(layout.frames[last]);
+    assert.equal(ids.length, n + 1, `cluster on ${n}: a tower`);
+    for (const t of ids.map((id) => nodeTableau(li, id))) {
+      if (t.terminal) continue;
+      assert.equal(t.rank, t.span, `cluster on ${n}: node ${t.id} is short of full rank`);
+    }
+  }
 });
 
 test('the listing follows the plate, and the tree collapses to distinct nodes', () => {
@@ -220,11 +215,13 @@ test('the text is the same frame, aligned, and carries no link', () => {
   const strays = [...text].filter((c) => c.charCodeAt(0) > 126 && !'·⊗−…'.includes(c));
   assert.deepEqual([...new Set(strays)], [], 'no unexpected characters');
 
-  // Where the search does fall short, the text says what that does and does not mean.
-  const cl = laidOut(cluster(4), zeros(4));
-  const caveat = tableauText(cl.li, cl.layout, cl.last, { qubitLabels: cl.labels });
+  // Where a node is short of full rank the text says what that does and does not mean.
+  // A T gate leaves the stabilizer formalism, so its rank really is short — the caveat is
+  // about not reading that backwards.
+  const t = laidOut(`${header(2)}h q[0];\ncx q[0],q[1];\nt q[1];\n`, zeros(2));
+  const caveat = tableauText(t.li, t.layout, t.last, { qubitLabels: t.labels });
   assert.match(caveat, /full rank proves a stabilizer state and less than full rank proves nothing/);
-  assert.equal(tableauFrame(cl.li, cl.layout, cl.last, { qubitLabels: cl.labels }).short, true);
+  assert.equal(tableauFrame(t.li, t.layout, t.last, { qubitLabels: t.labels }).short, true);
 
   // Under an order the columns and the rows are different orders, and the text has to say
   // both — a tableau whose columns silently meant levels would be wrong, not just unclear.

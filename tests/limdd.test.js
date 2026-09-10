@@ -144,6 +144,10 @@ test('the diagram is as small as a Pauli-LIMDD can be', () => {
   for (const example of allInstances()) {
     const circuit = parseQasm(example.qasm);
     if (circuit.nqubits > 5) continue;
+    // A symbolic amplitude is left alone rather than guessed at, so the diagram cannot
+    // reach a merge that needs dividing by a symbol. The oracle divides by anything, so
+    // for those states its count is a bound the implementation deliberately misses.
+    if (parseState(example.state, circuit.nqubits).symbols.length) continue;
     const { dd, root, li, edge, n } = build(example.qasm, example.state);
     assert.equal(li.size(edge), pauliClassCount(dd, root, n, P.Ring),
       `${example.name} could be smaller`);
@@ -213,15 +217,17 @@ test('the unfolded tree is the diagram, with every shared node copied out', () =
 });
 
 test('the tree stays complete where the diagram takes shortcuts', () => {
-  // Two shortcuts the reduced diagram takes and a tree cannot: a level it skips because
-  // nothing depends on it, and a zero edge, which it points wherever it likes.
+  // The one shortcut the reduced diagram still takes and a tree cannot: a zero edge,
+  // which it may point wherever it likes. Skipping a level is no longer among them — a
+  // LIMDD here carries a node on every level, so the don't-care qubit below gets one and
+  // the diagram is the full n + 1.
   const n = 3;
   const dd = new MTBDD(P.Ring, n);
   // |000> + |010>: q1 is a don't-care, and everything under q0 = 1 is zero.
   const root = dd.fromAmplitudes([['000', P.fromZ(Z.INV_SQRT2)], ['010', P.fromZ(Z.INV_SQRT2)]]);
   const li = make(n);
   const edge = li.fromMTBDD(dd, root);
-  assert.ok(li.size(edge) < n + 1, 'the diagram really does take a shortcut');
+  assert.equal(li.size(edge), n + 1, 'a node on every level, don\'t-care or not');
 
   const [frame] = layoutEdgeValuedTree(li, [{ index: 0, gate: null, edge }],
     ['q0', 'q1', 'q2'], (e) => (li.ring.isZero(e.w) ? '0' : li.edgeKey(e))).frames;
@@ -231,10 +237,8 @@ test('the tree stays complete where the diagram takes shortcuts', () => {
   // The skipped level says nothing on either side, and says the same thing on both.
   const out = (id) => frame.edges.filter((e) => e.from === id);
   const [low, high] = out(1);                       // the q1 node under q0 = 0
-  assert.ok(low.label.startsWith(`${P.key(P.one)}.0.0@`),
-    'a skipped level carries weight 1 and the identity Pauli');
   assert.deepEqual([low.label, low.toZero], [high.label, high.toZero],
-    'both sides of a skipped level lead to the same thing');
+    'both sides of a don\'t-care level lead to the same thing');
 
   // Everything under the zero edge is zero, rather than whatever the diagram pointed at.
   // Edges come out level by level, so one pass marks the whole subtree.

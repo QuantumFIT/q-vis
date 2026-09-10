@@ -87,8 +87,10 @@ export class LIMDD {
     const zero0 = R.isZero(e0.w);
     const zero1 = R.isZero(e1.w);
     if (zero0 && zero1) return this.zeroEdge;
-    // Identical child edges mean the variable is a don't-care, exactly as in dd.js.
-    if (this.edgeKey(e0) === this.edgeKey(e1)) return e0;
+    // Identical child edges are *not* collapsed here, unlike dd.js. A LIMDD in the paper
+    // has a node on every level, and this one does too: see `padTo` and the note in
+    // docs/LIMDD.md. Collapsing would give two representations of one subfunction — the
+    // level skipped and the level present — which then cannot merge with each other.
 
     // Low precedence (rule 3), and the same swap when the low edge is zero so that rule 4
     // has something to factor. Paid for with an X on this level's qubit, which is what
@@ -288,7 +290,32 @@ export class LIMDD {
    * The same state as an MTBDD holds it. Simulation stays on dd.js; this is the state
    * seen the other way, which is all a visualiser needs and costs one pass.
    */
+  /**
+   * An edge whose node sits at exactly `target`, filling in the levels an MTBDD drops.
+   *
+   * The MTBDD skips a level nothing depends on; a LIMDD does not. Where the source skips,
+   * a node whose two edges agree goes in for each missing level, which is what "a node on
+   * every level" means. A zero edge is left alone: it denotes the zero subfunction and
+   * has nothing below it to populate.
+   */
+  padTo(target, e) {
+    if (this.ring.isZero(e.w)) return e;
+    let cur = e;
+    for (let lev = this.levelOf(cur.node) - 1; lev >= target; lev--) cur = this.mk(lev, cur, cur);
+    return cur;
+  }
+
+  /** The whole state, as an edge into a node at level 0. */
   fromMTBDD(dd, node, memo = new Map()) {
+    return this.padTo(0, this.convert(dd, node, memo));
+  }
+
+  /**
+   * One MTBDD node as a LIMDD edge, at that node's own level. Memoised on the source
+   * node, so the padding a *caller* needs is applied at the call site rather than baked
+   * in: the same subfunction can be reached from different levels.
+   */
+  convert(dd, node, memo) {
     const hit = memo.get(node);
     if (hit) return hit;
     let edge;
@@ -298,9 +325,10 @@ export class LIMDD {
         ? this.zeroEdge
         : Object.freeze({ w: value, x: 0, z: 0, node: this.one });
     } else {
-      edge = this.mk(dd.levelOf(node),
-        this.fromMTBDD(dd, dd.lowOf(node), memo),
-        this.fromMTBDD(dd, dd.highOf(node), memo));
+      const level = dd.levelOf(node);
+      edge = this.mk(level,
+        this.padTo(level + 1, this.convert(dd, dd.lowOf(node), memo)),
+        this.padTo(level + 1, this.convert(dd, dd.highOf(node), memo)));
     }
     memo.set(node, edge);
     return edge;
