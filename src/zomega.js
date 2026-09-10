@@ -354,6 +354,13 @@ export function denominatorPower(a) { return a.k; }
  * for the level, so that every amplitude of one state is a tuple of the same width.
  */
 export function formatTuple(a, k = a.k, level = a.c.length) {
+  // Only *raising* k and the level rewrites the same value; lowering either would need a
+  // division that is not generally exact. Asked to go down, this used to print the tuple
+  // of a different number, so it is refused instead.
+  if (k < a.k) throw new Error(`formatTuple: cannot write a value with ${a.k} halvings at ${k}`);
+  if (level < a.c.length) {
+    throw new Error(`formatTuple: cannot write a level-${a.c.length} value at level ${level}`);
+  }
   let c = a.c;
   while (c.length < level) c = promote(c);
   for (let i = a.k; i < k; i++) c = numMulSqrt2(c);
@@ -467,8 +474,9 @@ function overPi(theta) {
   const r = theta / Math.PI;
   if (Math.abs(r) < 1e-9) return '0';
   // Ascending denominators, so the first hit is already in lowest terms. Far enough to
-  // name every angle the tower reaches at the levels this tool draws.
-  for (let d = 1; d <= 64; d++) {
+  // name every angle the tower reaches: a phase goes down to pi/512 and a rotation's half
+  // angle to pi/512 as well, and stopping short of that named an exact angle as a decimal.
+  for (let d = 1; d <= 512; d++) {
     const n = r * d;
     if (Math.abs(n - Math.round(n)) > 1e-9) continue;
     const num = Math.round(n);

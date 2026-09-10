@@ -267,3 +267,21 @@ test('formatting names the root of the level it is at', () => {
     }
   }
 });
+
+test('a formatter writes the value it was given, or says it cannot', () => {
+  // A tuple can always be *rewritten* upward: more halvings, or a finer level. Downward
+  // it cannot, since that needs a division that is not generally exact — so asking for
+  // fewer halvings used to print the tuple of a different number, silently.
+  assert.equal(Z.formatTuple(Z.INV_SQRT2, 3), '(0,0,0,2)', 'raising k rewrites the same value');
+  assert.equal(Z.formatTuple(Z.ONE, 0, 8), '(0,0,0,0,0,0,0,1)', 'so does raising the level');
+  assert.throws(() => Z.formatTuple(Z.INV_SQRT2, 0), /1 halvings at 0/);
+  assert.throws(() => Z.formatTuple(Z.rootPow(1, 16), 0, 4), /level-16 value at level 4/);
+
+  // Polar-pi names an exact fraction of pi when there is one. It stopped looking at pi/64,
+  // so the finest phases the parser accepts — and every half angle a rotation makes — came
+  // out as a decimal, which reads as though the angle were not exact.
+  for (const [j, d, want] of [[1, 64, 'π/64'], [1, 128, 'π/128'], [1, 256, 'π/256'],
+    [1, 512, 'π/512'], [53, 512, '53π/512'], [3, 8, '3π/8']]) {
+    assert.equal(Z.formatPolar(Z.rootPow(j, d), 'pi'), `1∠${want}`);
+  }
+});

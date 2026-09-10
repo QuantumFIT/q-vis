@@ -158,3 +158,31 @@ test('amplitudes yields what it was asked for, however many don\'t-cares', () =>
     assert.equal(count, 500, `${n} don't-care levels`);
   }
 });
+
+test('the API refuses a call it cannot answer, rather than answering something else', () => {
+  // None of these is reachable from the UI or the QASM path. They are here because a
+  // library that quietly means something other than what it was asked is worse than one
+  // that says no, and because each of these returned a plausible wrong answer.
+  const dd = new MTBDD(P.Ring, 3);
+  const root = dd.fromPatterns([['0-1', P.one]]);
+
+  // `nvars` is the terminal's own level, so this used to walk off the end and hand back
+  // the node id -1 — not a node, and nothing downstream checks for it.
+  assert.throws(() => dd.restrict(root, 3, 0), /not one of the 3 variables/);
+  assert.throws(() => dd.restrict(root, -1, 0), /not one of the 3 variables/);
+  assert.doesNotThrow(() => dd.restrict(root, 1, 0));
+
+  // A bit was read for its truthiness, and the character '0' is true, so the string form
+  // and the array form of the same assignment built different cubes.
+  assert.equal(dd.cube([0, 1], '01'), dd.cube([0, 1], [0, 1]),
+    'a cube means the same written either way');
+  assert.throws(() => dd.cube([0, 0], [0, 1]), /assigned twice/);
+  assert.throws(() => dd.cube([0, 9], [0, 1]), /not one of the 3 variables/);
+  assert.throws(() => dd.cube([0, 1], [0]), /1 bits given, 2 wanted/);
+
+  // A short string was treated as zero-padded, so the amplitude of "01" in a three-qubit
+  // diagram was answered as |010> with nothing said about it.
+  assert.throws(() => dd.evaluate(root, '01'), /2 bits given, 3 wanted/);
+  assert.throws(() => dd.evaluate(root, '0-1'), /'-' is not a bit/);
+  assert.ok(P.Ring.eq(dd.evaluate(root, '001'), P.one), 'a full assignment still answers');
+});

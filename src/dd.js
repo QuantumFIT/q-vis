@@ -136,8 +136,17 @@ export class MTBDD {
     return this.levelOf(a) === level ? [this.lowOf(a), this.highOf(a)] : [a, a];
   }
 
-  /** `a` with variable `level` fixed to `bit`; the result no longer depends on it. */
+  /**
+   * `a` with variable `level` fixed to `bit`; the result no longer depends on it.
+   *
+   * A level outside the diagram is refused rather than answered. `level === nvars` is the
+   * terminal's own level, so it used to walk off the end and hand back `highOf(terminal)`
+   * — the node id -1, which is not a node and which nothing downstream checks for.
+   */
   restrict(a, level, bit) {
+    if (!Number.isInteger(level) || level < 0 || level >= this.nvars) {
+      throw new Error(`restrict: level ${level} is not one of the ${this.nvars} variables`);
+    }
     if (this.levelOf(a) > level) return a;
     if (this.levelOf(a) === level) return bit ? this.highOf(a) : this.lowOf(a);
     const k = `${a}|${level}|${bit}`;
@@ -152,9 +161,23 @@ export class MTBDD {
 
   // ---- construction ------------------------------------------------------
 
-  /** The 0/1 indicator of the partial assignment `levels[i] = bits[i]`. */
+  /**
+   * The 0/1 indicator of the partial assignment `levels[i] = bits[i]`.
+   *
+   * `bits` may be an array or a string, and the two mean the same thing — which they did
+   * not when the bit was read for its truthiness, since the character '0' is true.
+   */
   cube(levels, bits) {
-    const order = levels.map((l, i) => [l, bits[i]]).sort((x, y) => y[0] - x[0]);
+    const b = this.readBits(bits, levels.length, 'cube');
+    const seen = new Set();
+    for (const lev of levels) {
+      if (!Number.isInteger(lev) || lev < 0 || lev >= this.nvars) {
+        throw new Error(`cube: level ${lev} is not one of the ${this.nvars} variables`);
+      }
+      if (seen.has(lev)) throw new Error(`cube: level ${lev} is assigned twice`);
+      seen.add(lev);
+    }
+    const order = levels.map((l, i) => [l, b[i]]).sort((x, y) => y[0] - x[0]);
     let cur = this.one;
     for (const [lev, bit] of order) {
       cur = bit ? this.mk(lev, this.zero, cur) : this.mk(lev, cur, this.zero);
@@ -204,9 +227,29 @@ export class MTBDD {
 
   // ---- queries -----------------------------------------------------------
 
+  /**
+   * Read an assignment written either as a string of '0'/'1' or as an array of 0/1, and
+   * insist it is that. A short string used to be treated as zero-padded, so asking for
+   * the amplitude of "01" in a five-qubit diagram answered for |01000> without saying so.
+   */
+  readBits(bits, want, who) {
+    const b = typeof bits === 'string' ? [...bits].map((c) => {
+      if (c !== '0' && c !== '1') throw new Error(`${who}: '${c}' is not a bit`);
+      return c === '1' ? 1 : 0;
+    }) : bits;
+    if (!Array.isArray(b)) throw new Error(`${who}: expected a bit string or an array`);
+    if (b.length !== want) {
+      throw new Error(`${who}: ${b.length} bits given, ${want} wanted`);
+    }
+    for (const v of b) {
+      if (v !== 0 && v !== 1) throw new Error(`${who}: ${JSON.stringify(v)} is not a bit`);
+    }
+    return b;
+  }
+
   /** The amplitude of one basis state. */
   evaluate(root, bits) {
-    const b = typeof bits === 'string' ? [...bits].map(Number) : bits;
+    const b = this.readBits(bits, this.nvars, 'evaluate');
     let cur = root;
     while (!this.isTerminal(cur)) cur = b[this.levelOf(cur)] ? this.highOf(cur) : this.lowOf(cur);
     return this.valueOf(cur);
