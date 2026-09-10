@@ -1664,24 +1664,61 @@ function showEntanglement() {
 
   // The state's own rank, which belongs to no one split — so it is the largest over all
   // of them, the number meant by "how entangled is this state at its most".
-  box.append(el('h4', null, 'Schmidt rank of the state'));
+  box.append(el('h4', null, 'Ranks of the state'));
   const worst = Ent.maxSchmidtRank(numeric, n);
+  const ranks = el('dl', 'ent-stats');
+  const rank = (term, value, aside) => {
+    ranks.append(el('dt', null, term));
+    const d = el('dd', null, value);
+    if (aside) d.append(el('span', 'ent-aside', aside));
+    ranks.append(d);
+  };
   if (worst.exhausted) {
-    box.append(el('p', 'ent-note',
-      `${n} qubits is too many to try every bipartition. The cuts of the current order `
-      + 'are below, and a split you name is at the bottom.'));
+    rank('Schmidt rank', '—', `${n} qubits is too many bipartitions to try`);
   } else {
-    const top = el('dl', 'ent-stats');
-    top.append(el('dt', null, 'Schmidt rank'));
-    const dd0 = el('dd', null, String(worst.rank));
-    dd0.append(el('span', 'ent-aside', `of at most ${worst.ceiling}`));
-    top.append(dd0);
-    box.append(top);
-    box.append(el('p', 'ent-note', worst.rank === 1
-      ? 'One across every bipartition: the state is a product of single qubits.'
-      : `The largest across any of the ${2 ** (n - 1) - 1} bipartitions, reached by `
-        + `${listOf(worst.part)} │ ${listOf(Array.from({ length: n }, (_, i) => i).filter((q) => !worst.part.includes(q)))}.`));
+    rank('Schmidt rank', String(worst.rank), `of at most ${worst.ceiling}`);
   }
+
+  // The multipartite one, which a Schmidt rank is not: GHZ and W have the same Schmidt
+  // rank across every bipartition and tensor ranks of 2 and n.
+  const tensor = worst.exhausted ? { tooWide: true, borderline: [] }
+    : Ent.tensorRank(numeric, n, { lower: worst.rank });
+  if (tensor.tooWide) rank('tensor rank', '—', 'too wide to search');
+  else if (tensor.gaveUp) rank('tensor rank', `> ${tensor.searchedTo}`, 'the search stopped there');
+  else rank('tensor rank', String(tensor.found), tensor.exact ? 'exact' : `at least ${tensor.lower}`);
+  box.append(ranks);
+
+  if (!worst.exhausted) {
+    box.append(el('p', 'ent-note', worst.rank === 1
+      ? 'A Schmidt rank of one across every bipartition: the state is a product of single qubits.'
+      : `The Schmidt rank is the largest across any of the ${2 ** (n - 1) - 1} bipartitions, `
+        + `reached by ${listOf(worst.part)} │ `
+        + `${listOf(Array.from({ length: n }, (_, i) => i).filter((q) => !worst.part.includes(q)))}.`));
+  }
+  const say = [];
+  say.push('The tensor rank is the fewest product terms the whole state can be written as '
+    + 'a sum of, over every qubit at once — the multipartite thing a Schmidt rank is not. '
+    + 'GHZ and W have the same Schmidt rank across every split, and tensor ranks of 2 and n.');
+  if (tensor.tooWide) {
+    say.push('Not searched here: it is NP-hard in general, and this state is too wide.');
+  } else if (tensor.gaveUp) {
+    say.push(`No decomposition was found with ${tensor.searchedTo} terms or fewer before the `
+      + 'search ran out of room. A generic state\'s rank is high and each further term costs '
+      + 'more to look for, so the number above is a floor, not the answer.');
+  } else if (tensor.exact) {
+    say.push('Exact: a decomposition with that many terms was fitted, and no fewer is '
+      + 'possible, since the Schmidt rank is a lower bound on the tensor rank.');
+  } else {
+    say.push(`Found by search — a decomposition with ${tensor.found} terms was fitted, and `
+      + `${tensor.lower} is the most that can be proved from below. It is NP-hard in general, `
+      + 'so between those two is as far as this goes.');
+  }
+  if (tensor.borderline && tensor.borderline.length) {
+    say.push(`A fit with ${tensor.borderline.join(' and ')} term(s) converges on the state `
+      + 'without ever reaching it, its factors growing without bound. That is the signature '
+      + 'of a border rank below the rank, and why such a fit is not counted.');
+  }
+  box.append(el('p', 'ent-note', say.join(' ')));
 
   // The cuts of the *order the diagram is drawn in*: these are the ranks the picture
   // itself has to carry, so a wide frame and a large rank here are one fact seen twice.

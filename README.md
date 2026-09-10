@@ -191,7 +191,19 @@ the split that reaches it. One everywhere is a fully product state; 2^⌊n/2⌋ 
 any state of n qubits can manage. Past twelve qubits there are too many splits to try
 them all, and it says so.
 
-Beneath it is the rank across each cut of **the order the diagram is drawn in** — the
+**The tensor rank** is the fewest product terms the whole state can be written as a sum
+of, over every qubit at once — the multipartite quantity a Schmidt rank is not. It is what
+separates GHZ from W, which have the *same* Schmidt rank across every bipartition and
+tensor ranks of 2 and n.
+
+Computing it is NP-hard, so the panel searches between bounds: the Schmidt rank below,
+which is proved, and a decomposition actually fitted above. When they meet, the rank is
+known. The trap is border rank — a fit with too few terms can converge on a state it never
+reaches, its factors diverging, which is precisely what a two-term fit does to W. Judging
+such a fit by its residual alone would report W as rank 2, so a fit only counts when its
+terms stay bounded.
+
+Beneath the ranks is the rank across each cut of **the order the diagram is drawn in** — the
 state's bond dimensions along that order. These are the ranks the picture itself has to
 carry, so a wide frame and a large rank here are one fact seen twice. Nested Bell pairs on
 eight qubits read `2 4 8 16 8 4 2` as written and `2 1 2 1 2 1 2` once paired, which is

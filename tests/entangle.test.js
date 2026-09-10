@@ -257,3 +257,64 @@ test('a state too wide for every bipartition says so', () => {
   // but the cuts of one order are always affordable, and there are only n - 1 of them
   assert.equal(Ent.cutProfile(numeric, n, Array.from({ length: n }, (_, i) => i)).length, n - 1);
 });
+
+/** A state with one excitation, and a state with two terms — the textbook pair. */
+const single = (n, amp) => Array.from({ length: 2 ** n }, (_, b) => {
+  const isW = Array.from({ length: n }, (_, k) => 1 << k).includes(b);
+  return { re: isW ? amp : 0, im: 0 };
+});
+const cat = (n) => Array.from({ length: 2 ** n }, (_, b) => ({
+  re: (b === 0 || b === 2 ** n - 1) ? Math.SQRT1_2 : 0, im: 0,
+}));
+
+test('tensor rank: W on n qubits is n, GHZ is two however wide', () => {
+  // The two states that make the point. They have the *same* Schmidt rank across every
+  // bipartition — 2 — so a Schmidt rank cannot tell them apart; their tensor ranks can.
+  for (const n of [3, 4, 5, 6]) {
+    const w = single(n, 1 / Math.sqrt(n));
+    const g = cat(n);
+    assert.equal(Ent.maxSchmidtRank(w, n).rank, 2, `W${n} Schmidt rank`);
+    assert.equal(Ent.maxSchmidtRank(g, n).rank, 2, `GHZ${n} Schmidt rank`);
+    assert.equal(Ent.tensorRank(w, n, { lower: 2 }).found, n, `W${n} tensor rank is ${n}`);
+    assert.equal(Ent.tensorRank(g, n, { lower: 2 }).found, 2, `GHZ${n} tensor rank is 2`);
+  }
+});
+
+test('tensor rank agrees with the Schmidt rank where it must', () => {
+  // On two qubits the two notions coincide, and on a product state both are one.
+  for (const [name, qasm, n] of CASES) {
+    const { numeric } = evolve(qasm, n);
+    const lower = Ent.maxSchmidtRank(numeric, n).rank;
+    const t = Ent.tensorRank(numeric, n, { lower });
+    if (t.found === null) continue;
+    assert.ok(t.found >= lower, `${name}: the tensor rank is at least the Schmidt rank`);
+    if (lower === 1) assert.equal(t.found, 1, `${name}: a product state is one term`);
+  }
+  const bell = evolve(CASES[1][1], 2);
+  assert.equal(Ent.tensorRank(bell.numeric, 2, { lower: 2 }).found, 2, 'two qubits: the same notion');
+  assert.equal(Ent.tensorRank(bell.numeric, 2, { lower: 2 }).exact, true);
+});
+
+test('a rank-2 fit of W is refused, because it never reaches W', () => {
+  // The trap the whole implementation is shaped around. W has border rank 2: a two-term
+  // decomposition converges on it without attaining it, its factors diverging. Judging a
+  // fit on residual alone would report W as rank 2, which is wrong.
+  const w = single(3, 1 / Math.sqrt(3));
+  const got = Ent.tensorRank(w, 3, { lower: 2 });
+  assert.equal(got.found, 3);
+  assert.equal(got.exact, false, 'three terms found, two is all that is proved');
+  assert.equal(got.lower, 2);
+});
+
+test('a search that cannot finish reports a floor, not a rank', () => {
+  // A generic state has a high tensor rank and each further term costs more to look for.
+  let seed = 99;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const raw = Array.from({ length: 64 }, () => ({ re: rand() * 2 - 1, im: rand() * 2 - 1 }));
+  const scale = Math.sqrt(raw.reduce((s, z) => s + z.re * z.re + z.im * z.im, 0));
+  const v = raw.map((z) => ({ re: z.re / scale, im: z.im / scale }));
+  const got = Ent.tensorRank(v, 6, { lower: Ent.maxSchmidtRank(v, 6).rank });
+  assert.equal(got.found, null);
+  assert.equal(got.gaveUp, true);
+  assert.ok(got.searchedTo >= got.lower, 'and says how far it got');
+});

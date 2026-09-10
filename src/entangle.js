@@ -348,6 +348,212 @@ export function cutProfile(numeric, n, order, { tol = 1e-9 } = {}) {
   }));
 }
 
+// ---- tensor rank ----------------------------------------------------------
+//
+// The fewest product terms a state can be written as a sum of, over all the qubits at
+// once: |psi> = sum_i |a_i> (x) |b_i> (x) ... This is the genuinely multipartite thing a
+// Schmidt rank is not — GHZ and W have the same Schmidt rank across every bipartition
+// and tensor ranks of 2 and 3 — and it is NP-hard to compute, so what is done here is a
+// search between bounds rather than a calculation.
+//
+// The lower bound is proved: every bipartite flattening's rank is a lower bound on the
+// tensor rank, so the state's Schmidt rank is one. The upper bound is found, by fitting
+// a decomposition with r terms and seeing whether it converges. When they meet, the rank
+// is known; when they do not, the panel says between which numbers it lies.
+//
+// The trap is border rank. A rank-r fit can approach a state it can never reach, its
+// factors growing without bound as the residual shrinks — which is exactly what a rank-2
+// fit does to W. Accepting on residual alone would report W as rank 2. So a fit only
+// counts if its terms stay bounded, and a fit whose terms diverge is reported as what it
+// is: evidence the state's border rank is below its rank, not evidence of a low rank.
+
+const cmul = (a, b) => ({ re: a.re * b.re - a.im * b.im, im: a.re * b.im + a.im * b.re });
+
+/** Invert a small complex matrix by Gauss-Jordan, with a nudge for near-singularity. */
+function invert(m, r) {
+  const a = Array.from({ length: r }, (_, i) => Array.from({ length: 2 * r }, (_, j) => (j < r
+    ? { re: m[i][j].re + (i === j ? 1e-12 : 0), im: m[i][j].im }
+    : { re: i === j - r ? 1 : 0, im: 0 })));
+  for (let c = 0; c < r; c++) {
+    let p = c;
+    for (let i = c; i < r; i++) {
+      if (Math.hypot(a[i][c].re, a[i][c].im) > Math.hypot(a[p][c].re, a[p][c].im)) p = i;
+    }
+    if (Math.hypot(a[p][c].re, a[p][c].im) < 1e-300) return null;
+    [a[c], a[p]] = [a[p], a[c]];
+    const d = a[c][c];
+    const den = d.re * d.re + d.im * d.im;
+    for (let j = c; j < 2 * r; j++) {
+      const z = a[c][j];
+      a[c][j] = { re: (z.re * d.re + z.im * d.im) / den, im: (z.im * d.re - z.re * d.im) / den };
+    }
+    for (let i = 0; i < r; i++) {
+      if (i === c) continue;
+      const f = a[i][c];
+      if (f.re === 0 && f.im === 0) continue;
+      for (let j = c; j < 2 * r; j++) {
+        const z = cmul(f, a[c][j]);
+        a[i][j] = { re: a[i][j].re - z.re, im: a[i][j].im - z.im };
+      }
+    }
+  }
+  return a.map((row) => row.slice(r));
+}
+
+/**
+ * Fit `r` product terms to the state by alternating least squares, from one random start.
+ * Returns the relative residual it reached and how big its largest term grew.
+ */
+function fitTerms(amps, n, r, rand, iters) {
+  const dim = amps.length;
+  const bitOf = (m, k) => (m >> (n - 1 - k)) & 1;
+  const A = Array.from({ length: n }, () => Array.from({ length: 2 },
+    () => Array.from({ length: r }, () => ({ re: rand() * 2 - 1, im: rand() * 2 - 1 }))));
+  const norm = Math.sqrt(amps.reduce((s, z) => s + z.re * z.re + z.im * z.im, 0)) || 1;
+
+  let residual = Infinity;
+  let weight = 1;
+  let used = 0;
+  for (let it = 0; it < iters; it++) {
+    for (let k = 0; k < n; k++) {
+      // The Gram of the Khatri-Rao of the other factors is the elementwise product of
+      // their own Grams, which is what keeps a sweep cheap.
+      const G = Array.from({ length: r }, () => Array.from({ length: r }, () => ({ re: 1, im: 0 })));
+      for (let kk = 0; kk < n; kk++) {
+        if (kk === k) continue;
+        for (let i = 0; i < r; i++) {
+          for (let j = 0; j < r; j++) {
+            let re = 0;
+            let im = 0;
+            for (let b = 0; b < 2; b++) {
+              const u = A[kk][b][i];
+              const v = A[kk][b][j];
+              re += u.re * v.re + u.im * v.im;
+              im += u.re * v.im - u.im * v.re;
+            }
+            G[i][j] = cmul(G[i][j], { re, im });
+          }
+        }
+      }
+      const inv = invert(G.map((row) => row.map((z) => ({ re: z.re, im: -z.im }))), r);
+      if (!inv) return { residual: Infinity, weight: Infinity };
+
+      const N = Array.from({ length: 2 }, () => Array.from({ length: r }, () => ({ re: 0, im: 0 })));
+      for (let m = 0; m < dim; m++) {
+        const z = amps[m];
+        if (z.re === 0 && z.im === 0) continue;
+        const b = bitOf(m, k);
+        for (let i = 0; i < r; i++) {
+          let p = { re: 1, im: 0 };
+          for (let kk = 0; kk < n; kk++) if (kk !== k) p = cmul(p, A[kk][bitOf(m, kk)][i]);
+          N[b][i].re += z.re * p.re + z.im * p.im;      // z * conj(p)
+          N[b][i].im += z.im * p.re - z.re * p.im;
+        }
+      }
+      for (let b = 0; b < 2; b++) {
+        const row = Array.from({ length: r }, (_, j) => {
+          let re = 0;
+          let im = 0;
+          for (let i = 0; i < r; i++) {
+            const t = cmul(N[b][i], inv[i][j]);
+            re += t.re;
+            im += t.im;
+          }
+          return { re, im };
+        });
+        A[k][b] = row;
+      }
+    }
+
+    // Push each term's size into the last factor, so one number measures how big it got.
+    weight = 0;
+    for (let i = 0; i < r; i++) {
+      for (let k = 0; k < n - 1; k++) {
+        const len = Math.hypot(A[k][0][i].re, A[k][0][i].im, A[k][1][i].re, A[k][1][i].im);
+        if (len < 1e-300) continue;
+        for (let b = 0; b < 2; b++) {
+          A[k][b][i] = { re: A[k][b][i].re / len, im: A[k][b][i].im / len };
+          A[n - 1][b][i] = { re: A[n - 1][b][i].re * (k === 0 ? len : 1), im: A[n - 1][b][i].im * (k === 0 ? len : 1) };
+        }
+        if (k > 0) {
+          for (let b = 0; b < 2; b++) {
+            A[n - 1][b][i] = { re: A[n - 1][b][i].re * len, im: A[n - 1][b][i].im * len };
+          }
+        }
+      }
+      weight = Math.max(weight,
+        Math.hypot(A[n - 1][0][i].re, A[n - 1][0][i].im, A[n - 1][1][i].re, A[n - 1][1][i].im));
+    }
+
+    let err = 0;
+    for (let m = 0; m < dim; m++) {
+      let re = 0;
+      let im = 0;
+      for (let i = 0; i < r; i++) {
+        let p = { re: 1, im: 0 };
+        for (let k = 0; k < n; k++) p = cmul(p, A[k][bitOf(m, k)][i]);
+        re += p.re;
+        im += p.im;
+      }
+      err += (amps[m].re - re) ** 2 + (amps[m].im - im) ** 2;
+    }
+    residual = Math.sqrt(err) / norm;
+    used = it + 1;
+    if (residual < 1e-13) break;
+  }
+  return { residual, weight: weight / norm, used };
+}
+
+/**
+ * The tensor rank, between what can be proved and what can be found.
+ *
+ * `lower` is proved — no decomposition with fewer terms exists. `found` is the smallest
+ * number of terms a decomposition was actually fitted with. Equal, and the rank is known.
+ *
+ * `borderline` lists the term counts whose best fit converged on the state without ever
+ * reaching it, its factors diverging. That is not a near miss to be rounded away: a state
+ * whose border rank is below its rank is approached arbitrarily closely by decompositions
+ * it does not admit, and W is the textbook one.
+ */
+export function tensorRank(numeric, n, { lower = 1, seed = 20260910, restarts = 8, iters = 220,
+  tol = 1e-9, blowUp = 1e4, maxQubits = 8, budget = 1e7 } = {}) {
+  if (n > maxQubits) return { lower, found: null, exact: false, tooWide: true, borderline: [] };
+  const nonZero = numeric.filter((z) => Math.hypot(z.re, z.im) > 1e-12).length;
+  if (nonZero === 0) return { lower: 0, found: 0, exact: true, tooWide: false, borderline: [] };
+  const ceiling = Math.max(lower, Math.min(nonZero, 2 ** (n - 1)));
+
+  let state = seed >>> 0;
+  const rand = () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+
+  const borderline = [];
+  let work = 0;
+  for (let r = Math.max(1, lower); r <= ceiling; r++) {
+    let best = Infinity;
+    let bestWeight = Infinity;
+    for (let t = 0; t < restarts; t++) {
+      const got = fitTerms(numeric, n, r, rand, iters);
+      work += numeric.length * r * n * got.used;
+      if (got.residual < best) { best = got.residual; bestWeight = got.weight; }
+      if (best < tol && bestWeight < blowUp) break;
+      // A generic state's rank is high, and each term looked for costs more than the
+      // last. Rather than let that run away, the search stops and says how far it got.
+      if (work > budget) {
+        return { lower, found: null, exact: false, tooWide: false, gaveUp: true,
+          searchedTo: r - 1, borderline };
+      }
+    }
+    if (best < tol && bestWeight < blowUp) {
+      return { lower, found: r, exact: r === lower, tooWide: false, borderline };
+    }
+    if (best < tol) borderline.push(r);        // reached in the limit, never attained
+  }
+  // Every basis state is a product term, so the count of them always works.
+  return { lower, found: nonZero, exact: lower === nonZero, tooWide: false, borderline };
+}
+
 /**
  * A bipartition written the way the reader names qubits: `q[0] q[2]`, or bare indices, in
  * any order and separated by anything that is not part of a name. Returns the qubits, or
