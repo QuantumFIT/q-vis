@@ -65,6 +65,21 @@ test('phases by a dyadic multiple of pi are exact; other angles are refused', ()
   assert.ok(Z.eq(Z.mul(eighth, eighth), omegaPow(1)));
 
   assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/3) q[0];\n`), /dyadic rational/);
+
+  // A large angle must be judged on the same grid as a small one. The tolerance used to
+  // be a fraction of the angle, so past about 5e8 it exceeded half a grid step and every
+  // value looked like an integer: u1(1000000000*pi/3) was accepted as P(5pi/4), an
+  // amplitude wrong by 0.26, from a parser whose whole promise is exactness.
+  for (const bad of ['1000000000*pi/3', '1000000000*pi/7', '2027395*pi/3', '100000000.05*pi/4']) {
+    assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(${bad}) q[0];\n`), /not expressible exactly/,
+      `${bad} is not pi times a dyadic rational, however large it is`);
+  }
+  // And a large angle that *is* on the grid still lands on the right phase, reduced mod
+  // 2pi: 12345678901 = 53 (mod 1024), and 100000000 is a multiple of 8 quarter-turns.
+  const huge = parseQasm(`${HEAD}qreg q[1];\nu1(12345678901*pi/512) q[0];\nu1(100000000*pi/4) q[0];\nu1(4*pi) q[0];\n`);
+  assert.deepEqual(huge.gates.map((g) => g.label), ['P(53π/512)', 'I', 'I']);
+  assertClose(Z.toComplex(huge.gates[0].matrix[1][1]),
+    { re: Math.cos(53 * Math.PI / 512), im: Math.sin(53 * Math.PI / 512) });
   assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nu1(pi/1024) q[0];\n`), /dyadic rational/,
     'finer than the tool is willing to go is still refused');
   assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrz(pi/2) q[0];\n`), /parametrised rotation/);

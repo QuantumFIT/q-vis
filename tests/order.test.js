@@ -58,7 +58,7 @@ test('reordering changes the diagram and never the state', () => {
     const all = base.n <= 10;
     const probes = all
       ? Array.from({ length: 1 << base.n }, (_, b) => b)
-      : Array.from({ length: 64 }, () => randInt(r, 1 << base.n));
+      : Array.from({ length: 64 }, () => randInt(r, 0, (1 << base.n) - 1));
 
     for (const [name, of] of ORDERS.slice(1)) {
       const other = run(instance, of);

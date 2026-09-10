@@ -111,7 +111,15 @@ function dyadicTurns(theta, name, line) {
   for (let d = 4; d <= FINEST_LEVEL; d *= 2) {
     const j = (theta * d) / Math.PI;
     const r = Math.round(j);
-    if (Math.abs(j - r) < 1e-9 * Math.max(1, Math.abs(j))) return { j: r, d };
+    // The tolerance is the representational noise in `j` itself, never a fraction of it.
+    // A relative tolerance grows with the angle until it exceeds half a grid step, at
+    // which point *every* value looks like an integer and a large angle is silently
+    // rounded to an arbitrary phase: u1(1000000000*pi/3) was accepted as P(5pi/4), an
+    // amplitude off by 0.26, by a tool whose whole promise is exactness. Past the point
+    // where the noise swamps the grid the angle cannot be placed on it at all, so it is
+    // refused rather than guessed at.
+    const noise = Math.max(1e-9, Math.abs(j) * Number.EPSILON * 8);
+    if (noise < 0.5 && Math.abs(j - r) < noise) return { j: r, d };
   }
   throw new QasmError(
     `${name}(${theta.toFixed(6)}) is not expressible exactly: the angle must be pi times a ` +
