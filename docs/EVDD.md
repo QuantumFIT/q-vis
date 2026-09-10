@@ -108,3 +108,27 @@ than a clearer picture, native edge-valued gate application is the next step.
 `layout.treeEdgeWeights` applies the same normalisation to an unreduced tree, which is
 what the fourth view draws. The tests check the property directly: the weights along a
 path, times the root weight, are the amplitude.
+
+## What it costs, and where that bites
+
+The conversion is one pass over the diagram, so it is linear in the nodes — but each edge
+it normalises calls `zomega.unitPart`, and that is cubic in the *ring level*. The level is
+set by the finest angle the circuit asked for, so a QFT doubles it with every qubit added,
+and the conversion grows about six times per qubit while the diagram itself only doubles.
+Measured over every frame of the QFT example:
+
+| qubits | ring level | `simulate` | `fromMTBDD` |
+| --- | --- | --- | --- |
+| 5 | 16 | 1.9 ms | 20 ms |
+| 6 | 32 | 3.0 ms | 102 ms |
+| 7 | 64 | 6.6 ms | 648 ms |
+
+That is why the QFT example stops at seven: the arithmetic is exact at any width, and the
+simulation stays cheap, but the edge-valued and Pauli-LIMDD views stop being interactive
+somewhere around nine qubits on a circuit with phases that fine. Nothing is wrong at any
+level — no wrong amplitude was produced at any level tested — it is a scaling ceiling, and
+it is in `unitPart` rather than in the diagram.
+
+A circuit whose angles stay coarse does not pay this: Clifford+T sits at level 4 whatever
+its width, so Grover and the cluster state convert in milliseconds at twelve qubits. It is
+the *finest angle*, not the qubit count, that decides.
