@@ -6,14 +6,16 @@
 // decision diagram, and a test fails if it ever does.
 //
 // What is here now: the circuit, drawn and steppable; the worked examples of the other
-// page restated as sets; and the automaton the specification denotes, drawn. What is not
-// is the middle of the story — the transformer that carries the automaton through each
-// gate, so that stepping the circuit moves the picture. See the plan.
+// page restated as sets; the automaton the specification denotes; and the gates, which
+// carry it through the circuit so that stepping moves the picture. What is not: sharing
+// a view (permalinks, SVG, TikZ), reading AutoQ's own `.aut` files, and the choice sets
+// of a level-synchronized automaton. See the plan.
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
 import { EXAMPLES, instantiate, identify } from './aut-examples.js';
 import { HslError, parseHsl, toVector } from './aut-hsl.js';
+import { simulate } from './aut-gates.js';
 import { fanAngles, layoutAutomaton, spread } from './aut-layout.js';
 import { TA } from './aut-ta.js';
 import * as P from './poly.js';
@@ -48,8 +50,8 @@ const app = {
   index: 0,
   columns: [],
   ta: null,
-  root: null,
-  rank: new Map(),      // where each node sat last time, so a survivor stays put
+  frames: [],           // the automaton before the circuit, and after each gate of it
+  layouts: [],          // one per frame, laid out in order so a survivor stays put
   svg: null,            // the plate, once there is one to zoom
   sticky: null,         // the gutter strip, held at the left edge of the view
   plate: null,          // its size in its own coordinates
@@ -184,11 +186,13 @@ function setStep(i) {
     return;
   }
   const last = app.circuit.gates.length;
+  const was = app.index;
   app.index = Math.max(0, Math.min(i, last));
   app.columns.forEach((col, k) => col.classList.toggle('current', k === app.index));
   $('position').textContent = `${app.index} / ${last}`;
   $('prev').disabled = app.index === 0;
   $('next').disabled = app.index === last;
+  if (app.index !== was && app.layouts.length) showFrame(app.index);
 }
 
 /** Read the circuit box, draw what it says, and say plainly when it says nothing valid. */
@@ -520,7 +524,14 @@ function setZoom(next, clientX, clientY) {
 const zoomBy = (factor) => setZoom(app.scale * factor);
 const zoomAt = (factor, x, y) => setZoom(app.scale * factor, x, y);
 
-/** Read the specification and show what it denotes, or say why it cannot be read. */
+/**
+ * Read the specification, run the circuit over it, and lay out every step.
+ *
+ * All of them, up front, and in order — which is the whole reason a state that survives
+ * a gate stays where it was. Each layout is handed the one before it, so where a state
+ * sits is decided by the run and not by the order the reader happened to step through
+ * it. Stepping back and forth then shows the same picture each time.
+ */
 function showAutomaton() {
   if (!app.circuit) return;
   const n = app.circuit.nqubits;
@@ -529,35 +540,61 @@ function showAutomaton() {
     const ta = new TA(P.Ring, n);
     const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, P.Ring)));
     app.ta = ta;
-    app.root = root;
-    const layout = layoutAutomaton(ta, root, {
-      formatValue: (v) => P.format(v, 'exact'),
-      prevRank: app.rank,
+    app.frames = simulate(ta, root, app.circuit);
+    let rank = new Map();
+    app.layouts = app.frames.map((frame) => {
+      const layout = layoutAutomaton(ta, frame.root, {
+        formatValue: (v) => P.format(v, 'exact'),
+        prevRank: rank,
+      });
+      rank = layout.rank;
+      return layout;
     });
-    app.rank = layout.rank;
-    const drawn = drawAutomaton(layout, app.circuit.qubits.map((q) => q.label));
-    app.svg = drawn.svg;
-    app.sticky = drawn.sticky;
-    app.plate = { width: drawn.width, height: drawn.height };
-    $('canvas').replaceChildren(drawn.svg);
-    fitCanvas();
-    const states = ta.size(root);
-    const inSet = spec.vectors.length;
-    $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · `
-      + `${app.circuit.gates.length} gate${app.circuit.gates.length === 1 ? '' : 's'} · `
-      + `${states} automaton state${states === 1 ? '' : 's'} · `
-      + `${inSet} quantum state${inSet === 1 ? '' : 's'}`;
-    if (spec.constraints.length) {
-      $('error').textContent = `${spec.constraints.length} constraint`
-        + `${spec.constraints.length === 1 ? '' : 's'} shown but not checked — `
-        + 'that needs a solver';
-    }
+    app.constraints = spec.constraints;
+    showFrame(Math.min(app.index, app.frames.length - 1));
   } catch (e) {
-    if (!(e instanceof HslError)) throw e;
     app.ta = null;
-    app.root = null;
-    $('error').textContent = `specification — ${e.message}`;
+    app.frames = [];
+    app.layouts = [];
+    app.constraints = [];
+    if (e instanceof HslError) {
+      $('error').textContent = `specification — ${e.message}`;
+    } else {
+      // Everything the engine refuses on purpose — a gate it cannot apply, a run that
+      // outgrew its budget — arrives here as a plain Error and is shown. So would a
+      // defect, and that must not be dressed up as a refusal: the console keeps the
+      // stack so it can be told from one.
+      console.error(e);
+      $('error').textContent = `the circuit could not be run — ${e.message}`;
+    }
     showPlaceholder();
+  }
+}
+
+/** Draw one step of the run, and say what it holds. */
+function showFrame(index) {
+  const layout = app.layouts[index];
+  if (!layout) return;
+  const frame = app.frames[index];
+  const n = app.circuit.nqubits;
+  const drawn = drawAutomaton(layout, app.circuit.qubits.map((q) => q.label));
+  app.svg = drawn.svg;
+  app.sticky = drawn.sticky;
+  app.plate = { width: drawn.width, height: drawn.height };
+  $('canvas').replaceChildren(drawn.svg);
+  fitCanvas();
+
+  const gates = app.circuit.gates.length;
+  const grew = index > 0 ? frame.size - app.frames[index - 1].size : 0;
+  $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · `
+    + `${gates} gate${gates === 1 ? '' : 's'} · `
+    + `${frame.size} automaton state${frame.size === 1 ? '' : 's'}`
+    + `${grew ? ` (${grew > 0 ? '+' : ''}${grew})` : ''} · `
+    + `${frame.members} quantum state${frame.members === 1 ? '' : 's'}`;
+  if (app.constraints?.length) {
+    $('error').textContent = `${app.constraints.length} constraint`
+      + `${app.constraints.length === 1 ? '' : 's'} shown but not checked — `
+      + 'that needs a solver';
   }
 }
 
@@ -575,8 +612,9 @@ function showPlaceholder() {
     'The circuit or the specification beside it cannot be read, so there is no set of '
     + 'states to build an automaton from. The message under the specification says what '
     + 'stopped it.',
-    'What is still to come is the middle of the story: the transformer that carries the '
-    + 'automaton through each gate, so that stepping the circuit moves the picture.',
+    'With both of them readable, the plate holds the automaton accepting the set the '
+    + 'specification names, and the transport carries it through the circuit a gate at '
+    + 'a time.',
   ]) {
     const p = document.createElement('p');
     p.textContent = text;
