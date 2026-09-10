@@ -209,3 +209,40 @@ test('rotations are exact at a dyadic angle, and refused off the grid', () => {
   assert.throws(() => parseQasm(`${HEAD}qreg q[1];\nrx q[0];\n`), /takes 1 angle/);
   assert.throws(() => parseQasm(`${HEAD}qreg q[2];\nrx(pi/2) q[0],q[1];\n`), /takes 1 qubit/);
 });
+
+test('a name and an argument mean the same thing wherever they are written', () => {
+  const Q = `${HEAD}qreg q[3];\n`;
+
+  // A barrier changes nothing, which is why its arguments were never looked at. They are
+  // still arguments: a barrier on a register that does not exist is a typo, and the whole
+  // point of naming the qubits is to say which ones.
+  assert.throws(() => parseQasm(`${Q}barrier nope;\n`), /unknown register 'nope'/);
+  assert.throws(() => parseQasm(`${Q}barrier q[7];\n`), /out of range/);
+  for (const ok of ['barrier q;', 'barrier q[0],q[2];', 'barrier;']) {
+    assert.doesNotThrow(() => parseQasm(`${Q}${ok}\n`), ok);
+  }
+
+  // Applying a gate to the same qubit twice is meaningless whatever the gate is made of.
+  // It used to depend on the body: caught for `cx a,b`, missed for `h a; h b;`.
+  for (const body of ['cx a,b;', 'h a; h b;', 'x a;']) {
+    assert.throws(() => parseQasm(`${Q}gate g a,b { ${body} }\ng q[0],q[0];\n`),
+      /repeated qubit/, `body '${body}'`);
+  }
+  assert.doesNotThrow(() => parseQasm(`${Q}gate g a,b { h a; h b; }\ng q[0],q[1];\n`));
+
+  // Names bind where they are written. A body used to resolve its callees at *call* time,
+  // so a later definition of `h` silently changed what every earlier macro did.
+  assert.throws(() => parseQasm(`${Q}gate h a { x a; }\n`), /'h' is already defined/);
+  assert.throws(() => parseQasm(`${Q}gate g a { x a; }\ngate g a { y a; }\n`),
+    /'g' is already defined/);
+  assert.throws(() => parseQasm(`${Q}gate g a { nope a; }\n`), /unknown gate 'nope'/);
+  assert.throws(() => parseQasm(`${Q}gate g a { measure a; }\n`), /not a unitary gate/);
+  assert.throws(() => parseQasm(`${Q}gate g a { later a; }\ngate later a { x a; }\n`),
+    /unknown gate 'later'/, 'a forward reference is a forward reference');
+
+  // What was already legal still is: an earlier macro, a builtin, a rotation, and the
+  // self-call that reaches the recursion guard rather than an unknown name.
+  assert.doesNotThrow(() => parseQasm(`${Q}gate g a { x a; }\ngate f a,b { g a; g b; }\nf q[0],q[1];\n`));
+  assert.doesNotThrow(() => parseQasm(`${Q}gate g a { rx(pi/2) a; }\ng q[0];\n`));
+  assert.throws(() => parseQasm(`${Q}gate loop a { loop a; }\nloop q[0];\n`), /expands recursively/);
+});

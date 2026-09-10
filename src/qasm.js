@@ -194,6 +194,10 @@ export function parseQasm(src) {
   const qregs = new Map();
   const cregs = new Map();
   const macros = new Map();
+
+  /** Is this a gate name that already means something? */
+  const known = (name) => macros.has(name) || Object.hasOwn(GATES, name)
+    || Object.hasOwn(ROTATION_GATES, name) || Object.hasOwn(PHASE_GATES, name);
   const qubits = [];
   const gates = [];
   const barriers = [];
@@ -229,6 +233,12 @@ export function parseQasm(src) {
       const macro = macros.get(name);
       if (args.length !== macro.qargs.length) {
         throw new QasmError(`gate '${name}' takes ${macro.qargs.length} qubit(s), got ${args.length}`, line);
+      }
+      // Checked here rather than left to `emit`, which only sees the gates the body
+      // happens to expand to: `g q[0],q[0]` was an error for a body of `cx a,b` and not
+      // for one of `h a; h b;`, though the call is equally meaningless either way.
+      if (new Set(args).size !== args.length) {
+        throw new QasmError(`gate '${name}' applied to a repeated qubit`, line);
       }
       const bind = new Map(macro.qargs.map((q, i) => [q, args[i]]));
       for (const call of macro.body) {
@@ -316,10 +326,22 @@ export function parseQasm(src) {
       const qargs = [];
       while (!p.at('{')) { qargs.push(p.identifier()); if (!p.eat(',')) break; }
       p.expect('{');
+      // A gate may not be redefined, and a body may only call gates that already exist.
+      // Together these make a body mean the same thing wherever it is read: names used to
+      // resolve when the gate was *called*, so defining `h` later silently changed what
+      // every earlier macro did.
+      if (known(name)) throw new QasmError(`gate '${name}' is already defined`, line);
+
       const body = [];
       while (!p.eat('}')) {
         const callLine = p.line;
         const callee = p.identifier();
+        if (REJECTED[callee]) throw new QasmError(REJECTED[callee], callLine);
+        // The gate being defined counts as known, so a self-call is still a recursion
+        // error when it is reached rather than an unknown name here.
+        if (!known(callee) && callee !== name) {
+          throw new QasmError(`unknown gate '${callee}'`, callLine);
+        }
         const angles = [];
         if (p.eat('(')) {
           while (!p.eat(')')) { angles.push(parseAngle(p)); p.eat(','); }
@@ -340,7 +362,15 @@ export function parseQasm(src) {
 
     if (word === 'barrier') {
       p.next();
-      while (!p.at(';')) { p.next(); }
+      // Nothing is applied, but the arguments are still checked: `barrier nope;` and an
+      // out-of-range index used to be swallowed whole, unlike everywhere else.
+      while (!p.at(';')) {
+        const reg = p.identifier();
+        let index = null;
+        if (p.eat('[')) { index = p.integer(); p.expect(']'); }
+        resolveArg({ reg, index }, line);
+        if (!p.eat(',')) break;
+      }
       p.expect(';');
       barriers.push(gates.length);
       continue;
