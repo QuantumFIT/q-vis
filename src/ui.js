@@ -381,7 +381,11 @@ function setColumn(px) {
 function setPanelHeight(panel, px) {
   const min = Number(panel.dataset.min) || PANEL_MIN;
   const h = Math.round(Math.max(min, px));
-  panel.style.flex = `0 0 ${h}px`;
+  // Shrink 1, not 0: a dragged panel keeps the height it was given while the column has
+  // room for it, and gives way when it does not. With shrink 0 the panels below were
+  // simply pushed out of the column — on a short window the folded Amplitudes bar ended
+  // up drawn over the transport.
+  panel.style.flex = `0 1 ${h}px`;
   // The circuit strip is capped by a max-height until someone drags it. An explicit
   // height has to beat that cap or the drag would stop dead at 190px.
   panel.style.maxHeight = 'none';
@@ -393,7 +397,7 @@ function layoutState() {
   const col = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--col'), 10);
   const heights = {};
   for (const id of ['panelCircuit', 'panelState', 'circuit']) {
-    const m = /0 0 (\d+)px/.exec($(id).style.flex || '');
+    const m = /(\d+)px/.exec($(id).style.flex || '');
     if (m) heights[id] = +m[1];
   }
   // Which panels are folded is the reader's own choice, so it is kept like a size.

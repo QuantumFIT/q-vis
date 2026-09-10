@@ -241,7 +241,15 @@ body.dragging * { cursor: inherit !important; }
   flex-direction: column;
   gap: var(--gap);
   min-height: 0;
+  /* The column is a grid area with a fixed share of the height. If every panel is at its
+     floor and they still do not fit, the overflow is clipped here rather than painted
+     over the transport below. */
+  overflow: hidden;
 }
+
+/* Panels give way when the column is short, but never past their own header — a strip of
+   a panel with no label is worse than a smaller one. */
+.inputs > .panel { min-height: 34px; }
 
 .panel {
   background: var(--panel);
@@ -287,8 +295,10 @@ body.dragging * { cursor: inherit !important; }
 .panel.foldable > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* Open it shares the column; folded it is only its own header, and the rule under that
-   header would be a line with nothing beneath it. */
-#panelAmps[open] { flex: 1 1 auto; }
+   header would be a line with nothing beneath it. Open, it also claims a few rows back
+   from the panels above: it takes what they leave, and they can be dragged to leave
+   nothing at all. */
+#panelAmps[open] { flex: 1 1 auto; min-height: 96px; }
 #panelAmps:not([open]) { flex: 0 0 auto; }
 .panel.foldable:not([open]) > summary { border-bottom: 0; }
 
