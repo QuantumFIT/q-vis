@@ -21,24 +21,39 @@
 // out unchanged.
 //
 // **A set is not a state.** The automaton accepts a set, and applying a gate to a set is
-// applying it to every member. The members are the root's transitions: one per state in
-// the set, because that is what `fromVectors` builds. So each is transformed on its own
-// and the results are collected back into a root. Sharing survives it — two members that
-// agree on a subtree still share it afterwards, because interning and the memo tables
-// cannot help but notice.
+// applying it to every member. So the root is taken apart into one deterministic state
+// per member, each is transformed on its own, and the results are collected back into a
+// root. Sharing survives it — two members that agree on a subtree still share it
+// afterwards, because interning and the memo tables cannot help but notice — and the
+// automaton is reduced again afterwards, so the next gate starts from the small form.
 //
-// That decomposition is also where the limit of a *plain* tree automaton shows. Below the
-// root every state here accepts exactly one tree, and the algebra needs that: `add` of
-// two states walks them in lockstep, which only means anything when each has one run. A
-// state with a real choice under it would need the two children of a transformed node to
-// agree on which choice they took, and two sibling subtrees of a plain TA cannot agree on
-// anything — that correlation is exactly what a level-synchronized automaton adds. So it
-// is refused by name rather than quietly over-approximated.
+// That taking-apart is not an implementation shortcut, and it is worth saying why. The
+// algebra walks two trees in lockstep, which only means something when each has one run.
+// A state with a real choice under it would need the two children of a transformed node
+// to agree on which choice the other took, and two sibling subtrees of a plain tree
+// automaton are read independently — they cannot agree on anything. Except for the gates
+// that never mix siblings (X, Y, Z, S, T and the phases: each sends the pair of subtrees
+// to a pair that is again a product of two sets), the correlation is unavoidable, and
+// expressing it is exactly what a level-synchronized automaton adds.
+//
+// So `expand` determinizes the root before a gate and `reduce` puts it back together
+// afterwards. That loop — expand, transform, reduce — is what AutoQ does, and the two
+// numbers the page prints beside each other are its cost and its saving.
 
 import { GATES } from './gates.js';
+import { reduce } from './aut-reduce.js';
 
 /** How many automaton states a run may build before it is called off. */
 export const STATE_BUDGET = 200000;
+
+/**
+ * How many members a set may have before a gate refuses to take it apart.
+ *
+ * Comfortably above the 64 an HSL specification may name, because a unitary is a
+ * bijection on the set and cannot make it bigger — this is a backstop against an
+ * automaton that arrived some other way, not a limit anyone should meet.
+ */
+export const MEMBER_BUDGET = 4096;
 
 /**
  * The pointwise algebra on the perfect trees an automaton is built from.
@@ -55,6 +70,7 @@ export class Algebra {
     this.products = new Map();
     this.scalings = new Map();
     this.restrictions = new Map();
+    this.members = new Map();
   }
 
   /** The tree that is `value` at every leaf, from `level` down. */
@@ -72,16 +88,49 @@ export class Algebra {
   /** Zero from `level` down — the tree every short-circuit below tests against. */
   zeroAt(level) { return this.constant(level, this.ring.zero); }
 
-  /** The one transition of a state, or a refusal if it has a choice to make. */
+  /**
+   * The one transition of a state, or a refusal if it has a choice to make.
+   *
+   * The algebra's whole contract in one method: it walks trees, not sets. `expand` is
+   * what makes that true of everything reaching it, so this firing means a caller went
+   * around `expand` rather than that an automaton was unusual.
+   */
   #only(id) {
     const out = this.ta.transitionsOf(id);
     if (out.length !== 1) {
-      throw new Error('this state has more than one transition, and a gate cannot be '
-        + 'applied to it: the two halves of a transformed node would each have to know '
-        + 'which choice the other made. That is what a level-synchronized automaton is '
-        + 'for, and it is not built yet');
+      throw new Error('this state has more than one transition, so it is a set rather '
+        + 'than a tree; take it apart with expand() before doing arithmetic on it');
     }
     return out[0];
+  }
+
+  /**
+   * A state as the deterministic states of its members, one per tree it accepts.
+   *
+   * The choices are pushed up: a state with a choice under it becomes several states
+   * with none, which is what the algebra needs and what a plain tree automaton cannot
+   * avoid. Memoised, so a subtree shared between members is taken apart once.
+   */
+  expand(id) {
+    const had = this.members.get(id);
+    if (had !== undefined) return had;
+    if (this.ta.isLeaf(id)) return [id];
+    const level = this.ta.levelOf(id);
+    const out = new Set();
+    for (const [lo, hi] of this.ta.transitionsOf(id)) {
+      for (const l of this.expand(lo)) {
+        for (const h of this.expand(hi)) {
+          if (out.size >= MEMBER_BUDGET) {
+            throw new Error(`this automaton accepts more than ${MEMBER_BUDGET} states, `
+              + 'which is more than a gate will take apart');
+          }
+          out.add(this.ta.state(level, [[l, h]]));
+        }
+      }
+    }
+    const made = [...out];
+    this.members.set(id, made);
+    return made;
   }
 
   /** Pointwise sum of two trees at the same level. */
@@ -225,16 +274,16 @@ export function applyGate(alg, root, qubits, matrix) {
 /**
  * Apply one circuit operation to every state in the set.
  *
- * The members of the set are the root's transitions. Each is lifted back into a root of
- * its own, transformed, and put back — so a gate moves every state the automaton accepts
- * and moves each of them the same way.
+ * The root is taken apart into its members, each is transformed on its own, and the
+ * results are collected back — so a gate moves every state the automaton accepts, and
+ * moves each of them the same way. Reducing the result is the caller's business:
+ * `simulate` does it, because it is what makes the next gate start from the small form.
  */
 export function applyOp(alg, root, op, levelOf = null) {
   const matrix = op.matrix || (GATES[op.name] && GATES[op.name].matrix);
   if (!matrix) throw new Error(`unknown gate '${op.name}'`);
   const at = levelOf ? op.qubits.map((q) => levelOf[q]) : op.qubits;
-  const moved = alg.ta.transitionsOf(root)
-    .map((pair) => applyGate(alg, alg.ta.state(0, [pair]), at, matrix));
+  const moved = alg.expand(root).map((member) => applyGate(alg, member, at, matrix));
   return alg.ta.state(0, moved.flatMap((m) => alg.ta.transitionsOf(m)));
 }
 
@@ -242,8 +291,10 @@ export function applyOp(alg, root, op, levelOf = null) {
  * @typedef {object} Frame
  * @property {number} index          0 for the input set, i+1 after the i-th gate
  * @property {?object} gate          the gate just applied (null for the input set)
- * @property {number} root           the automaton's root state after that gate
+ * @property {number} root           the reduced automaton after that gate
  * @property {number} size           states reachable from it
+ * @property {number} expanded       states it took to hold the set with no sharing of
+ *                                   choices — what the reduction saved
  * @property {number} members        how many quantum states it accepts
  * @property {number[]} added        states present now but not in the previous frame
  * @property {number[]} removed      states present in the previous frame but not now
@@ -263,30 +314,35 @@ export function simulate(ta, initialRoot, circuit, levelOf = null) {
   const alg = new Algebra(ta);
   const frames = [];
   let prev = new Set();
-  let root = initialRoot;
+  let root = reduce(ta, initialRoot);
 
-  const push = (index, gate) => {
+  const push = (index, gate, expanded) => {
     const now = new Set(ta.reachable(root));
     frames.push({
       index,
       gate,
       root,
       size: now.size,
-      members: ta.transitionsOf(root).length,
+      expanded,
+      members: alg.expand(root).length,
       added: [...now].filter((s) => !prev.has(s)),
       removed: [...prev].filter((s) => !now.has(s)),
     });
     prev = now;
   };
 
-  push(0, null);
+  push(0, null, ta.size(initialRoot));
   circuit.gates.forEach((g, i) => {
-    root = applyOp(alg, root, g, levelOf);
+    // Expand, transform, reduce — and the next gate starts from what came out, not from
+    // the expansion. Holding on to the expanded form instead would mean every gate after
+    // the first paid for a sharing that had already been found once.
+    const wide = applyOp(alg, root, g, levelOf);
+    root = reduce(ta, wide);
     if (ta.states.length > STATE_BUDGET) {
       throw new Error(`the automaton passed ${STATE_BUDGET} states at gate ${i + 1} `
         + `(${g.name}), which is more than this page will draw`);
     }
-    push(i + 1, g);
+    push(i + 1, g, ta.size(wide));
   });
   return frames;
 }

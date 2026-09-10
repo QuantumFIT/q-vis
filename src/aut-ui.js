@@ -16,7 +16,6 @@ import { circuitStrip, svgEl } from './circuit-view.js';
 import { EXAMPLES, SPECIALS, instantiate, identify } from './aut-examples.js';
 import { HslError, MAX_STATES, parseHsl, toVector } from './aut-hsl.js';
 import { simulate } from './aut-gates.js';
-import { reduce } from './aut-reduce.js';
 import { fanAngles, layoutAutomaton, spread } from './aut-layout.js';
 import { TA } from './aut-ta.js';
 import * as P from './poly.js';
@@ -549,19 +548,13 @@ function showAutomaton() {
     const ta = new TA(P.Ring, n);
     const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, P.Ring)));
     app.ta = ta;
+    // Each frame is already the reduced automaton: `simulate` expands the root to push a
+    // gate through it and reduces what comes out, so the next gate starts from the small
+    // form and the picture is the object the run actually carries.
     app.frames = simulate(ta, root, app.circuit);
-    // What is drawn is the reduced automaton; what the gates were applied to is not.
-    // The two accept the same set at every step — which is the only thing that has to be
-    // true — but a gate needs each half of a transformed node to know which choice the
-    // other made, and the reduced one is exactly the one that cannot say. See
-    // `aut-reduce.js`, and the plan's note about level-synchronized automata.
-    for (const frame of app.frames) {
-      frame.shown = reduce(ta, frame.root);
-      frame.shownSize = ta.size(frame.shown);
-    }
     let rank = new Map();
     app.layouts = app.frames.map((frame) => {
-      const layout = layoutAutomaton(ta, frame.shown, {
+      const layout = layoutAutomaton(ta, frame.root, {
         formatValue: (v) => P.format(v, 'exact'),
         prevRank: rank,
       });
@@ -603,13 +596,13 @@ function showFrame(index) {
   fitCanvas();
 
   const gates = app.circuit.gates.length;
-  const grew = index > 0 ? frame.shownSize - app.frames[index - 1].shownSize : 0;
-  const saved = frame.size - frame.shownSize;
+  const grew = index > 0 ? frame.size - app.frames[index - 1].size : 0;
+  const saved = frame.expanded - frame.size;
   $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · `
     + `${gates} gate${gates === 1 ? '' : 's'} · `
-    + `${frame.shownSize} automaton state${frame.shownSize === 1 ? '' : 's'}`
+    + `${frame.size} automaton state${frame.size === 1 ? '' : 's'}`
     + `${grew ? ` (${grew > 0 ? '+' : ''}${grew})` : ''}`
-    + `${saved ? ` · reduced from ${frame.size}` : ''} · `
+    + `${saved > 0 ? ` · reduced from ${frame.expanded}` : ''} · `
     + `${frame.members} quantum state${frame.members === 1 ? '' : 's'}`;
   if (app.constraints?.length) {
     $('error').textContent = `${app.constraints.length} constraint`

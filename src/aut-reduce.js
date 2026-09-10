@@ -23,11 +23,17 @@
 // level that says "everything below me is zero".
 //
 // What it produces is *nondeterministic below the root*, which is the point — that is
-// where an automaton beats a list — and also why `aut-gates.js` is given the unreduced
-// automaton to work on. A gate has to know which choice each half of a transformed node
-// took, and a plain tree automaton cannot say. So the page reduces what it *shows* and
-// transforms what it *has*; the two accept the same set at every step, which is the only
-// thing that has to be true.
+// where an automaton beats a list. `aut-gates.js` takes the root apart again before each
+// gate, because a gate has to know which choice each half of a transformed node took and
+// a plain tree automaton cannot say; but it reduces what comes out, so the next gate
+// starts from the small form rather than from an expansion that has already been paid
+// for once. Expand, transform, reduce — the loop AutoQ runs.
+//
+// The saving outlives the first frame even where the state count does not move. On every
+// computational basis state of five qubits, a Hadamard leaves 67 states either way, and
+// the reduction still takes the root from 32 transitions to 16 — which is optimal, since
+// the pairs it accepts are {(e, e), (e, -e)} and no rectangle can hold two different e's
+// without admitting a pair that was never there.
 
 /**
  * The same language, in fewer states.

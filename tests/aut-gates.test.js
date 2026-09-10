@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Algebra, applyGate, applyOp, simulate } from '../src/aut-gates.js';
+import { reduce } from '../src/aut-reduce.js';
 import { TA } from '../src/aut-ta.js';
 import { GATES } from '../src/gates.js';
 import { parseQasm } from '../src/qasm.js';
@@ -189,9 +190,11 @@ test('a symbolic amplitude goes through a gate as an amplitude, not as a number'
   assert.ok(ring.eq(got[0], b) && ring.eq(got[1], a), `${P.format(got[0], 'exact')}`);
 });
 
-test('a choice below the root is refused by name, not quietly approximated', () => {
-  // The boundary of a plain tree automaton. Two sibling subtrees of the transformed node
-  // would each have to know which choice the other took, and a TA cannot say that.
+test('the arithmetic walks trees, and says so when handed a set', () => {
+  // The boundary of a plain tree automaton, and the algebra's contract. Two sibling
+  // subtrees of a transformed node would each have to know which choice the other took,
+  // and a TA cannot say that — so `applyGate` refuses a state with a choice under it,
+  // and `applyOp` takes the choices apart first rather than approximating them.
   const ta = new TA(ring, 2);
   const alg = new Algebra(ta);
   const zero = ta.leaf(P.zero);
@@ -200,10 +203,55 @@ test('a choice below the root is refused by name, not quietly approximated', () 
   const l1 = ta.state(1, [[zero, one]]);
   const branchy = ta.state(1, [[one, zero], [zero, one]]);   // a real choice, at level 1
   const root = ta.state(0, [[branchy, l0]]);
-  assert.throws(() => applyGate(alg, root, [0], GATES.h.matrix),
-    /more than one transition|level-synchronized/);
-  // and the same automaton without the choice goes through
+  assert.throws(() => applyGate(alg, root, [0], GATES.h.matrix), /set rather than a tree/);
   assert.doesNotThrow(() => applyGate(alg, ta.state(0, [[l1, l0]]), [0], GATES.h.matrix));
+
+  // The same automaton through applyOp, which expands first: two members in, two out,
+  // and each of them is what the dense oracle says it should be.
+  const after = applyOp(alg, root, { name: 'h', qubits: [0] });
+  const dense = ta.language(root)
+    .map((v) => applyGateDense(v.map(asComplex), 2, [0], GATES.h.matrix));
+  assert.deepEqual(asFloats(ta.language(after)), asText(dense));
+});
+
+test('expanding a set gives one deterministic state per member, and no more', () => {
+  const ta = new TA(ring, 3);
+  const alg = new Algebra(ta);
+  const spec = parseHsl(SPECIALS.basis.spec(3), 3);
+  const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+  const small = reduce(ta, root);
+  const members = alg.expand(small);
+  assert.equal(members.length, 8, 'the reduced automaton still accepts every basis state');
+  for (const m of members) {
+    for (const id of ta.reachable(m)) {
+      if (!ta.isLeaf(id)) assert.equal(ta.transitionsOf(id).length, 1, 'each member is a tree');
+    }
+    assert.equal(ta.language(m).length, 1);
+  }
+  assert.deepEqual(
+    new Set(members.flatMap((m) => ta.language(m)).map((v) => v.map((x) => ring.key(x)).join('|'))),
+    new Set(ta.language(small).map((v) => v.map((x) => ring.key(x)).join('|'))),
+    'and between them they accept exactly what it did');
+});
+
+test('every frame is reduced, so the next gate starts from the small form', () => {
+  // What the pipeline promises: expand to push a gate through, reduce what comes out,
+  // and carry *that* forward. If a frame were not already reduced, the next gate would
+  // be paying again for sharing that had been found once.
+  const n = 4;
+  const ta = new TA(ring, n);
+  const spec = parseHsl(SPECIALS.basis.spec(n), n);
+  const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+  const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\n\n'
+    + 'h q[0];\ncx q[0],q[1];\nt q[2];\nx q[3];\n');
+  const frames = simulate(ta, root, circuit);
+  for (const frame of frames) {
+    assert.equal(reduce(ta, frame.root), frame.root, `frame ${frame.index} is not reduced`);
+    assert.equal(frame.members, 2 ** n, 'and a unitary keeps the set the size it was');
+    assert.ok(frame.expanded >= frame.size, 'the expansion is never smaller than what it reduced to');
+  }
+  assert.equal(frames[0].size, 2 * n + 1, 'the input set is the compact automaton');
+  assert.ok(frames[0].expanded > frames[0].size, 'and it did not start that way');
 });
 
 test('a rotation stays in the ring, so the amplitude is exact and not rounded', () => {
