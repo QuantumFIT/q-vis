@@ -165,6 +165,11 @@ export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } 
         terminal: leaf,
         label: leaf ? formatValue(ta.valueOf(id)) : `q${id}`,
         transitions: ta.transitionsOf(id).length,
+        // A root state, in the automaton's sense: a tree is accepted when a run over it
+        // ends in one. There is one here because `fromVectors` folds a set of states into
+        // a single top state's transitions, but the field is a flag per node rather than
+        // an id, because an automaton read from a file may mark several.
+        root: id === root,
         fresh: !prevRank.has(id) && prevRank.size > 0,
       });
     });

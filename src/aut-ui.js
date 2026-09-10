@@ -66,7 +66,9 @@ const app = {
  * on the two edges rather than near them.
  */
 const GEO = {
-  rowH: 78, colW: 66, padX: 34, padY: 34, gutter: 62, r: 11, termW: 46, termH: 22,
+  // padY leaves room above the first row for the arrow into the root, as padTop does on
+  // the other page.
+  rowH: 78, colW: 66, padX: 34, padY: 44, gutter: 62, r: 11, termW: 46, termH: 22,
   handle: 12,
 };
 
@@ -406,9 +408,33 @@ function drawAutomaton(layout, labels) {
       g.append(svgEl('circle', { class: 'aut-state', cx: xOf(n.x), cy: yOf(n.y), r: GEO.r }));
     }
     svg.append(g);
+    if (n.root) svg.append(rootMarker(xOf(n.x), yOf(n.y)));
   }
   svg.append(sticky);
   return { svg, sticky, width, height };
+}
+
+/**
+ * The arrow into a root state, as automata are drawn on paper.
+ *
+ * `R` because that is what the set is called — in the PLDI'23 paper, and in the `%Root`
+ * line of the `.aut` files AutoQ reads and writes. A run over a tree accepts it when it
+ * ends in one of these, so without the mark the picture does not say what it accepts:
+ * the top state is only the top state because of where it happens to have been drawn.
+ */
+function rootMarker(cx, cy) {
+  const g = svgEl('g', { class: 'aut-root', transform: `translate(${cx},${cy})` });
+  g.append(
+    svgEl('path', { class: 'stem', d: `M 0 -34 L 0 ${-GEO.r - 8}` }),
+    svgEl('path', {
+      class: 'head',
+      d: `M -3.6 ${-GEO.r - 9} L 3.6 ${-GEO.r - 9} L 0 ${-GEO.r - 1} Z`,
+    }),
+  );
+  const cap = svgEl('text', { x: -8, y: -26 });
+  cap.textContent = 'R';
+  g.append(cap);
+  return g;
 }
 
 // ---- the zoom -----------------------------------------------------------

@@ -84,6 +84,20 @@ test('an edge says which transition it belongs to, and each has one low and one 
     'the junction is gone: a node is a state or a leaf');
 });
 
+test('the root is marked, and it is the only one', () => {
+  // Without the mark the picture does not say what the automaton accepts: a run accepts
+  // the tree it read when it ends in a root state, and the top of the drawing is
+  // otherwise only the top of the drawing.
+  const ta = new TA(ring, 3);
+  const { root } = ta.fromVectors([basis(3, 0), basis(3, 5)]);
+  const layout = laid(ta, root);
+  const marked = layout.nodes.filter((n) => n.root);
+  assert.equal(marked.length, 1);
+  assert.equal(marked[0].id, root);
+  assert.equal(marked[0].y, 0, 'and it is on the top row');
+  assert.ok(layout.nodes.every((n) => n.root || n.id !== root), 'nothing else claims it');
+});
+
 test('a deterministic automaton lays out as the diagram it is', () => {
   for (const n of [1, 2, 3, 4]) {
     const ta = new TA(ring, n);

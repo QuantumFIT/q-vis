@@ -97,6 +97,24 @@
    through it. Its own colour, because a marker inherits nothing from the path. */
 .aut-head { fill: var(--ink-soft); }
 
+/* The arrow into a root state, and the name of the set it belongs to. A run accepts the
+   tree it read when it ends in one of these, so the mark is what says which state that
+   is — the top of the picture is otherwise only the top of the picture. */
+.aut-root .stem {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: calc(1.1px * var(--unzoom, 1));
+}
+
+.aut-root .head { fill: var(--ink-soft); stroke: none; }
+
+.aut-root text {
+  fill: var(--ink-soft);
+  font: 12px/1 var(--serif);
+  text-anchor: end;
+  dominant-baseline: central;
+}
+
 /* The two edges of one transition, joined near the state they leave — the notation the
    tree-automata papers use. It marks the transition, not the ambiguity: q -> f(q0, q1)
    takes both children at once whether or not the state has another transition to offer,
