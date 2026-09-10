@@ -91,6 +91,31 @@ equal states have identical diagrams. It is refused rather than rounded. `measur
 and classical control are rejected for a related reason — this tool shows unitary evolution
 of a pure state.
 
+### A random circuit
+
+`random`, beside `gates`, writes one into the box. It draws a **gate set** first and the
+gates only from it, because the set is the interesting variable: a Clifford circuit and a
+Clifford+T circuit of the same length give diagrams of quite different character, and
+landing on one of those characters at random is more use than a uniform soup of every
+gate the parser knows.
+
+| set | what its diagrams show |
+| --- | --- |
+| Clifford | a stabilizer state — the Pauli-LIMDD is a tower, one node per qubit |
+| Clifford+T | universal; the T gates take the amplitude ring past level 4 |
+| Toffoli–Hadamard | real amplitudes: every one is an integer over a power of √2 |
+| diagonal | nothing moves between basis states, only the phases change |
+| rotations | the parametrised gates, at angles the ring still holds |
+| mixed | no class in particular |
+
+The generated circuit is ordinary text: the header comment names the set, says what to
+watch for, and records the seed, so a roll worth keeping survives editing, a permalink,
+and being pasted somewhere else. `src/random.js` is a pure function of that seed.
+
+The Clifford case is worth a click on its own. Theorem 1 of the Pauli-LIMDD paper says a
+state is a stabilizer state *exactly* when its LIMDD is a tower, and a random Clifford
+circuit is a way to watch that hold on a state nobody chose — 40 seeds of it are a test.
+
 ## Three ways to draw one state, times a toggle
 
 The selector chooses what the diagram puts on its edges. Each answers a different

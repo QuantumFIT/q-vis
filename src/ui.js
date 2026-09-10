@@ -8,6 +8,7 @@ import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
 import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.js';
 import { EVDD, unitNormaliser, NORMALISERS, DEFAULT_NORMALISER } from './evdd.js';
+import { randomCircuit } from './random.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
@@ -2105,6 +2106,17 @@ export function boot() {
     app.index = 0;
     compile();
   };
+  $('random').addEventListener('click', () => {
+    // A fresh seed per click, written into the circuit's own comment: the text is the
+    // whole record, so a roll that turns up something worth keeping can be got back by
+    // the link like any other circuit.
+    const made = randomCircuit(Math.floor(Math.random() * 2 ** 32));
+    $('qasm').value = made.qasm;
+    $('stateText').value = made.state;
+    picker.value = '';
+    app.index = 0;
+    compile();
+  });
   $('symbolic').addEventListener('click', () => writeState(symbolicStateText));
   $('zeroState').addEventListener('click', () => writeState((n) => `|${'0'.repeat(n)}> : 1`));
   $('help').addEventListener('click', () => { buildHelp(); $('helpDialog').showModal(); });
