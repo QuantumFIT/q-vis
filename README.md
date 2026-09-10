@@ -93,8 +93,9 @@ of a pure state.
 
 ### A random circuit
 
-`random`, beside `gates`, writes one into the box. It draws a **gate set** first and the
-gates only from it, because the set is the interesting variable: a Clifford circuit and a
+`random`, beside `gates`, writes one into the box, and the picker next to it says which
+gate set to draw from — leave it on *any set* and that is drawn too. The set comes first
+and the gates only from it, because the set is the interesting variable: a Clifford circuit and a
 Clifford+T circuit of the same length give diagrams of quite different character, and
 landing on one of those characters at random is more use than a uniform soup of every
 gate the parser knows.
@@ -112,9 +113,9 @@ The generated circuit is ordinary text: the header comment names the set, says w
 watch for, and records the seed, so a roll worth keeping survives editing, a permalink,
 and being pasted somewhere else. `src/random.js` is a pure function of that seed.
 
-The Clifford case is worth a click on its own. Theorem 1 of the Pauli-LIMDD paper says a
-state is a stabilizer state *exactly* when its LIMDD is a tower, and a random Clifford
-circuit is a way to watch that hold on a state nobody chose — 40 seeds of it are a test.
+The Clifford case is worth pinning the picker to. Theorem 1 of the Pauli-LIMDD paper says
+a state is a stabilizer state *exactly* when its LIMDD is a tower, and rolling Clifford
+circuits is a way to watch that hold on states nobody chose — 40 seeds of it are a test.
 
 ## Three ways to draw one state, times a toggle
 

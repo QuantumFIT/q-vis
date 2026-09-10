@@ -69,6 +69,9 @@ export const GATE_SETS = {
   },
   toffoli: {
     label: 'Toffoli–Hadamard',
+    // A picker is only as narrow as its widest option, and this is the only name long
+    // enough to squeeze the panel's own heading. The full one still goes in the circuit.
+    short: 'Toffoli',
     watch: 'real amplitudes throughout: every one is an integer over a power of sqrt(2)',
     pool: ['h', 'x', 'cx', 'ccx', 'ccz', 'c3x'],
   },

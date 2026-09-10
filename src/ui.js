@@ -8,7 +8,7 @@ import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
 import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.js';
 import { EVDD, unitNormaliser, NORMALISERS, DEFAULT_NORMALISER } from './evdd.js';
-import { randomCircuit } from './random.js';
+import { randomCircuit, GATE_SETS } from './random.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
@@ -2106,11 +2106,18 @@ export function boot() {
     app.index = 0;
     compile();
   };
+  // 'any' first and selected, since drawing the set is half of what the button is for;
+  // the rest let a reader who wants one kind of diagram keep rolling for it.
+  $('randomSet').append(new Option('any set', ''));
+  for (const [key, set] of Object.entries(GATE_SETS)) {
+    $('randomSet').append(new Option(set.short ?? set.label, key));
+  }
   $('random').addEventListener('click', () => {
     // A fresh seed per click, written into the circuit's own comment: the text is the
     // whole record, so a roll that turns up something worth keeping can be got back by
     // the link like any other circuit.
-    const made = randomCircuit(Math.floor(Math.random() * 2 ** 32));
+    const want = $('randomSet').value;
+    const made = randomCircuit(Math.floor(Math.random() * 2 ** 32), want ? { set: want } : {});
     $('qasm').value = made.qasm;
     $('stateText').value = made.state;
     picker.value = '';
