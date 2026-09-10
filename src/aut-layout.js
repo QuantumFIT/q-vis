@@ -5,22 +5,68 @@
 // thing it depends on. What the two share is the *output* — the same frame shape, so the
 // renderer and, later, the TikZ export need learn nothing new.
 //
-// One thing is drawn here that has no counterpart in a decision diagram. A DD node has a
-// low child and a high child and that is the whole story; an automaton state has a *set*
-// of (low, high) pairs, and which pair a run takes is a choice. So a transition is drawn
-// as an object in its own right — a small junction between the state and the pair it
-// leads to — and a state with only one transition has it suppressed, so a deterministic
-// automaton looks exactly like the diagram it is.
+// One thing here has no counterpart in a decision diagram. A DD node has a low child and
+// a high child and that is the whole story; an automaton state has a *set* of (low, high)
+// pairs, and which pair a run takes is a choice. So the two edges of one transition have
+// to be readable as a pair — otherwise a state with three transitions is six loose lines
+// and the picture says nothing about which of them go together.
 //
-// That junction is also where a level-synchronized automaton will hang its choices.
+// The notation is the one the tree-automata papers use, and the one AND/OR graphs have
+// used for decades: the pair leaves the state at two *different* points and an arc is
+// drawn across them near the source. This module does the part of that which is not
+// pixels — it groups the edges by transition and fans their exit angles — and leaves the
+// drawing to the renderer.
+//
+// `fanAngles` is also where a level-synchronized automaton will hang its choices: an arc
+// is a better place to write one on than a bare edge ever was.
 
 import { stableOrder } from './stable-order.js';
 
-/** Junctions sit between their level and the next, close enough to read as belonging. */
-const JUNCTION_DROP = 0.42;
+/** How far from straight down an edge may leave, in degrees, and how the fan widens. */
+const MIN_SPREAD = 26;
+const FAN_STEP = 12;
+const FAN_LIMIT = 72;
 
-/** A transition's identity: the state it leaves and the pair it goes to. */
-const junctionId = (from, low, high) => `${from}>${low},${high}`;
+/** A gap between two transitions, relative to the gap inside one. */
+const GROUP_GAP = 1.7;
+
+/**
+ * Spread one state's outgoing edges around the bottom of its circle.
+ *
+ * Two rules, and they are the whole of it. Transitions are kept contiguous and ordered
+ * left to right, so each one owns an angular sector and its arc cannot be confused with
+ * its neighbour's. Within a transition the two edges are ordered by where they are going,
+ * so neither pair crosses itself the moment it leaves the state — the dash pattern, not
+ * the side, is what says which is the 0-edge.
+ *
+ * @param {number[][]} groups one array of wanted angles per transition, in degrees from
+ *   straight down and positive to the right
+ * @returns {number[][]} the angle to give each edge, in the shape it came in
+ */
+export function fanAngles(groups) {
+  const order = groups
+    .map((angles, g) => ({ g, mid: angles.reduce((a, b) => a + b, 0) / angles.length }))
+    .sort((a, b) => a.mid - b.mid || a.g - b.g);
+
+  const laid = [];
+  let span = 0;
+  for (const { g } of order) {
+    groups[g]
+      .map((want, i) => ({ g, i, want }))
+      .sort((a, b) => a.want - b.want || a.i - b.i)
+      .forEach((slot, i) => {
+        if (laid.length) span += i === 0 ? GROUP_GAP : 1;
+        laid.push({ ...slot, at: span });
+      });
+  }
+
+  const spread = Math.min(FAN_LIMIT, MIN_SPREAD + FAN_STEP * (laid.length - 2));
+  const out = groups.map((angles) => new Array(angles.length));
+  for (const slot of laid) {
+    out[slot.g][slot.i] = span ? -spread + (2 * spread * slot.at) / span : 0;
+  }
+  return out;
+}
 
 /**
  * Lay out one automaton.
@@ -29,9 +75,9 @@ const junctionId = (from, low, high) => `${from}>${low},${high}`;
  * @param {number} root
  * @param {object} opts
  * @param {(value: any) => string} opts.formatValue how a leaf amplitude is written
- * @param {Map<string, number>} [opts.prevRank] where each node sat last time, so that a
- *   state which survives a gate stays where it was instead of being re-sorted around it
- * @returns {{nodes: object[], edges: object[], rank: Map<string, number>,
+ * @param {Map<number, number>} [opts.prevRank] where each state sat last time, so that one
+ *   which survives a gate stays where it was instead of being re-sorted around it
+ * @returns {{nodes: object[], edges: object[], rank: Map<number, number>,
  *            xMin: number, xMax: number, width: number, height: number}}
  */
 export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } = {}) {
@@ -49,63 +95,46 @@ export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } 
   walk(root);
 
   const byRow = new Map();
-  const addTo = (row, id) => {
+  for (const id of reachable) {
+    const row = ta.levelOf(id);
     if (!byRow.has(row)) byRow.set(row, []);
     byRow.get(row).push(id);
-  };
-  for (const id of reachable) {
-    addTo(ta.levelOf(id), String(id));
-    const transitions = ta.transitionsOf(id);
-    if (transitions.length > 1) {
-      for (const [low, high] of transitions) {
-        addTo(ta.levelOf(id) + JUNCTION_DROP, junctionId(id, low, high));
-      }
-    }
   }
-
-  const orderOf = (key) => {
-    const via = key.indexOf('>');
-    return scan.get(Number(via < 0 ? key : key.slice(0, via))) ?? 0;
-  };
 
   const nodes = [];
   const rank = new Map();
   let xMin = 0;
   let xMax = 0;
   for (const [row, ids] of [...byRow].sort((a, b) => a[0] - b[0])) {
-    const sorted = stableOrder(
-      [...ids].sort((a, b) => orderOf(a) - orderOf(b) || (a < b ? -1 : 1)),
-      prevRank,
-    );
-    sorted.forEach((key, i) => {
+    const sorted = stableOrder([...ids].sort((a, b) => scan.get(a) - scan.get(b)), prevRank);
+    sorted.forEach((id, i) => {
       const x = i - (sorted.length - 1) / 2;
-      rank.set(key, x);
+      rank.set(id, x);
       xMin = Math.min(xMin, x);
       xMax = Math.max(xMax, x);
-      const isJunction = key.includes('>');
-      const id = isJunction ? key : Number(key);
+      const leaf = ta.isLeaf(id);
       nodes.push({
-        id: key,
+        id,
         x,
         y: row,
-        kind: isJunction ? 'junction' : (ta.isLeaf(id) ? 'leaf' : 'state'),
-        terminal: !isJunction && ta.isLeaf(id),
-        label: isJunction ? '' : (ta.isLeaf(id) ? formatValue(ta.valueOf(id)) : `q${id}`),
-        fresh: !prevRank.has(key) && prevRank.size > 0,
+        kind: leaf ? 'leaf' : 'state',
+        terminal: leaf,
+        label: leaf ? formatValue(ta.valueOf(id)) : `q${id}`,
+        transitions: ta.transitionsOf(id).length,
+        fresh: !prevRank.has(id) && prevRank.size > 0,
       });
     });
   }
 
+  // Two edges per transition, each carrying which transition it belongs to. That index is
+  // what the renderer fans and arcs by, and it is the only thing a decision diagram's
+  // edge does not already have.
   const edges = [];
   for (const id of reachable) {
-    const transitions = ta.transitionsOf(id);
-    const direct = transitions.length === 1;
-    for (const [low, high] of transitions) {
-      const via = direct ? String(id) : junctionId(id, low, high);
-      if (!direct) edges.push({ from: String(id), to: via, kind: 'stem' });
-      edges.push({ from: via, to: String(low), high: false, kind: 'child' });
-      edges.push({ from: via, to: String(high), high: true, kind: 'child' });
-    }
+    ta.transitionsOf(id).forEach(([low, high], transition) => {
+      edges.push({ from: id, to: low, high: false, transition });
+      edges.push({ from: id, to: high, high: true, transition });
+    });
   }
 
   return {

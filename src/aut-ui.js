@@ -5,15 +5,16 @@
 // parser and the circuit drawing; they share no engine. Nothing here reaches into the
 // decision diagram, and a test fails if it ever does.
 //
-// What is here now: the circuit, drawn and steppable, and the worked examples of the
-// other page restated as sets. What is not: the automaton itself (`aut-ta.js`), the
-// specification language (`aut-hsl.js`), and the picture (`aut-layout.js`). See the plan.
+// What is here now: the circuit, drawn and steppable; the worked examples of the other
+// page restated as sets; and the automaton the specification denotes, drawn. What is not
+// is the middle of the story — the transformer that carries the automaton through each
+// gate, so that stepping the circuit moves the picture. See the plan.
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
 import { EXAMPLES, instantiate, identify } from './aut-examples.js';
 import { HslError, parseHsl, toVector } from './aut-hsl.js';
-import { layoutAutomaton } from './aut-layout.js';
+import { fanAngles, layoutAutomaton } from './aut-layout.js';
 import { TA } from './aut-ta.js';
 import * as P from './poly.js';
 
@@ -33,8 +34,35 @@ const app = {
   rank: new Map(),      // where each node sat last time, so a survivor stays put
 };
 
-/** The plate's geometry, in the same spirit as the other page's. */
-const GEO = { rowH: 78, colW: 66, padX: 34, padY: 34, gutter: 62, r: 11, termW: 46, termH: 22 };
+/**
+ * The plate's geometry, in the same spirit as the other page's.
+ *
+ * An edge leaves its state straight, along the ray it was given, before it bends toward
+ * the child over a handle of `handle`. The straight part is what the arc joining a
+ * transition's two edges is drawn across — inside the run, so the arc's ends land exactly
+ * on the two edges rather than near them.
+ */
+const GEO = {
+  rowH: 78, colW: 66, padX: 34, padY: 34, gutter: 62, r: 11, termW: 46, termH: 22,
+  handle: 12,
+};
+
+/**
+ * How far the straight run reaches, for a state with `k` edges leaving it.
+ *
+ * It grows with the fan, and the reason is the arc: the more transitions a state has the
+ * narrower each one's sector, and an arc of a narrow sector is only long enough to read
+ * if it is drawn further out.
+ */
+const runOf = (k) => Math.min(30, 16 + 2.2 * (k - 2));
+
+const DEG = 180 / Math.PI;
+
+/** A point on a circle, by angle from straight down, positive to the right. */
+function onCircle(cx, cy, r, deg) {
+  const t = deg / DEG;
+  return [cx + r * Math.sin(t), cy + r * Math.cos(t)];
+}
 
 /** 'auto' follows the system; the other two pin it. Kept per viewer, not in the file. */
 function applyTheme(name) {
@@ -128,14 +156,24 @@ function compile() {
  *
  * A state is a circle, a leaf is its amplitude in a box, a 0-edge is dashed and a 1-edge
  * solid — all of it the same vocabulary the other page uses, so that a reader who knows
- * one picture can read the other. What is new is the junction: a state with more than one
- * transition has each of them drawn as a small square, because *which* transition a run
- * takes is a choice, and a choice is a thing rather than an absence.
+ * one picture can read the other.
+ *
+ * Two things it says that a decision diagram never has to. Edges leave a state at
+ * *different points* on its circle, fanned around the bottom, rather than all from the
+ * one spot underneath it. And when a state has more than one transition, the two edges of
+ * each are joined by an arc close to the state — the notation the tree-automata papers
+ * use, and the one AND/OR graphs have used for far longer. Without it a state with three
+ * transitions is six loose lines and nothing on the page says which go together.
+ *
+ * A deterministic state gets the fan but no arc: with one transition there is nothing to
+ * tell apart, and the picture stays the diagram it is.
  */
 function drawAutomaton(layout, labels) {
-  const xOf = (x) => GEO.padX + GEO.gutter + (x - layout.xMin) * GEO.colW;
+  // Half a terminal box of margin on each side, or the leftmost amplitude sits on top of
+  // the gutter label naming its row.
+  const xOf = (x) => GEO.padX + GEO.gutter + GEO.termW / 2 + (x - layout.xMin) * GEO.colW;
   const yOf = (y) => GEO.padY + y * GEO.rowH;
-  const width = xOf(layout.xMax) + GEO.padX + GEO.termW;
+  const width = xOf(layout.xMax) + GEO.termW / 2 + GEO.padX;
   const height = yOf(layout.height) + GEO.padY + GEO.termH;
   const svg = svgEl('svg', { viewBox: `0 0 ${width} ${height}`, class: 'aut-svg' });
   svg.style.width = `${width}px`;
@@ -152,26 +190,71 @@ function drawAutomaton(layout, labels) {
   svg.append(amp);
 
   const at = new Map(layout.nodes.map((n) => [n.id, n]));
+  const arcs = svgEl('g');
   const edges = svgEl('g');
+
+  // One state at a time, because the fan is a property of the state and not of any one
+  // edge: where an edge leaves depends on what else leaves with it.
+  const leaving = new Map();
   for (const e of layout.edges) {
-    const a = at.get(e.from);
-    const b = at.get(e.to);
-    if (!a || !b) continue;
-    const cls = e.kind === 'stem' ? 'aut-edge stem'
-      : `aut-edge ${e.high ? 'high' : 'low'}`;
-    edges.append(svgEl('path', {
-      class: cls,
-      d: `M ${xOf(a.x)} ${yOf(a.y) + (a.kind === 'junction' ? 5 : GEO.r)}`
-        + ` L ${xOf(b.x)} ${yOf(b.y) - (b.terminal ? GEO.termH / 2 : GEO.r)}`,
-    }));
+    if (!at.has(e.from) || !at.has(e.to)) continue;
+    if (!leaving.has(e.from)) leaving.set(e.from, []);
+    leaving.get(e.from).push(e);
   }
-  svg.append(edges);
+
+  for (const [from, out] of leaving) {
+    const a = at.get(from);
+    const cx = xOf(a.x);
+    const cy = yOf(a.y);
+
+    // Grouped by transition, in the order the automaton holds them, so that the arc and
+    // the edges it spans are the same pair.
+    const groups = [];
+    for (const e of out) {
+      if (!groups[e.transition]) groups[e.transition] = [];
+      groups[e.transition].push(e);
+    }
+    const wanted = groups.map((pair) => pair.map((e) => {
+      const b = at.get(e.to);
+      return DEG * Math.atan2(xOf(b.x) - cx, yOf(b.y) - cy);
+    }));
+    const given = fanAngles(wanted);
+    const run = runOf(out.length);
+
+    groups.forEach((pair, t) => {
+      pair.forEach((e, i) => {
+        const angle = given[t][i];
+        const [px, py] = onCircle(cx, cy, GEO.r, angle);
+        const [sx, sy] = onCircle(cx, cy, GEO.r + run, angle);
+        const [hx, hy] = onCircle(cx, cy, GEO.r + run + GEO.handle, angle);
+        const b = at.get(e.to);
+        const ty = yOf(b.y) - (b.terminal ? GEO.termH / 2 : GEO.r);
+        // Out along the ray, then a quadratic whose handle continues it: the edge leaves
+        // radially — which is what makes two exit points read as two — turns once, and
+        // is near enough straight by the time it arrives.
+        edges.append(svgEl('path', {
+          class: `aut-edge ${e.high ? 'high' : 'low'}`,
+          d: `M ${px} ${py} L ${sx} ${sy} Q ${hx} ${hy} ${xOf(b.x)} ${ty}`,
+        }));
+      });
+      if (groups.length > 1 && pair.length === 2) {
+        const lo = Math.min(given[t][0], given[t][1]);
+        const hi = Math.max(given[t][0], given[t][1]);
+        const r = GEO.r + run - 5;
+        const [sx, sy] = onCircle(cx, cy, r, lo);
+        const [ex, ey] = onCircle(cx, cy, r, hi);
+        arcs.append(svgEl('path', {
+          class: 'aut-arc',
+          d: `M ${sx} ${sy} A ${r} ${r} 0 0 0 ${ex} ${ey}`,
+        }));
+      }
+    });
+  }
+  svg.append(edges, arcs);
 
   for (const n of layout.nodes) {
     const g = svgEl('g', { class: `aut-node ${n.kind}${n.fresh ? ' fresh' : ''}` });
-    if (n.kind === 'junction') {
-      g.append(svgEl('rect', { class: 'aut-junction', x: xOf(n.x) - 4, y: yOf(n.y) - 4, width: 8, height: 8, rx: 1.5 }));
-    } else if (n.terminal) {
+    if (n.terminal) {
       g.append(svgEl('rect', {
         class: 'aut-leaf', x: xOf(n.x) - GEO.termW / 2, y: yOf(n.y) - GEO.termH / 2,
         width: GEO.termW, height: GEO.termH, rx: 2,

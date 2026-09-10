@@ -76,13 +76,6 @@
   dominant-baseline: central;
 }
 
-/* A transition, where a state has more than one. Which of them a run takes is a choice,
-   and a choice deserves to be a thing on the page rather than an absence. */
-.aut-junction {
-  fill: var(--ink-soft);
-  stroke: none;
-}
-
 .aut-edge {
   fill: none;
   stroke: var(--ink-soft);
@@ -90,12 +83,21 @@
 }
 
 .aut-edge.low { stroke-dasharray: 3 2.5; }
-.aut-edge.stem { stroke: var(--ink-faint); stroke-width: 0.9; }
+
+/* The two edges of one transition, joined near the state they leave. Which transition a
+   run takes is a choice, and the arc is what says that this pair is one of them — the
+   notation the tree-automata papers use. A deterministic state has nothing to tell apart
+   and so gets no arc at all. */
+.aut-arc {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
 
 /* The one colour on the page marks what changed, as it does on the other. */
 .aut-node.fresh .aut-state,
 .aut-node.fresh .aut-leaf { stroke: var(--accent); }
-.aut-node.fresh .aut-junction { fill: var(--accent); }
 
 .aut-svg .gutter {
   fill: var(--ink-soft);
