@@ -519,15 +519,33 @@ function fail(e, where) {
 
 const CIRC = { rowH: 26, colW: 30, padY: 12, dot: 3.2, notR: 6.5, boxW: 21, boxH: 17 };
 
+/** How wide the box around a gate's cap has to be. */
+const capWidth = (symbol) => Math.max(CIRC.boxW, symbol.length * 7 + 8);
+
 function renderCircuit() {
   const circuit = app.circuit;
   const n = circuit.nqubits;
   const gates = circuit.gates;
   const gutter = Math.max(44, Math.round(Math.max(...circuit.qubits.map((q) => q.label.length)) * 6.4) + 16);
-  const W = gutter + CIRC.colW * (gates.length + 1) + 10;
   const H = CIRC.padY * 2 + n * CIRC.rowH;
   const wireY = (q) => CIRC.padY + CIRC.rowH * (q + 0.5);
-  const colX = (i) => gutter + CIRC.colW * (i + 1.5);   // column -1 is the input state
+
+  // Columns are only as wide as what they hold. A fixed width was enough while the widest
+  // cap was 'S†'; a rotation writes its angle in the box, so 'U(π/2,0,π)' is three times
+  // that and the boxes overlapped. Widening every column to the widest would push a long
+  // circuit off the plate for the sake of one gate, so each is measured on its own.
+  const boxWidth = (g) => {
+    const draw = g.draw || { controls: 0, target: 'box', symbol: g.label };
+    if (draw.target !== 'box') return CIRC.colW;
+    return Math.max(CIRC.colW, capWidth(draw.symbol || g.label) + 6);
+  };
+  const widths = [CIRC.colW, ...gates.map(boxWidth)];   // column -1 is the input state
+  const starts = [];
+  let edge = gutter;
+  for (const w of widths) { starts.push(edge); edge += w; }
+  const W = edge + 10;
+  const colX = (i) => starts[i + 1] + widths[i + 1] / 2;
+  const colLeft = (i) => (i + 1 < starts.length ? starts[i + 1] : edge);
 
   const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'circuit-svg' });
   svg.style.width = `${W}px`;
@@ -549,8 +567,8 @@ function renderCircuit() {
 
   for (const b of circuit.barriers) {
     art.append(svgEl('line', {
-      class: 'barrier-mark', x1: colX(b) - CIRC.colW / 2, y1: CIRC.padY - 2,
-      x2: colX(b) - CIRC.colW / 2, y2: H - CIRC.padY + 2,
+      class: 'barrier-mark', x1: colLeft(b), y1: CIRC.padY - 2,
+      x2: colLeft(b), y2: H - CIRC.padY + 2,
     }));
   }
 
@@ -593,7 +611,7 @@ function renderCircuit() {
       for (const q of targets) {
         const y = wireY(q);
         const symbol = draw.symbol || g.label;
-        const w = Math.max(CIRC.boxW, symbol.length * 7 + 8);
+        const w = capWidth(symbol);
         art.append(svgEl('rect', {
           class: 'gate-box', x: x - w / 2, y: y - CIRC.boxH / 2, width: w, height: CIRC.boxH, rx: 2,
         }));
@@ -609,7 +627,7 @@ function renderCircuit() {
   app.colEls = [];
   for (let i = -1; i < gates.length; i++) {
     const strip = svgEl('rect', {
-      class: 'col', x: colX(i) - CIRC.colW / 2, y: 0, width: CIRC.colW, height: H,
+      class: 'col', x: colLeft(i), y: 0, width: widths[i + 1], height: H,
     });
     strip.append(svgEl('title'));
     strip.querySelector('title').textContent = i < 0
@@ -1348,8 +1366,9 @@ function buildHelp() {
 
   body.append(el('h3', null, 'Refused, and why'));
   body.append(helpTable([
-    ['rx(0.3) q[0];', 'an arbitrary rotation leaves the exact ring, so it cannot be represented'],
-    ['u1(pi/3) q[0];', 'the same reason: π/3 is not π times a dyadic rational, at any level'],
+    ['rx(0.3) q[0];', 'the angle, not the gate: 0.3 is not π times a dyadic rational'],
+    ['u1(pi/3) q[0];', 'the same reason — π/3 is off that grid at every level'],
+    ['rx(pi/512) q[0];', 'on the grid, but a rotation halves its angle, and π/1024 is past the end'],
     ['measure q -> c;', 'not unitary; this tool shows unitary evolution of a pure state'],
     ['reset q[0];', 'likewise not unitary'],
     ['if (c==1) x q[0];', 'classical control needs a measurement to control on'],
