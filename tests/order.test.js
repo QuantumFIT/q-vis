@@ -170,6 +170,21 @@ const cluster = (n) => ({
   state: zeros(n),
 });
 
+/**
+ * A star graph state: qubit 0 is joined to every other, and nothing else is joined.
+ *
+ * GHZ and the linear cluster are both symmetric under reversing the qubits, so a test
+ * that reads a Pauli string backwards passes on either of them whatever the convention
+ * is. The star is not: reversing it moves the centre from the first qubit to the last,
+ * so the generator whose letters are (Z X X X) becomes (X X X Z), and a convention error
+ * has nowhere to hide.
+ */
+const star = (n) => ({
+  qasm: HEADER(n) + Array.from({ length: n }, (_, i) => `h q[${i}];\n`).join('')
+    + Array.from({ length: n - 1 }, (_, i) => `cz q[0],q[${i + 1}];\n`).join(''),
+  state: zeros(n),
+});
+
 /** The same instance as a LIMDD, under one order. */
 function asLimdd(instance, order) {
   const circuit = parseQasm(instance.qasm);
@@ -186,7 +201,7 @@ function asLimdd(instance, order) {
 test('a stabilizer state is a tower whatever the order', () => {
   // Permuting qubits is a relabelling, so a stabilizer state stays one and Theorem 1 still
   // applies. If reordering broke the Pauli side this is where it would show.
-  for (const make of [ghz, cluster]) {
+  for (const make of [ghz, cluster, star]) {
     for (const n of [3, 4, 5, 6]) {
       const instance = make(n);
       for (const [name, of] of ORDERS) {
@@ -201,17 +216,22 @@ test('generators come out in qubit order, and still fix their node', () => {
   // The check vectors are indexed by level and printed by qubit. Getting that backwards
   // would give a table that looks fine and means something else, so the definition is
   // checked through the printed form: the letters, read as qubits, must stabilize.
+  // The dense vector below is indexed by a qubit-order bit string, so qubit q is bit
+  // n-1-q of the index — the same convention as the ket. This read it as bit q, which is
+  // the string backwards; GHZ and the linear cluster are both symmetric under reversal,
+  // so the test passed either way and would not have caught a real convention error. The
+  // star below is not symmetric, and does.
   const letterToMask = (letters, n) => {
     let x = 0;
     let z = 0;
     letters.forEach((ch, q) => {
-      if (ch === 'X' || ch === 'Y') x |= 1 << q;
-      if (ch === 'Z' || ch === 'Y') z |= 1 << q;
+      if (ch === 'X' || ch === 'Y') x |= 1 << (n - 1 - q);
+      if (ch === 'Z' || ch === 'Y') z |= 1 << (n - 1 - q);
     });
     return { x, z };
   };
 
-  for (const make of [ghz, cluster]) {
+  for (const make of [ghz, cluster, star]) {
     for (const [name, of] of ORDERS) {
       const { li, edge, levelOf, n } = asLimdd(make(4), of);
       // The node's state as a dense vector, in qubit order.

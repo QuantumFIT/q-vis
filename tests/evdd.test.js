@@ -248,6 +248,67 @@ test('the two edge-valued views agree on the weight they show', () => {
       const tree = treeEdgeWeights(dd, values, { ring: P.Ring, normalise });
       assert.equal(P.Ring.key(shared.w), P.Ring.key(tree.rootWeight),
         `${kind}: the shared diagram and the tree disagree on the root weight`);
+
+      // The root weight alone is one number out of the whole diagram, and it was the only
+      // thing compared. Every edge is compared now: with no level skipped, the tree
+      // position reached by a prefix and the diagram node reached by the same prefix carry
+      // the same subfunction, so they must have been normalised to the same pair of
+      // weights. That is the assertion the tie-break bug would have failed everywhere.
+      const walk = (level, path, edge) => {
+        if (P.Ring.isZero(edge.w) || level === n) return;
+        assert.equal(ev.levelOf(edge.node), level,
+          `${kind}: the diagram skips level ${level} where the tree cannot`);
+        const [t0, t1] = tree.weightOf.get(2 ** level - 1 + path);
+        const e0 = ev.lowOf(edge.node);
+        const e1 = ev.highOf(edge.node);
+        assert.equal(P.Ring.key(t0), P.Ring.key(e0.w),
+          `${kind}: low weight at level ${level}, path ${path}`);
+        assert.equal(P.Ring.key(t1), P.Ring.key(e1.w),
+          `${kind}: high weight at level ${level}, path ${path}`);
+        walk(level + 1, path * 2, e0);
+        walk(level + 1, path * 2 + 1, e1);
+      };
+      walk(0, 0, shared);
     }
   }
+});
+
+test('the two edge-valued views agree over the examples, not just over small noise', () => {
+  // The random-state test above is where this was pinned, and it turns out not to bite:
+  // reintroducing the creation-order tie-break leaves it passing, because states of four
+  // qubits drawn at random never make the tree and the diagram number their nodes
+  // differently enough to matter. The audit measured the disagreement over the *examples*
+  // — real circuits at real widths — and that is where it has to be measured here.
+  //
+  // Restoring the tie-break fails this on the first example it reaches. Over the whole
+  // example set the disagreement was 443 frames out of 2058 before the fix and one after,
+  // and that one is the level-skipping case excluded below — structural, not a tie going
+  // the wrong way, since the tree must expand a level the diagram drops.
+  const skipsALevel = (dd, root) => dd.reachable(root).some((id) => !dd.isTerminal(id)
+    && [dd.lowOf(id), dd.highOf(id)].some((c) => dd.levelOf(c) > dd.levelOf(id) + 1));
+
+  let compared = 0;
+  for (const instance of allInstances()) {
+    const circuit = parseQasm(instance.qasm);
+    const n = circuit.nqubits;
+    if (n > 6) continue;                                  // the tree is 2^n wide
+    const dd = new MTBDD(P.Ring, n);
+    const root = buildState(dd, parseState(instance.state, n).entries);
+    const where = `${instance.name}${instance.size ? ` on ${instance.size}` : ''}`;
+    for (const frame of simulate(dd, root, circuit)) {
+      if (skipsALevel(dd, frame.root)) continue;
+      const values = allBits(n).map((b) => dd.evaluate(frame.root, b));
+      for (const kind of ['low', 'max', 'min']) {
+        const normalise = unitNormaliser(P, Z, kind);
+        const shared = new EVDD(P.Ring, n, normalise).fromMTBDD(dd, frame.root);
+        const tree = treeEdgeWeights(dd, values, { ring: P.Ring, normalise });
+        compared++;
+        assert.equal(P.Ring.key(shared.w), P.Ring.key(tree.rootWeight),
+          `${where}, step ${frame.index}, ${kind}: the tree and the diagram disagree`);
+      }
+    }
+  }
+  // A test that compares nothing passes too. This is the whole point of the section it
+  // came from, so it says out loud how much it looked at.
+  assert.ok(compared > 300, `only ${compared} frames compared`);
 });
