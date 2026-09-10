@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HslError, parseHsl, toVector } from '../src/aut-hsl.js';
-import { allInstances, hslFor } from '../src/aut-examples.js';
+import { HslError, MAX_STATES, parseHsl, toVector } from '../src/aut-hsl.js';
+import { SPECIALS, allInstances, hslFor } from '../src/aut-examples.js';
 import { parseQasm } from '../src/qasm.js';
 import { parseState, buildState } from '../src/state.js';
 import { MTBDD } from '../src/dd.js';
@@ -87,7 +87,6 @@ test('what it does not read, it refuses by name', () => {
   assert.match(at('Extended Dirac\n{c |0>} ⊗ {c |0>}'), /tensor product/);
   assert.match(at('Extended Dirac\n{c |0>} ^ 2'), /tensor power/);
   assert.match(at('Extended Dirac\n{c |00>} ∪ nonsense'), /a set is written/);
-  assert.match(at('Extended Dirac\n{c1 |ji> : |j|=1, |i|=1}'), /range over states/);
   assert.match(at('Extended Dirac\n{c1 ∑ |i|=1, i>0 |i0>}'), /not a constraint this reads/);
 });
 
@@ -124,4 +123,55 @@ test('a union is a set of two states; a summation is one state', () => {
 test('two terms meeting on one basis state add, rather than one winning', () => {
   const v = read('Extended Dirac\n{c1 |00> + c2 |00>}\nConstants\nc1 := 1\nc2 := 1', 2);
   assert.ok(P.Ring.eq(v[0], P.fromInt(2)), 'the amplitudes are summed');
+});
+
+test('a variable after the colon ranges over states, and makes one per assignment', () => {
+  // The other half of the distinction ∑ marks. Inside the kets a variable is summed and
+  // the set stays one state; after the colon it names *which state*, and the set has one
+  // member per assignment. Both spellings appear in AutoQ's own benchmarks.
+  const all = parseHsl('Constants\nc1 := 1\nExtended Dirac\n{c1 |i> : |i|=2}', 2);
+  assert.equal(all.vectors.length, 4, 'every basis state of two qubits');
+  const seen = all.vectors.map((v) => toVector(v, P.Ring)
+    .map((x) => (P.Ring.isZero(x) ? '0' : '1')).join(''));
+  assert.deepEqual(seen.slice().sort(), ['0001', '0010', '0100', '1000']);
+
+  const one = parseHsl('Extended Dirac\n{p ∑ |i|=2 |i>}', 2);
+  assert.equal(one.vectors.length, 1, 'and the summation is still one superposed state');
+});
+
+test('the two sets the page offers in one click are ordinary HSL', () => {
+  for (const n of [1, 2, 3, 4]) {
+    const zero = parseHsl(SPECIALS.zero.spec(n), n);
+    assert.equal(zero.vectors.length, 1);
+    const v = toVector(zero.vectors[0], P.Ring);
+    assert.ok(P.Ring.eq(v[0], P.one) && v.slice(1).every((x) => P.Ring.isZero(x)),
+      `${n} qubits: the zero state and nothing else`);
+
+    const basis = parseHsl(SPECIALS.basis.spec(n), n);
+    assert.equal(basis.vectors.length, 2 ** n, `${n} qubits: every input`);
+    const where = basis.vectors.map((b) => toVector(b, P.Ring).findIndex((x) => !P.Ring.isZero(x)));
+    assert.deepEqual(where.slice().sort((a, b) => a - b), [...Array(2 ** n).keys()],
+      'each one is a different basis state');
+  }
+});
+
+test('a set too large to draw is refused with its size, not built', () => {
+  const n = Math.log2(MAX_STATES) + 1;
+  assert.throws(() => parseHsl(SPECIALS.basis.spec(n), n),
+    new RegExp(`more than ${MAX_STATES} quantum states`));
+  assert.doesNotThrow(() => parseHsl(SPECIALS.basis.spec(n - 1), n - 1), 'and the size below it is fine');
+});
+
+test('the variables after a colon are checked like the ones before it', () => {
+  const at = (text, n = 2) => {
+    try { parseHsl(text, n); return null; } catch (e) { return e.message; }
+  };
+  assert.match(at('Extended Dirac\n{c1 |00> : |i|=1}'), /ranges over states but is not used/);
+  assert.match(at('Extended Dirac\n{c1 ∑ |i|=1 |i0> : |i|=1}'), /both summed within a state/);
+  assert.match(at('Extended Dirac\n{c1 |i> : |i|=3}'), /covers 3 qubits, the circuit has 2/);
+  assert.match(at('Extended Dirac\n{c1 |ij> : |i|=1, |j|=1, i≠0, i≠1}'),
+    /no states in it/, 'excluding every assignment leaves an empty set');
+  // An exclusion after the colon drops that one member and keeps the rest.
+  const three = parseHsl('Constants\nc1 := 1\nExtended Dirac\n{c1 |i> : |i|=2, i≠01}', 2);
+  assert.equal(three.vectors.length, 3);
 });

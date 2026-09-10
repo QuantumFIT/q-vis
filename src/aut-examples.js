@@ -55,6 +55,30 @@ export function amplitudeToHsl(text) {
 }
 
 /**
+ * The two sets a verifier reaches for first, written for a circuit of `n` qubits.
+ *
+ * `zero` is the state every circuit starts in, and a set of one. `basis` is every
+ * computational basis state — the precondition behind "and it does the right thing on
+ * every input", and the one place the set really is a set: 2^n of them, one per
+ * assignment of the variable after the colon.
+ *
+ * Neither needs a special case in the reader. They are both ordinary HSL, and writing
+ * them here rather than in the page keeps them where they can be tested.
+ */
+export const SPECIALS = {
+  zero: {
+    label: 'zero state',
+    title: 'the set containing only |0…0>, which is where a circuit starts',
+    spec: (n) => `Constants\nc1 := 1\nExtended Dirac\n{c1 |${'0'.repeat(n)}>}\n`,
+  },
+  basis: {
+    label: 'all basis states',
+    title: 'the set of every computational basis state — 2^n of them, one per input',
+    spec: (n) => `Constants\nc1 := 1\nExtended Dirac\n{c1 |i> : |i|=${n}}\n`,
+  },
+};
+
+/**
  * The input-state text of a decision-diagram example, as an HSL specification of the set
  * containing just that state.
  *

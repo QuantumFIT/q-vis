@@ -4,6 +4,8 @@ import { Algebra, applyGate, applyOp, simulate } from '../src/aut-gates.js';
 import { TA } from '../src/aut-ta.js';
 import { GATES } from '../src/gates.js';
 import { parseQasm } from '../src/qasm.js';
+import { parseHsl, toVector } from '../src/aut-hsl.js';
+import { SPECIALS } from '../src/aut-examples.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
 import { applyGateDense } from './oracle.js';
@@ -212,4 +214,50 @@ test('a rotation stays in the ring, so the amplitude is exact and not rounded', 
   const [got] = ta.language(frames.at(-1).root);
   assertClose(asComplex(got[0]), { re: Math.cos(Math.PI / 8), im: 0 }, 'cos(pi/8)');
   assertClose(asComplex(got[1]), { re: 0, im: -Math.sin(Math.PI / 8) }, '-i sin(pi/8)');
+});
+
+test('every basis state at once goes through a circuit, all of them at once', () => {
+  // The precondition behind "and it does the right thing on every input". Every member
+  // is a transition of the root, so the gates reach all of them, and the check is the
+  // same dense oracle applied to each — which is what verifying a circuit over all
+  // inputs means in the first place.
+  for (const n of [1, 2, 3]) {
+    const ta = new TA(ring, n);
+    const spec = parseHsl(SPECIALS.basis.spec(n), n);
+    assert.equal(spec.vectors.length, 2 ** n);
+    const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+
+    const gates = n === 1 ? 'h q[0];\nt q[0];\n'
+      : `h q[0];\ncx q[0],q[${n - 1}];\nz q[${n - 1}];\n`;
+    const circuit = parseQasm(`OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[${n}];\n\n${gates}`);
+    const frames = simulate(ta, root, circuit);
+
+    let dense = [...Array(2 ** n).keys()].map((b) => Array.from({ length: 2 ** n },
+      (_, i) => ({ re: i === b ? 1 : 0, im: 0 })));
+    for (const frame of frames) {
+      if (frame.gate) {
+        dense = dense.map((v) => applyGateDense(v, n, frame.gate.qubits,
+          frame.gate.matrix || GATES[frame.gate.name].matrix));
+      }
+      assert.equal(frame.members, 2 ** n, `${n} qubits: a unitary is a bijection on the set`);
+      assert.deepEqual(asFloats(ta.language(frame.root)), asText(dense),
+        `${n} qubits, frame ${frame.index}`);
+    }
+  }
+});
+
+test('the zero state is a set of one, and stays one all the way through', () => {
+  const n = 3;
+  const ta = new TA(ring, n);
+  const spec = parseHsl(SPECIALS.zero.spec(n), n);
+  const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+  const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\n'
+    + 'h q[0];\ncx q[0],q[1];\ncx q[1],q[2];\n');
+  const frames = simulate(ta, root, circuit);
+  assert.ok(frames.every((f) => f.members === 1), 'one state in, one state out');
+  const [ghz] = ta.language(frames.at(-1).root);
+  const half = Math.SQRT1_2;
+  assertClose(asComplex(ghz[0]), { re: half, im: 0 }, '|000>');
+  assertClose(asComplex(ghz[7]), { re: half, im: 0 }, '|111>');
+  assert.ok(ghz.filter((x) => !ring.isZero(x)).length === 2, 'and nothing else');
 });

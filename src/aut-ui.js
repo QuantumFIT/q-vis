@@ -13,8 +13,8 @@
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
-import { EXAMPLES, instantiate, identify } from './aut-examples.js';
-import { HslError, parseHsl, toVector } from './aut-hsl.js';
+import { EXAMPLES, SPECIALS, instantiate, identify } from './aut-examples.js';
+import { HslError, MAX_STATES, parseHsl, toVector } from './aut-hsl.js';
 import { simulate } from './aut-gates.js';
 import { fanAngles, layoutAutomaton, spread } from './aut-layout.js';
 import { TA } from './aut-ta.js';
@@ -225,6 +225,14 @@ function compile() {
   $('circuit').replaceChildren(svg);
   const n = app.circuit.nqubits;
   const g = app.circuit.gates.length;
+  // Every basis state is 2^n of them and each is a transition of the root, so past the
+  // cap the button is turned off rather than left to walk the reader into a refusal.
+  const all = 2 ** n;
+  const tooMany = all > MAX_STATES;
+  $('specBasis').disabled = tooMany;
+  $('specBasis').title = tooMany
+    ? `${all} basis states on ${n} qubits is more than the ${MAX_STATES} this page will draw`
+    : `the set of every computational basis state — ${all} of them, one per input`;
   $('stats').textContent = `${n} qubit${n === 1 ? '' : 's'} · ${g} gate${g === 1 ? '' : 's'}`;
   setStep(Math.min(app.index, g));
   showAutomaton();
@@ -699,6 +707,17 @@ export function boot() {
   for (const id of ['qasm', 'specText']) {
     $(id).addEventListener('input', () => { showExample(); compile(); });
   }
+  // The two sets worth one click: where a circuit starts, and every input at once.
+  for (const [id, which] of [['specZero', 'zero'], ['specBasis', 'basis']]) {
+    $(id).addEventListener('click', () => {
+      if (!app.circuit) return;
+      $('specText').value = SPECIALS[which].spec(app.circuit.nqubits);
+      showExample();
+      app.index = 0;
+      compile();
+    });
+  }
+
   $('prev').addEventListener('click', () => setStep(app.index - 1));
   $('next').addEventListener('click', () => setStep(app.index + 1));
 

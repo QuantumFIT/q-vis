@@ -11,22 +11,37 @@
 //     real(pL) * real(pL) < 1/8
 //
 // What is read here is the fragment `aut-examples.js` writes plus what the simpler
-// benchmark files use: the three sections, sets joined by ∪, a sum of terms, and a
-// summation over a bitstring variable with a length and inequality constraints.
-// Everything else — ⊗, tensor powers, the outer union over amplitude constraints, and
-// the `{diracs : varcons}` form where the variables range over *states* rather than
-// being summed within one — is refused by name rather than misread.
+// benchmark files use: the three sections, sets joined by ∪, a sum of terms, a summation
+// over a bitstring variable with a length and inequality constraints, and the
+// `{diracs : varcons}` form where the variables range over *states*. Everything else —
+// ⊗, tensor powers, and the outer union over amplitude constraints — is refused by name
+// rather than misread.
 //
-// The distinction ∪ marks is the one the whole page turns on. A ∑ sums *within* one
-// state, so it stays one state; a ∪ joins two states into a set of two. Only the second
-// makes the automaton nondeterministic, and only then is there anything to see that a
-// decision diagram could not have shown.
+// The distinction is the one the whole page turns on, and this language marks it twice.
+// A ∑ sums *within* one state, so it stays one state: `{p ∑ |i|=2 |i>}` is one uniform
+// superposition. A ∪, and equally a `: |i|=2` after the kets, makes a set of several:
+// `{p |i> : |i|=2}` is four states, one per basis vector. Only the second kind makes the
+// automaton nondeterministic, and only then is there anything to see that a decision
+// diagram could not have shown.
+//
+// The second kind is also how the two preconditions a verifier reaches for first are
+// written — `{c |0...0>}`, and `{c |i> : |i|=n}` for every computational basis state.
 //
 // Constraints on the amplitudes are parsed far enough to be shown and no further. AutoQ
 // discharges them with an SMT solver; a browser does not have one, and pretending
 // otherwise would be worse than saying so.
 
 import { parseAmplitude } from './state.js';
+
+/**
+ * How many quantum states one specification may denote.
+ *
+ * `{c |i> : |i|=n}` is 2^n of them, and every one is a transition of the automaton's
+ * root — that is what a set with no shared choice costs, and it is the reason a
+ * level-synchronized automaton exists. The cap is where the picture stops being a
+ * picture, not where the language stops.
+ */
+export const MAX_STATES = 64;
 
 export class HslError extends Error {
   constructor(message, line) {
@@ -152,13 +167,37 @@ export function parseHsl(text, nqubits) {
   for (const raw of groups) {
     const group = raw.match(/^\{(.*)\}$/s);
     if (!group) throw new HslError(`a set is written {...}, not '${raw}'`, line);
-    if (group[1].includes(':')) {
-      throw new HslError('variables that range over states ({… : |v|=N}) are not read yet; '
-        + 'a summation (∑) within one state is', line);
+
+    // `{ kets : |v|=N }` — the variables after the colon range over *states*, so the set
+    // has one member per assignment of them. A ∑ inside the kets is the other thing
+    // entirely and is read per member, below.
+    const colon = group[1].indexOf(':');
+    const body = colon < 0 ? group[1] : group[1].slice(0, colon);
+    const over = colon < 0 ? null : varConstraints(group[1].slice(colon + 1), line);
+
+    const parsed = readTerms(body, named, line);
+    terms += parsed.length;
+    const outerNames = over ? [...over.lengths.keys()] : [];
+    for (const v of outerNames) {
+      if (!parsed.some((t) => t.pattern.includes(v))) {
+        throw new HslError(`'${v}' ranges over states but is not used`, line);
+      }
+      if (parsed.some((t) => t.constraints.lengths.has(v))) {
+        throw new HslError(`'${v}' is both summed within a state and ranged over states`, line);
+      }
     }
-    const made = readSet(group[1], named, nqubits, line);
-    terms += made.terms;
-    vectors.push(made.amplitudes);
+
+    let any = false;
+    for (const pick of assignments(outerNames, over?.lengths ?? new Map(),
+      over?.excluded ?? new Map())) {
+      vectors.push(buildSet(parsed, nqubits, pick, line));
+      any = true;
+      if (vectors.length > MAX_STATES) {
+        throw new HslError(`this names more than ${MAX_STATES} quantum states, and each `
+          + 'one is a transition of the automaton\'s root — more than the page will draw', line);
+      }
+    }
+    if (!any) throw new HslError('the constraints leave this set with no states in it', line);
   }
   return {
     vectors,
@@ -167,46 +206,61 @@ export function parseHsl(text, nqubits) {
   };
 }
 
-/** One `{...}`: a sum of terms, and so one quantum state. */
-function readSet(body, named, nqubits, line) {
-  const amplitudes = new Array(2 ** nqubits).fill(null);
-  let terms = 0;
+/** The `+`-separated terms of one `{...}`, each with its amplitude resolved. */
+function readTerms(body, named, line) {
+  const terms = [];
   for (const piece of body.split('+')) {
     if (!piece.trim()) continue;
-    terms += 1;
     const term = readTerm(piece.trim(), line);
     const value = named.get(term.coefficient) ?? (() => {
       try { return parseAmplitude(term.coefficient); } catch (e) {
         throw new HslError(e.message, line);
       }
     })();
+    terms.push({ ...term, value });
+  }
+  if (!terms.length) throw new HslError('the set is empty', line);
+  return terms;
+}
 
-    // The ket is bits and variables; each assignment of the variables is a basis state.
+/**
+ * One quantum state: the terms, with `outer` fixed to this member's assignment.
+ *
+ * Two kinds of variable meet here and they are substituted in order. `outer` came from
+ * after the colon and picks *which state of the set* this is; what is left is summed
+ * over within it, and each of those assignments is a basis state of this one state.
+ */
+function buildSet(terms, nqubits, outer, line) {
+  const amplitudes = new Array(2 ** nqubits).fill(null);
+  for (const term of terms) {
+    let pattern = term.pattern;
+    for (const [v, b] of outer) pattern = pattern.split(v).join(b);
+
     const names = [...term.constraints.lengths.keys()];
-    const used = names.filter((v) => term.pattern.includes(v));
+    const used = names.filter((v) => pattern.includes(v));
     for (const v of names) {
       if (!used.includes(v)) throw new HslError(`'${v}' is summed over but not used`, line);
     }
     let any = false;
     for (const pick of assignments(used, term.constraints.lengths, term.constraints.excluded)) {
-      let bits = term.pattern;
+      let bits = pattern;
       for (const [v, b] of pick) bits = bits.split(v).join(b);
       if (!/^[01]*$/.test(bits)) {
         throw new HslError(`'${term.pattern}' has something that is neither a bit nor a `
-          + 'summed variable', line);
+          + 'variable this reads', line);
       }
       if (bits.length !== nqubits) {
         throw new HslError(`|${term.pattern}> covers ${bits.length} qubits, `
           + `the circuit has ${nqubits}`, line);
       }
       const at = parseInt(bits, 2);
-      amplitudes[at] = amplitudes[at] === null ? value : { add: [amplitudes[at], value] };
+      amplitudes[at] = amplitudes[at] === null
+        ? term.value : { add: [amplitudes[at], term.value] };
       any = true;
     }
     if (!any) throw new HslError('the constraints leave this term with nothing to sum over', line);
   }
-  if (!terms) throw new HslError('the set is empty', line);
-  return { amplitudes, terms };
+  return amplitudes;
 }
 
 /** Finish the amplitudes into ring values, adding where two terms met on a basis state. */
