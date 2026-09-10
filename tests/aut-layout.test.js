@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fanAngles, layoutAutomaton, spread } from '../src/aut-layout.js';
-import { TA } from '../src/aut-ta.js';
+import { LSTA } from '../src/aut-lsta.js';
 import * as P from '../src/poly.js';
 import { rng, randInt, CLOSE } from './helpers.js';
 
@@ -65,7 +65,7 @@ test('a fan that is wanted symmetric comes out symmetric', () => {
 });
 
 test('an edge says which transition it belongs to, and each has one low and one high', () => {
-  const ta = new TA(ring, 2);
+  const ta = new LSTA(ring, 2);
   const zeroLeaf = ta.leaf(P.zero);
   const oneLeaf = ta.leaf(P.one);
   const l0 = ta.state(1, [[oneLeaf, zeroLeaf]]);
@@ -88,7 +88,7 @@ test('the root is marked, and it is the only one', () => {
   // Without the mark the picture does not say what the automaton accepts: a run accepts
   // the tree it read when it ends in a root state, and the top of the drawing is
   // otherwise only the top of the drawing.
-  const ta = new TA(ring, 3);
+  const ta = new LSTA(ring, 3);
   const { root } = ta.fromVectors([basis(3, 0), basis(3, 5)]);
   const layout = laid(ta, root);
   const marked = layout.nodes.filter((n) => n.root);
@@ -100,7 +100,7 @@ test('the root is marked, and it is the only one', () => {
 
 test('a deterministic automaton lays out as the diagram it is', () => {
   for (const n of [1, 2, 3, 4]) {
-    const ta = new TA(ring, n);
+    const ta = new LSTA(ring, n);
     const { root } = ta.fromVectors([basis(n, 0)]);
     const layout = laid(ta, root);
     assert.equal(layout.nodes.length, ta.size(root), 'one node per reachable state');
@@ -115,7 +115,7 @@ test('a deterministic automaton lays out as the diagram it is', () => {
 test('a state that survives stays where it was', () => {
   // The reason `stableOrder` is shared with the other page: a picture that re-sorted
   // itself every frame would be unreadable however pretty each frame was.
-  const ta = new TA(ring, 3);
+  const ta = new LSTA(ring, 3);
   const first = laid(ta, ta.fromVectors([basis(3, 0), basis(3, 7)]).root);
   const second = laid(ta, ta.fromVectors([basis(3, 0), basis(3, 7), basis(3, 3)]).root,
     first.rank);

@@ -6,10 +6,10 @@
 // decision diagram, and a test fails if it ever does.
 //
 // What is here now: the circuit, drawn and steppable; the worked examples of the other
-// page restated as sets; the automaton the specification denotes; and the gates, which
-// carry it through the circuit so that stepping moves the picture. What is not: sharing
-// a view (permalinks, SVG, TikZ), reading AutoQ's own `.aut` files, and the choice sets
-// of a level-synchronized automaton. See the plan.
+// page restated as sets; the automaton the specification denotes, level-synchronized and
+// with its choices drawn as coloured dots; the gates, which carry it through the circuit
+// so that stepping moves the picture; and TikZ for both. What is not: permalinks, an SVG
+// export, and reading AutoQ's own `.aut` files. See the plan.
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
@@ -19,7 +19,7 @@ import { HslError, MAX_STATES, parseHsl, toVector } from './aut-hsl.js';
 import { simulate } from './aut-gates.js';
 import { fanAngles, layoutAutomaton, spread } from './aut-layout.js';
 import { automatonTikz, circuitTikz } from './tikz.js';
-import { TA } from './aut-ta.js';
+import { LSTA } from './aut-lsta.js';
 import * as P from './poly.js';
 
 const $ = (id) => document.getElementById(id);
@@ -73,7 +73,7 @@ const GEO = {
   // padY leaves room above the first row for the arrow into the root, as padTop does on
   // the other page.
   rowH: 78, colW: 66, padX: 34, padY: 44, gutter: 62, r: 11, termW: 46, termH: 22,
-  handle: 12,
+  handle: 12, dot: 2.1,
 };
 
 /**
@@ -84,6 +84,25 @@ const GEO = {
  * if it is drawn further out.
  */
 const runOf = (k) => Math.min(30, 16 + 2.2 * (k - 2));
+
+/**
+ * How many hues the picture holds ready for the colours on a transition.
+ *
+ * A level that has to tell things apart almost always has two of them to tell apart, and
+ * six is past the point where a reader counts dots rather than seeing them. Beyond it the
+ * hues repeat, which is honest — the dots have stopped being the way to read that level.
+ */
+const DOT_HUES = 6;
+
+/** Evenly along the arc, and never on top of the edges at either end of it. */
+function dotAngles(colours, lo, hi) {
+  if (!colours || !colours.length) return [];
+  const inset = Math.min(6, (hi - lo) / 4);
+  const from = lo + inset;
+  const span = Math.max(0, hi - lo - 2 * inset);
+  if (colours.length === 1) return [from + span / 2];
+  return colours.map((_, i) => from + (span * i) / (colours.length - 1));
+}
 
 /** Where a gutter label sits on the plate: right-aligned, just left of the first column. */
 const GUTTER_X = 78;
@@ -346,6 +365,16 @@ function drawAutomaton(layout, labels) {
           class: 'aut-arc',
           d: `M ${sx} ${sy} A ${r} ${r} 0 0 0 ${ex} ${ey}`,
         }));
+        // The colours that admit this transition, as dots on the arc that marks it —
+        // the notation the papers draw. A transition that constrains nothing has none,
+        // so an ordinary automaton looks exactly as it did.
+        for (const [i, at] of dotAngles(pair[0].colours, lo, hi).entries()) {
+          const [dx, dy] = onCircle(cx, cy, r, at);
+          arcs.append(svgEl('circle', {
+            class: `aut-dot c${pair[0].colours[i] % DOT_HUES}`,
+            cx: dx, cy: dy, r: GEO.dot,
+          }));
+        }
       }
     });
   }
@@ -547,12 +576,12 @@ function showAutomaton() {
   const n = app.circuit.nqubits;
   try {
     const spec = parseHsl($('specText').value, n);
-    const ta = new TA(P.Ring, n);
+    const ta = new LSTA(P.Ring, n);
     const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, P.Ring)));
     app.ta = ta;
-    // Each frame is already the reduced automaton: `simulate` expands the root to push a
-    // gate through it and reduces what comes out, so the next gate starts from the small
-    // form and the picture is the object the run actually carries.
+    // Each frame is already the reduced automaton: a gate is applied to the whole set at
+    // once — the colours are what let it be — and what comes out is reduced, so the next
+    // gate starts from the small form and the picture is the object the run carries.
     app.frames = simulate(ta, root, app.circuit);
     let rank = new Map();
     app.layouts = app.frames.map((frame) => {

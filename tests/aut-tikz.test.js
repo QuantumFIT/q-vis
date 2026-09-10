@@ -5,7 +5,7 @@ import { fanAngles, layoutAutomaton, spread } from '../src/aut-layout.js';
 import { simulate } from '../src/aut-gates.js';
 import { parseHsl, toVector } from '../src/aut-hsl.js';
 import { SPECIALS } from '../src/aut-examples.js';
-import { TA } from '../src/aut-ta.js';
+import { LSTA } from '../src/aut-lsta.js';
 import { parseQasm } from '../src/qasm.js';
 import * as P from '../src/poly.js';
 
@@ -13,7 +13,7 @@ const ring = P.Ring;
 
 /** One run, laid out, the way the page does it. */
 function run(n, spec, qasm) {
-  const ta = new TA(ring, n);
+  const ta = new LSTA(ring, n);
   const parsed = parseHsl(spec, n);
   const { root } = ta.fromVectors(parsed.vectors.map((v) => toVector(v, ring)));
   const circuit = parseQasm(qasm);

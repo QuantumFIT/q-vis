@@ -20,6 +20,7 @@
 // `fanAngles` is also where a level-synchronized automaton will hang its choices: an arc
 // is a better place to write one on than a bare edge ever was.
 
+import { ANY } from './aut-lsta.js';
 import { stableOrder } from './stable-order.js';
 
 /** How far from straight down an edge may leave, in degrees, and how the fan widens. */
@@ -115,7 +116,7 @@ export function spread(wanted, { limit, gap }) {
 /**
  * Lay out one automaton.
  *
- * @param {import('./aut-ta.js').TA} ta
+ * @param {import('./aut-lsta.js').LSTA} ta
  * @param {number} root
  * @param {object} opts
  * @param {(value: any) => string} opts.formatValue how a leaf amplitude is written
@@ -175,14 +176,29 @@ export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } 
     });
   }
 
-  // Two edges per transition, each carrying which transition it belongs to. That index is
-  // what the renderer fans and arcs by, and it is the only thing a decision diagram's
-  // edge does not already have.
+  // Two edges per transition, each carrying which transition it belongs to and which
+  // colours admit it. The index is what the renderer fans and arcs by; the colours are
+  // what it puts dots on the arc for, and neither is anything a decision diagram's edge
+  // has to say.
+  //
+  // The colours are given as places in their level's palette rather than as the
+  // automaton's own ids, so that the picture can hold a fixed row of hues and a level
+  // that tells two things apart always uses the first two of them.
+  const palette = ta.palette(root);
+  const places = (level, choice) => {
+    if (choice === ANY) return null;                 // constrains nothing, so no dots
+    const at = palette[level];
+    const found = choice.map((c) => at.indexOf(c)).filter((i) => i >= 0);
+    return found.length === at.length ? null : found.sort((a, b) => a - b);
+  };
+
   const edges = [];
   for (const id of reachable) {
-    ta.transitionsOf(id).forEach(([low, high], transition) => {
-      edges.push({ from: id, to: low, high: false, transition });
-      edges.push({ from: id, to: high, high: true, transition });
+    const level = ta.levelOf(id);
+    ta.transitionsOf(id).forEach(([low, high, choice], transition) => {
+      const colours = places(level, choice);
+      edges.push({ from: id, to: low, high: false, transition, colours });
+      edges.push({ from: id, to: high, high: true, transition, colours });
     });
   }
 
@@ -194,5 +210,8 @@ export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } 
     xMax,
     width: xMax - xMin,
     height: ta.nvars,
+    // How many colours each level can tell apart, so the renderer knows how many hues to
+    // hold ready and whether a level has any choice to make at all.
+    palette: palette.map((at) => (at.length === 1 && at[0] === ANY ? 0 : at.length)),
   };
 }

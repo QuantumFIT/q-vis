@@ -350,6 +350,13 @@ const AUT_STYLES = [
   '    low/.style={densely dashed, ->, >=stealth, shorten >=1pt},',
   '    high/.style={->, >=stealth, shorten >=1pt},',
   '    trans/.style={semithick},',
+  // Six hues for the colours a transition is admitted under, as the papers draw them.
+  '    choice0/.style={fill=blue!65!black},',
+  '    choice1/.style={fill=orange!80!black},',
+  '    choice2/.style={fill=green!55!black},',
+  '    choice3/.style={fill=violet},',
+  '    choice4/.style={fill=cyan!70!black},',
+  '    choice5/.style={fill=brown},',
   '    gut/.style={anchor=east, font=\\scriptsize\\ttfamily, text=black!55},',
 ];
 
@@ -376,6 +383,11 @@ const anchor = (fromBelow) => Math.round(270 + fromBelow);
  * Exit angles come from `fanAngles`, the same function the renderer uses, so a transition
  * owns the same contiguous sector on the page as it does on screen. TikZ measures from
  * east and the plate measures from straight down, hence the 270.
+ *
+ * A transition's colours become dots on its arc, which is the notation the papers use
+ * and the one the plate draws: two transitions carrying the same dot are two halves of
+ * one choice, because a run picks one colour per level and every state on that level has
+ * to admit it.
  *
  * Arrivals are spread too, the same way and for the same reason: several edges reaching
  * one state used to land on the one point at the top of it, and one coming from the side
@@ -484,6 +496,17 @@ export function automatonTikz(layout, opts = {}) {
         const lo = anchor(Math.min(given[t][0], given[t][1]));
         const hi = anchor(Math.max(given[t][0], given[t][1]));
         lines.push(`  \\draw[trans] (s${from}) ++(${lo}:4.2mm) arc (${lo}:${hi}:4.2mm);`);
+        // The colours that admit the transition, as dots on the arc that marks it.
+        const colours = pair[0].colours ?? [];
+        const inset = Math.min(6, (hi - lo) / 4);
+        const span = Math.max(0, hi - lo - 2 * inset);
+        colours.forEach((c, i) => {
+          const at = colours.length === 1
+            ? lo + inset + span / 2
+            : lo + inset + (span * i) / (colours.length - 1);
+          lines.push(`  \\fill[choice${c % 6}] (s${from}) `
+            + `++(${coord(Math.round(at * 10) / 10)}:4.2mm) circle (0.45mm);`);
+        });
       }
     });
   }

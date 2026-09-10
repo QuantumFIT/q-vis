@@ -101,6 +101,55 @@
   dominant-baseline: central;
 }
 
+/*
+ * The colours a transition is admitted under, as dots on the arc that marks it.
+ *
+ * A run picks one colour per level and every state on that level must admit it, so two
+ * transitions carrying the same dot are two halves of the same choice — which is the one
+ * thing a level-synchronized automaton says that an ordinary one cannot. Six hues,
+ * because a level that tells things apart almost always has two to tell apart and past
+ * six a reader is counting rather than seeing.
+ *
+ * Both themes get their own, rather than one set dimmed: a hue that reads on paper-white
+ * is not the hue that reads on slate, and a dot is two pixels across.
+ */
+:root {
+  --choice-0: #1f6feb;
+  --choice-1: #c2410c;
+  --choice-2: #15803d;
+  --choice-3: #7c3aed;
+  --choice-4: #0891b2;
+  --choice-5: #a16207;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --choice-0: #6ea8fe;
+    --choice-1: #ff9f6b;
+    --choice-2: #5dd39e;
+    --choice-3: #c4a2ff;
+    --choice-4: #4dd0e1;
+    --choice-5: #e0c068;
+  }
+}
+
+:root[data-theme="dark"] {
+  --choice-0: #6ea8fe;
+  --choice-1: #ff9f6b;
+  --choice-2: #5dd39e;
+  --choice-3: #c4a2ff;
+  --choice-4: #4dd0e1;
+  --choice-5: #e0c068;
+}
+
+.aut-dot { stroke: none; }
+.aut-dot.c0 { fill: var(--choice-0); }
+.aut-dot.c1 { fill: var(--choice-1); }
+.aut-dot.c2 { fill: var(--choice-2); }
+.aut-dot.c3 { fill: var(--choice-3); }
+.aut-dot.c4 { fill: var(--choice-4); }
+.aut-dot.c5 { fill: var(--choice-5); }
+
 /* The two edges of one transition, joined near the state they leave — the notation the
    tree-automata papers use. It marks the transition, not the ambiguity: q -> f(q0, q1)
    takes both children at once whether or not the state has another transition to offer,

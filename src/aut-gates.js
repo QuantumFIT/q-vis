@@ -20,40 +20,61 @@
 // depends on this qubit" has to look like when the shape is fixed. Everything else falls
 // out unchanged.
 //
-// **A set is not a state.** The automaton accepts a set, and applying a gate to a set is
-// applying it to every member. So the root is taken apart into one deterministic state
-// per member, each is transformed on its own, and the results are collected back into a
-// root. Sharing survives it — two members that agree on a subtree still share it
-// afterwards, because interning and the memo tables cannot help but notice — and the
-// automaton is reduced again afterwards, so the next gate starts from the small form.
+// **A set is not a state, and the colours are what keep it one thing.** Every operation
+// below is the same product: pair the two automata's transitions, intersect their
+// colours, and recurse. Under one colouring the automaton is an ordinary tree and the
+// product is ordinary arithmetic on it; over all colourings it is the whole set at once.
+// So a gate never takes the set apart, and the sharing an automaton was built for
+// survives it — which is the entire reason a level-synchronized automaton exists.
 //
-// That taking-apart is not an implementation shortcut, and it is worth saying why. The
-// algebra walks two trees in lockstep, which only means something when each has one run.
-// A state with a real choice under it would need the two children of a transformed node
-// to agree on which choice the other took, and two sibling subtrees of a plain tree
-// automaton are read independently — they cannot agree on anything. Except for the gates
-// that never mix siblings (X, Y, Z, S, T and the phases: each sends the pair of subtrees
-// to a pair that is again a product of two sets), the correlation is unavoidable, and
-// expressing it is exactly what a level-synchronized automaton adds.
+// The correlation a mixing gate needs falls out of this for free. `restrict` gives the
+// cofactors, and adding two of them pairs their transitions by colour: under a colouring
+// each cofactor has exactly one run, so the two halves of a transformed node are the two
+// halves of the *same* tree. In a plain automaton they were not, and the only exact
+// answer was to enumerate the members.
 //
-// So `expand` determinizes the root before a gate and `reduce` puts it back together
-// afterwards. That loop — expand, transform, reduce — is what AutoQ does, and the two
-// numbers the page prints beside each other are its cost and its saving.
+// That "exactly one run under a colouring" is the invariant the whole construction rests
+// on, so `applyGate` checks it rather than assuming it. It holds by how the colours are
+// made: `fromVectors` paints one colour per member and a member is a single tree, so the
+// alternatives a state offers are painted with disjoint sets; `reduce` unites states no
+// member shares, which keeps them disjoint; and a product of two automata that each have
+// one run has one run. See `colourDeterministic`.
 
 import { GATES } from './gates.js';
+import { ANY, meet } from './aut-lsta.js';
 import { reduce } from './aut-reduce.js';
+
+/** A combination that exists under no colouring, and so is no state at all. */
+const DEAD = -1;
 
 /** How many automaton states a run may build before it is called off. */
 export const STATE_BUDGET = 200000;
 
 /**
- * How many members a set may have before a gate refuses to take it apart.
+ * A colouring under which some state could take two steps at once.
  *
- * Comfortably above the 64 an HSL specification may name, because a unitary is a
- * bijection on the set and cannot make it bigger — this is a backstop against an
- * automaton that arrived some other way, not a limit anyone should meet.
+ * The gate construction needs each colouring to pick out one tree, because that is what
+ * makes the two cofactors it adds two halves of the same one. Reported as the state and
+ * the colour rather than as a bare false, since if this ever fires the interesting
+ * question is which colour stopped telling two things apart.
  */
-export const MEMBER_BUDGET = 4096;
+export function colourDeterministic(ta, root) {
+  for (const id of ta.reachable(root)) {
+    if (ta.isLeaf(id)) continue;
+    const steps = ta.transitionsOf(id);
+    if (steps.length < 2) continue;
+    const anys = steps.filter(([, , c]) => c === ANY).length;
+    if (anys > 1 || (anys && steps.length > 1)) return { state: id, colour: ANY };
+    const seen = new Set();
+    for (const [, , choice] of steps) {
+      for (const c of choice) {
+        if (seen.has(c)) return { state: id, colour: c };
+        seen.add(c);
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * The pointwise algebra on the perfect trees an automaton is built from.
@@ -70,7 +91,6 @@ export class Algebra {
     this.products = new Map();
     this.scalings = new Map();
     this.restrictions = new Map();
-    this.members = new Map();
   }
 
   /** The tree that is `value` at every leaf, from `level` down. */
@@ -89,91 +109,56 @@ export class Algebra {
   zeroAt(level) { return this.constant(level, this.ring.zero); }
 
   /**
-   * The one transition of a state, or a refusal if it has a choice to make.
+   * The two automata, paired step by step and colour by colour.
    *
-   * The algebra's whole contract in one method: it walks trees, not sets. `expand` is
-   * what makes that true of everything reaching it, so this firing means a caller went
-   * around `expand` rather than that an automaton was unusual.
+   * The one shape everything below is: for each way `a` may step and each way `b` may
+   * step, a step of the product admitted under exactly the colours that admit both, with
+   * the children paired the same way. `DEAD` when no pair survives — a combination that
+   * exists under no colouring at all — and a step to a dead child is simply not a step.
    */
-  #only(id) {
-    const out = this.ta.transitionsOf(id);
-    if (out.length !== 1) {
-      throw new Error('this state has more than one transition, so it is a set rather '
-        + 'than a tree; take it apart with expand() before doing arithmetic on it');
-    }
-    return out[0];
-  }
-
-  /**
-   * A state as the deterministic states of its members, one per tree it accepts.
-   *
-   * The choices are pushed up: a state with a choice under it becomes several states
-   * with none, which is what the algebra needs and what a plain tree automaton cannot
-   * avoid. Memoised, so a subtree shared between members is taken apart once.
-   */
-  expand(id) {
-    const had = this.members.get(id);
+  #pair(a, b, cache, leaves, combine) {
+    const level = this.ta.levelOf(a);
+    const key = `${a},${b}`;
+    const had = cache.get(key);
     if (had !== undefined) return had;
-    if (this.ta.isLeaf(id)) return [id];
-    const level = this.ta.levelOf(id);
-    const out = new Set();
-    for (const [lo, hi] of this.ta.transitionsOf(id)) {
-      for (const l of this.expand(lo)) {
-        for (const h of this.expand(hi)) {
-          if (out.size >= MEMBER_BUDGET) {
-            throw new Error(`this automaton accepts more than ${MEMBER_BUDGET} states, `
-              + 'which is more than a gate will take apart');
-          }
-          out.add(this.ta.state(level, [[l, h]]));
+    let made;
+    if (this.ta.isLeaf(a)) {
+      made = this.ta.leaf(leaves(this.ta.valueOf(a), this.ta.valueOf(b)));
+    } else {
+      const steps = [];
+      for (const [al, ah, ac] of this.ta.transitionsOf(a)) {
+        for (const [bl, bh, bc] of this.ta.transitionsOf(b)) {
+          const choice = meet(ac, bc);
+          if (choice !== ANY && !choice.length) continue;
+          const low = combine(al, bl);
+          const high = combine(ah, bh);
+          if (low === DEAD || high === DEAD) continue;
+          steps.push([low, high, choice]);
         }
       }
+      made = steps.length ? this.ta.state(level, steps) : DEAD;
     }
-    const made = [...out];
-    this.members.set(id, made);
+    cache.set(key, made);
     return made;
   }
 
-  /** Pointwise sum of two trees at the same level. */
+  /** Pointwise sum of two automata: under any colouring, of the two trees they are. */
   add(a, b) {
     const level = this.ta.levelOf(a);
     if (a === this.zeroAt(level)) return b;
     if (b === this.zeroAt(level)) return a;
-    const key = a <= b ? `${a},${b}` : `${b},${a}`;      // pointwise sum commutes
-    const had = this.sums.get(key);
-    if (had !== undefined) return had;
-    let made;
-    if (this.ta.isLeaf(a)) {
-      made = this.ta.leaf(this.ring.add(this.ta.valueOf(a), this.ta.valueOf(b)));
-    } else {
-      const [al, ah] = this.#only(a);
-      const [bl, bh] = this.#only(b);
-      made = this.ta.state(level, [[this.add(al, bl), this.add(ah, bh)]]);
-    }
-    this.sums.set(key, made);
-    return made;
+    return this.#pair(a, b, this.sums, (x, y) => this.ring.add(x, y), (x, y) => this.add(x, y));
   }
 
-  /** Pointwise product of two trees at the same level. */
+  /** Pointwise product, the same way. */
   mul(a, b) {
     const level = this.ta.levelOf(a);
     const zero = this.zeroAt(level);
     if (a === zero || b === zero) return zero;
-    const key = a <= b ? `${a},${b}` : `${b},${a}`;
-    const had = this.products.get(key);
-    if (had !== undefined) return had;
-    let made;
-    if (this.ta.isLeaf(a)) {
-      made = this.ta.leaf(this.ring.mul(this.ta.valueOf(a), this.ta.valueOf(b)));
-    } else {
-      const [al, ah] = this.#only(a);
-      const [bl, bh] = this.#only(b);
-      made = this.ta.state(level, [[this.mul(al, bl), this.mul(ah, bh)]]);
-    }
-    this.products.set(key, made);
-    return made;
+    return this.#pair(a, b, this.products, (x, y) => this.ring.mul(x, y), (x, y) => this.mul(x, y));
   }
 
-  /** Every leaf multiplied by one ring value. */
+  /** Every leaf multiplied by one ring value. The colours are untouched: no choice moved. */
   scale(value, a) {
     const level = this.ta.levelOf(a);
     if (this.ring.isZero(value)) return this.zeroAt(level);
@@ -181,13 +166,10 @@ export class Algebra {
     const key = `${this.ring.key(value)}|${a}`;
     const had = this.scalings.get(key);
     if (had !== undefined) return had;
-    let made;
-    if (this.ta.isLeaf(a)) {
-      made = this.ta.leaf(this.ring.mul(value, this.ta.valueOf(a)));
-    } else {
-      const [lo, hi] = this.#only(a);
-      made = this.ta.state(level, [[this.scale(value, lo), this.scale(value, hi)]]);
-    }
+    const made = this.ta.isLeaf(a)
+      ? this.ta.leaf(this.ring.mul(value, this.ta.valueOf(a)))
+      : this.ta.state(level, this.ta.transitionsOf(a)
+        .map(([lo, hi, c]) => [this.scale(value, lo), this.scale(value, hi), c]));
     this.scalings.set(key, made);
     return made;
   }
@@ -196,7 +178,9 @@ export class Algebra {
    * The cofactor at `qubit = bit`, still as a tree over every variable.
    *
    * An MTBDD drops the level it fixes; a perfect tree cannot, so the level stays with
-   * both of its children set to the branch that was kept. Same function, same shape.
+   * both of its children set to the branch that was kept — and keeps its colour, so the
+   * two cofactors of one automaton still agree about which run they came from. That
+   * agreement is the whole point: it is what makes adding them exact.
    */
   restrict(a, qubit, bit) {
     const level = this.ta.levelOf(a);
@@ -204,10 +188,12 @@ export class Algebra {
     const key = `${a}|${qubit}|${bit}`;
     const had = this.restrictions.get(key);
     if (had !== undefined) return had;
-    const [lo, hi] = this.#only(a);
-    const made = level === qubit
-      ? this.ta.state(level, [[bit ? hi : lo, bit ? hi : lo]])
-      : this.ta.state(level, [[this.restrict(lo, qubit, bit), this.restrict(hi, qubit, bit)]]);
+    const made = this.ta.state(level, this.ta.transitionsOf(a).map(([lo, hi, c]) => {
+      const kept = bit ? hi : lo;
+      return level === qubit
+        ? [kept, kept, c]
+        : [this.restrict(lo, qubit, bit), this.restrict(hi, qubit, bit), c];
+    }));
     this.restrictions.set(key, made);
     return made;
   }
@@ -233,11 +219,17 @@ export class Algebra {
  * algebra above. If one of them is ever wrong, the difference will show.
  *
  * @param {Algebra} alg
- * @param {number} root a state whose subtree accepts exactly one tree
+ * @param {number} root the automaton, whose colours must pick out one tree each
  * @param {number[]} qubits gate qubits, first one is the most significant matrix index
  * @param {Array<Array<any>>} matrix 2^k x 2^k over the *scalar* ring
  */
 export function applyGate(alg, root, qubits, matrix) {
+  const loose = colourDeterministic(alg.ta, root);
+  if (loose) {
+    throw new Error(`state ${loose.state} can take two steps under one colour, so the two `
+      + 'halves of a transformed node would not be halves of the same tree. A gate needs '
+      + 'the colours to pick out a run, and here they do not');
+  }
   const k = qubits.length;
   const dim = 1 << k;
   if (matrix.length !== dim) throw new Error(`gate on ${k} qubits needs a ${dim}x${dim} matrix`);
@@ -272,19 +264,16 @@ export function applyGate(alg, root, qubits, matrix) {
 }
 
 /**
- * Apply one circuit operation to every state in the set.
+ * Apply one circuit operation to the whole set at once.
  *
- * The root is taken apart into its members, each is transformed on its own, and the
- * results are collected back — so a gate moves every state the automaton accepts, and
- * moves each of them the same way. Reducing the result is the caller's business:
- * `simulate` does it, because it is what makes the next gate start from the small form.
+ * One call. The set is never taken apart, because the colours hold it together, and that
+ * is the difference between this and what a plain tree automaton could do.
  */
 export function applyOp(alg, root, op, levelOf = null) {
   const matrix = op.matrix || (GATES[op.name] && GATES[op.name].matrix);
   if (!matrix) throw new Error(`unknown gate '${op.name}'`);
   const at = levelOf ? op.qubits.map((q) => levelOf[q]) : op.qubits;
-  const moved = alg.expand(root).map((member) => applyGate(alg, member, at, matrix));
-  return alg.ta.state(0, moved.flatMap((m) => alg.ta.transitionsOf(m)));
+  return applyGate(alg, root, at, matrix);
 }
 
 /**
@@ -293,8 +282,8 @@ export function applyOp(alg, root, op, levelOf = null) {
  * @property {?object} gate          the gate just applied (null for the input set)
  * @property {number} root           the reduced automaton after that gate
  * @property {number} size           states reachable from it
- * @property {number} expanded       states it took to hold the set with no sharing of
- *                                   choices — what the reduction saved
+ * @property {number} expanded       states it took before the reduction — what the
+ *                                   merge and the recolouring between them saved
  * @property {number} members        how many quantum states it accepts
  * @property {number[]} added        states present now but not in the previous frame
  * @property {number[]} removed      states present in the previous frame but not now
@@ -316,6 +305,9 @@ export function simulate(ta, initialRoot, circuit, levelOf = null) {
   let prev = new Set();
   let root = reduce(ta, initialRoot);
 
+  // A unitary is a bijection on the set, so how many states it holds is settled once.
+  const members = ta.language(initialRoot).length;
+
   const push = (index, gate, expanded) => {
     const now = new Set(ta.reachable(root));
     frames.push({
@@ -324,7 +316,7 @@ export function simulate(ta, initialRoot, circuit, levelOf = null) {
       root,
       size: now.size,
       expanded,
-      members: alg.expand(root).length,
+      members,
       added: [...now].filter((s) => !prev.has(s)),
       removed: [...prev].filter((s) => !now.has(s)),
     });
@@ -333,9 +325,9 @@ export function simulate(ta, initialRoot, circuit, levelOf = null) {
 
   push(0, null, ta.size(initialRoot));
   circuit.gates.forEach((g, i) => {
-    // Expand, transform, reduce — and the next gate starts from what came out, not from
-    // the expansion. Holding on to the expanded form instead would mean every gate after
-    // the first paid for a sharing that had already been found once.
+    // Transform, reduce — and the next gate starts from what came out. There is no
+    // expansion any more: the colours carry the correlation a gate needs, so the set
+    // goes through whole and the sharing found once is never paid for twice.
     const wide = applyOp(alg, root, g, levelOf);
     root = reduce(ta, wide);
     if (ta.states.length > STATE_BUDGET) {

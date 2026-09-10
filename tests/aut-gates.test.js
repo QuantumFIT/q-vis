@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Algebra, applyGate, applyOp, simulate } from '../src/aut-gates.js';
+import { Algebra, applyGate, applyOp, colourDeterministic, simulate } from '../src/aut-gates.js';
 import { reduce } from '../src/aut-reduce.js';
-import { TA } from '../src/aut-ta.js';
+import { ANY } from '../src/aut-lsta.js';
+import { LSTA } from '../src/aut-lsta.js';
 import { GATES } from '../src/gates.js';
 import { parseQasm } from '../src/qasm.js';
 import { parseHsl, toVector } from '../src/aut-hsl.js';
@@ -44,7 +45,7 @@ test('a gate moves every state in the set, and moves it the way the matrix says'
   let gatesChecked = 0;
   for (let iter = 0; iter < 60; iter++) {
     const n = randInt(r, 1, 4);
-    const ta = new TA(ring, n);
+    const ta = new LSTA(ring, n);
     const alg = new Algebra(ta);
 
     // A set of one to three basis states, which keeps the language small enough to
@@ -84,7 +85,7 @@ test('a whole circuit, gate by gate, against a dense simulator run beside it', (
     + 'h q[0];\ncx q[0],q[1];\nt q[2];\nccx q[0],q[1],q[2];\nswap q[0],q[2];\nh q[1];\ns q[0];\n';
   const circuit = parseQasm(qasm);
   const n = circuit.nqubits;
-  const ta = new TA(ring, n);
+  const ta = new LSTA(ring, n);
   const start = [0, 5];
   const { root } = ta.fromVectors(start.map((b) => basis(n, b)));
   const frames = simulate(ta, root, circuit);
@@ -104,7 +105,7 @@ test('a whole circuit, gate by gate, against a dense simulator run beside it', (
 test('a frame knows what it gained and lost, and nothing is lost that was not there', () => {
   const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\n'
     + 'h q[0];\ncx q[0],q[1];\ncx q[1],q[2];\n');
-  const ta = new TA(ring, 3);
+  const ta = new LSTA(ring, 3);
   const { root } = ta.fromVectors([basis(3, 0)]);
   const frames = simulate(ta, root, circuit);
   for (let i = 1; i < frames.length; i++) {
@@ -125,7 +126,7 @@ test('the same circuit run twice lands on the same states, not merely equal ones
   // Interning is what makes a frame diff a set difference over ids; if a rerun built
   // fresh states the picture would redraw itself from scratch every time.
   const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\n\nh q[0];\ncx q[0],q[1];\n');
-  const ta = new TA(ring, 2);
+  const ta = new LSTA(ring, 2);
   const { root } = ta.fromVectors([basis(2, 0)]);
   const first = simulate(ta, root, circuit);
   const built = ta.states.length;
@@ -137,7 +138,7 @@ test('the same circuit run twice lands on the same states, not merely equal ones
 test('two states that agree below a gate go on sharing what they agree on', () => {
   // The reason this is an automaton and not a list. |000> and |100> differ only in the
   // top qubit; a gate on the bottom one must not fork the subtree they have in common.
-  const ta = new TA(ring, 3);
+  const ta = new LSTA(ring, 3);
   const alg = new Algebra(ta);
   const { root } = ta.fromVectors([basis(3, 0), basis(3, 4)]);
   const after = applyOp(alg, root, { name: 'h', qubits: [2] });
@@ -145,15 +146,15 @@ test('two states that agree below a gate go on sharing what they agree on', () =
   // |000> keeps its content under q0 = 0 and is zero under q0 = 1; |100> is the mirror.
   // So the four children of the two transitions are two distinct states, not four: the
   // transformed subtree is built once and the all-zero subtree is the one both share.
-  assert.deepEqual(a, [...b].reverse(), 'the two members are mirror images');
-  assert.equal(new Set([...a, ...b]).size, 2, 'built from two subtrees between them');
+  assert.deepEqual([a[0], a[1]], [b[1], b[0]], 'the two members are mirror images');
+  assert.equal(new Set([a[0], a[1], b[0], b[1]]).size, 2, 'built from two subtrees between them');
   const alone = ta.size(ta.state(0, [a]));
   assert.ok(ta.size(after) < 2 * alone,
     `${ta.size(after)} states for both, against ${alone} for one`);
 });
 
 test('the cofactor of a perfect tree is still perfect, and no longer depends on the qubit', () => {
-  const ta = new TA(ring, 3);
+  const ta = new LSTA(ring, 3);
   const alg = new Algebra(ta);
   const { root } = ta.fromVectors([[...Array(8)].map((_, i) => P.fromInt(i))]);
   for (const q of [0, 1, 2]) {
@@ -180,7 +181,7 @@ test('the cofactor of a perfect tree is still perfect, and no longer depends on 
 test('a symbolic amplitude goes through a gate as an amplitude, not as a number', () => {
   // What the other page cannot do at all and this one inherits for free: HSL names its
   // amplitudes, and a gate has to carry the names through.
-  const ta = new TA(ring, 1);
+  const ta = new LSTA(ring, 1);
   const alg = new Algebra(ta);
   const a = P.variable('a');
   const b = P.variable('b');
@@ -190,48 +191,60 @@ test('a symbolic amplitude goes through a gate as an amplitude, not as a number'
   assert.ok(ring.eq(got[0], b) && ring.eq(got[1], a), `${P.format(got[0], 'exact')}`);
 });
 
-test('the arithmetic walks trees, and says so when handed a set', () => {
-  // The boundary of a plain tree automaton, and the algebra's contract. Two sibling
-  // subtrees of a transformed node would each have to know which choice the other took,
-  // and a TA cannot say that — so `applyGate` refuses a state with a choice under it,
-  // and `applyOp` takes the choices apart first rather than approximating them.
-  const ta = new TA(ring, 2);
+test('a mixing gate is applied to the whole set at once, without taking it apart', () => {
+  // The thing a plain tree automaton could not do. Two sibling subtrees of a TA are read
+  // independently, so the two halves of a node H transforms could not agree on which
+  // choice the other made and the only exact answer was to enumerate the members. Here
+  // the colours make them agree, and the check is the dense oracle on every member.
+  const n = 3;
+  const ta = new LSTA(ring, n);
+  const spec = parseHsl(SPECIALS.basis.spec(n), n);
+  const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+  const small = reduce(ta, root);
+  assert.equal(ta.size(small), 2 * n + 1, 'the compact automaton, before the gate');
+
+  const alg = new Algebra(ta);
+  const after = reduce(ta, applyOp(alg, small, { name: 'h', qubits: [0] }));
+  const dense = ta.language(small)
+    .map((v) => applyGateDense(v.map(asComplex), n, [0], GATES.h.matrix));
+  assert.deepEqual(asFloats(ta.language(after)), asText(dense));
+  assert.ok(ta.size(after) < 3 * ta.size(small),
+    `${ta.size(after)} states from ${ta.size(small)}: the set was expanded after all`);
+});
+
+test('the colours have to pick out a run, and a gate says so when they do not', () => {
+  // The invariant the construction rests on: under one colouring each state takes one
+  // step, so adding two cofactors adds two halves of the *same* tree. Nothing the page
+  // builds breaks it — this is a state made by hand to show what the check is for.
+  const ta = new LSTA(ring, 2);
   const alg = new Algebra(ta);
   const zero = ta.leaf(P.zero);
   const one = ta.leaf(P.one);
-  const l0 = ta.state(1, [[one, zero]]);
-  const l1 = ta.state(1, [[zero, one]]);
-  const branchy = ta.state(1, [[one, zero], [zero, one]]);   // a real choice, at level 1
-  const root = ta.state(0, [[branchy, l0]]);
-  assert.throws(() => applyGate(alg, root, [0], GATES.h.matrix), /set rather than a tree/);
-  assert.doesNotThrow(() => applyGate(alg, ta.state(0, [[l1, l0]]), [0], GATES.h.matrix));
+  const loose = ta.state(1, [[one, zero, [0]], [zero, one, [0]]]);   // one colour, two steps
+  const tight = ta.state(1, [[one, zero, [0]], [zero, one, [1]]]);   // one colour each
+  assert.ok(colourDeterministic(ta, loose), 'the hand-made one is loose');
+  assert.equal(colourDeterministic(ta, tight), null, 'and the coloured one is not');
 
-  // The same automaton through applyOp, which expands first: two members in, two out,
-  // and each of them is what the dense oracle says it should be.
-  const after = applyOp(alg, root, { name: 'h', qubits: [0] });
-  const dense = ta.language(root)
-    .map((v) => applyGateDense(v.map(asComplex), 2, [0], GATES.h.matrix));
-  assert.deepEqual(asFloats(ta.language(after)), asText(dense));
+  assert.throws(() => applyGate(alg, ta.state(0, [[loose, loose]]), [0], GATES.h.matrix),
+    /two steps under one colour/);
+  assert.doesNotThrow(() => applyGate(alg, ta.state(0, [[tight, tight]]), [0], GATES.h.matrix));
 });
 
-test('expanding a set gives one deterministic state per member, and no more', () => {
-  const ta = new TA(ring, 3);
-  const alg = new Algebra(ta);
-  const spec = parseHsl(SPECIALS.basis.spec(3), 3);
-  const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
-  const small = reduce(ta, root);
-  const members = alg.expand(small);
-  assert.equal(members.length, 8, 'the reduced automaton still accepts every basis state');
-  for (const m of members) {
-    for (const id of ta.reachable(m)) {
-      if (!ta.isLeaf(id)) assert.equal(ta.transitionsOf(id).length, 1, 'each member is a tree');
+test('an ordinary automaton is a level-synchronized one that never uses a colour', () => {
+  // Nothing was taken away. A transition admitted under any colour constrains no run, so
+  // an automaton built without colours behaves exactly as it did before there were any.
+  const ta = new LSTA(ring, 2);
+  const { root } = ta.fromVectors([basis(2, 0)]);
+  for (const id of ta.reachable(root)) {
+    for (const [, , choice] of ta.transitionsOf(id)) {
+      assert.ok(choice === ANY || choice.length === 1, 'a set of one names one member');
     }
-    assert.equal(ta.language(m).length, 1);
   }
-  assert.deepEqual(
-    new Set(members.flatMap((m) => ta.language(m)).map((v) => v.map((x) => ring.key(x)).join('|'))),
-    new Set(ta.language(small).map((v) => v.map((x) => ring.key(x)).join('|'))),
-    'and between them they accept exactly what it did');
+  const alg = new Algebra(ta);
+  const after = applyGate(alg, root, [0], GATES.h.matrix);
+  const [got] = ta.language(after);
+  assertClose(asComplex(got[0]), { re: Math.SQRT1_2, im: 0 }, '|00>');
+  assertClose(asComplex(got[2]), { re: Math.SQRT1_2, im: 0 }, '|10>');
 });
 
 test('every frame is reduced, so the next gate starts from the small form', () => {
@@ -239,7 +252,7 @@ test('every frame is reduced, so the next gate starts from the small form', () =
   // and carry *that* forward. If a frame were not already reduced, the next gate would
   // be paying again for sharing that had been found once.
   const n = 4;
-  const ta = new TA(ring, n);
+  const ta = new LSTA(ring, n);
   const spec = parseHsl(SPECIALS.basis.spec(n), n);
   const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
   const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\n\n'
@@ -256,7 +269,7 @@ test('every frame is reduced, so the next gate starts from the small form', () =
 
 test('a rotation stays in the ring, so the amplitude is exact and not rounded', () => {
   const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[1];\n\nrx(pi/4) q[0];\n');
-  const ta = new TA(ring, 1);
+  const ta = new LSTA(ring, 1);
   const { root } = ta.fromVectors([basis(1, 0)]);
   const frames = simulate(ta, root, circuit);
   const [got] = ta.language(frames.at(-1).root);
@@ -270,7 +283,7 @@ test('every basis state at once goes through a circuit, all of them at once', ()
   // same dense oracle applied to each — which is what verifying a circuit over all
   // inputs means in the first place.
   for (const n of [1, 2, 3]) {
-    const ta = new TA(ring, n);
+    const ta = new LSTA(ring, n);
     const spec = parseHsl(SPECIALS.basis.spec(n), n);
     assert.equal(spec.vectors.length, 2 ** n);
     const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
@@ -296,7 +309,7 @@ test('every basis state at once goes through a circuit, all of them at once', ()
 
 test('the zero state is a set of one, and stays one all the way through', () => {
   const n = 3;
-  const ta = new TA(ring, n);
+  const ta = new LSTA(ring, n);
   const spec = parseHsl(SPECIALS.zero.spec(n), n);
   const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
   const circuit = parseQasm('OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\n'
