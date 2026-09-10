@@ -7,7 +7,7 @@ import { simulate } from './sim.js';
 import { parseQasm } from './qasm.js';
 import { parseState, buildState, squaredNorm, symbolicStateText } from './state.js';
 import { layoutFrames, layoutEdgeValued, layoutEdgeValuedTree } from './layout.js';
-import { EVDD, unitNormaliser, NORMALISERS } from './evdd.js';
+import { EVDD, unitNormaliser, NORMALISERS, DEFAULT_NORMALISER } from './evdd.js';
 import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
@@ -50,7 +50,7 @@ const app = {
   hideZero: false,
   rep: 'reduced',    // reduced | edge-valued | limdd — what goes on the edges
   tree: false,       // the same representation with nothing shared
-  canon: 'max',      // which edge an edge-valued diagram takes its factor from
+  canon: DEFAULT_NORMALISER,   // which edge an edge-valued diagram takes its factor from
   orderKind: 'written',   // written | reversed | paired | custom
   customOrder: null,      // the typed permutation, when orderKind is 'custom'
   orderInvalid: null,     // why the text in the field is not an order, when it is not
@@ -217,7 +217,7 @@ function compile() {
     ? `a tree on ${circuit.nqubits} qubits is ${2 ** circuit.nqubits} leaves — too many to draw`
     : 'draw the same thing with nothing shared, so the sharing can be seen for what it saves';
   // The canonisation rule only means anything where there are edge weights.
-  $('canon').style.display = app.rep === 'reduced' ? 'none' : '';
+  $('canonPick').style.display = app.rep === 'reduced' ? 'none' : '';
   // A stabilizer group is a property of the state, but it is the Pauli-LIMDD that uses
   // one, so that is the only view where offering it says anything.
   $('tableau').style.display = app.rep === 'limdd' ? '' : 'none';
@@ -1834,7 +1834,7 @@ function permalink() {
   if (app.index) p.set('i', String(app.index));
   const code = viewCode(app.rep, app.tree);
   if (code) p.set('t', code);
-  if (app.canon !== 'max') p.set('n', app.canon);
+  if (app.canon !== DEFAULT_NORMALISER) p.set('n', app.canon);
   if (app.hideZero) p.set('z', '1');
   if (app.ampFormat !== 'exact') p.set('f', app.ampFormat);
   // Only when it is not the identity, so every link already written keeps its meaning.
@@ -2170,7 +2170,7 @@ export function boot() {
     compile();
   });
   for (const [kind, rule] of Object.entries(NORMALISERS)) {
-    $('canon').append(new Option(`factor: ${rule.label}`, kind));
+    $('canon').append(new Option(kind === DEFAULT_NORMALISER ? `${rule.label} (default)` : rule.label, kind));
   }
   $('canon').value = app.canon;
   $('canon').addEventListener('change', (e) => {

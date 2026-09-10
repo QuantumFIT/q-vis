@@ -921,6 +921,18 @@ dialog > header .spacer { flex: 1; }
   color: var(--ink-soft);
 }
 
+/* A word in front of a control, for the one select whose options do not name what they
+   are choosing between. Shaped like the toggles beside it so the masthead stays one row
+   of the same thing. */
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
 .toggle {
   display: inline-flex;
   align-items: center;

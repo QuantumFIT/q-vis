@@ -192,7 +192,7 @@ export const NORMALISERS = {
   },
   low: {
     label: 'low edge',
-    note: "Q-Sylvan's norm-low and the rule Quist et al. use for their scaling guarantees: "
+    note: "The default. Q-Sylvan's norm-low and the rule Quist et al. use for their scaling guarantees: "
       + 'the factor comes from the low edge, or the high edge when the low one is zero.',
     make: (P, Z) => (e0, e1) => unitFactor(P, Z, chooseEdge(P, Z, 'low', e0, e1).w),
   },
@@ -210,7 +210,14 @@ export const NORMALISERS = {
   },
 };
 
-/** The default: take the factor from the larger edge, as Q-Sylvan does. */
-export function unitNormaliser(P, Z, kind = 'max') {
-  return (NORMALISERS[kind] || NORMALISERS.max).make(P, Z);
+/**
+ * The default: take the factor from the low edge. That is the rule Quist et al. prove
+ * their scaling guarantees for, and the only one a Pauli-LIMDD can use — the Pauli rules
+ * assume the low edge has been emptied — so it is the one rule that means the same thing
+ * in every view the tool offers.
+ */
+export const DEFAULT_NORMALISER = 'low';
+
+export function unitNormaliser(P, Z, kind = DEFAULT_NORMALISER) {
+  return (NORMALISERS[kind] || NORMALISERS[DEFAULT_NORMALISER]).make(P, Z);
 }

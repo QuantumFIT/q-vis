@@ -34,15 +34,22 @@ Clifford+T ring this project uses.
 
 | Q-Sylvan | ν | ℓ₂ error measured there | here |
 | --- | --- | --- | --- |
-| `norm-low` | α, the low weight | 8% | **low edge** |
+| `norm-low` | α, the low weight | 8% | **low edge** (our default) |
 | `norm-min` | min(α, β) | 20% | **smaller edge** |
-| `norm-max` | max(α, β) | 0% (their default) | **larger edge** (our default) |
+| `norm-max` | max(α, β) | 0% (their default) | **larger edge** |
 | `norm-L2` | ‖(α,β)‖ with α/ν real positive | 0% | not expressible — see below |
 
 Their ranking is driven by floating-point error, and they conclude that "having larger
 values higher up in the decision diagram can increase issues with numerical instability".
 Exact arithmetic removes that objection entirely, so the rules are offered here on their
 other merits: what they do to the picture, and to the node count.
+
+That is also why the default here is `norm-low` rather than their `norm-max`. The reason
+they prefer max is a numerical one this project does not have, while low has two merits it
+does: it is the rule Quist et al. prove their scaling guarantees for, and it is the only
+one a Pauli-LIMDD can use, since the Pauli rules assume the low edge has been emptied. A
+default that means the same thing in every view the tool offers is worth more here than
+one chosen against rounding error that never happens.
 
 Two things follow from the ring rather than from the rule.
 
