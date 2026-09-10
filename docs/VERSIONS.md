@@ -123,6 +123,13 @@ index.
 Both pages are built from the same tag and share one version sequence. `npm run build`
 with no arguments builds every page; naming one builds only that one.
 
+**A preview cannot add a page.** The deploy job checks out `master`, so the script that
+assembles the site is always master's — a preview push changes what a page *contains*, and
+never which pages exist. A page's own build script runs from its ref and will happily
+produce the file, but master's release script does not know to publish it, and it is
+discarded with the temporary directory. So a new page reaches the site only in the release
+that puts the release script on master; there is no way to preview one first.
+
 ## How a build knows its own version
 
 `tools/build.mjs` stamps `Q_VIS_VERSION` into a meta tag, defaulting to `dev`;
