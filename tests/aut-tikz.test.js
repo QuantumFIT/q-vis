@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { automatonTikz, circuitTikz } from '../src/tikz.js';
+import { automatonTikz, boxWidth, circuitTikz } from '../src/tikz.js';
 import { fanAngles, layoutAutomaton, spread } from '../src/aut-layout.js';
 import { simulate } from '../src/aut-gates.js';
 import { parseHsl, toVector } from '../src/aut-hsl.js';
@@ -48,7 +48,7 @@ test('every state is drawn once, and no edge goes into thin air', () => {
     for (const nd of layout.nodes) assert.ok(declared.has(String(nd.id)), `s${nd.id} is missing`);
 
     const drawn = [...tex.matchAll(
-      /\\draw\[(low|high)\] \(s(\d+)\.[-\d]+\) \.\. controls [^;]+ \.\. ([^;]+);$/gm)];
+      /\\draw\[(low|high)\] \(s(\d+)\.[-\d]+\) -- \+\+\([^)]+\) \.\. controls [^;]+ \.\. ([^;]+);$/gm)];
     assert.equal(drawn.length, layout.edges.length, 'one edge each');
     for (const [, , from, to] of drawn) {
       assert.ok(declared.has(from), `an edge leaves an undeclared s${from}`);
@@ -107,8 +107,8 @@ test('the root is marked, the rows are named, and the picture closes', () => {
     'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\n\nh q[0];\n');
   const tex = draw(layouts[0], circuit);
   assert.match(tex, /\{\$R\$\}/, 'the root state says it is one');
-  assert.match(tex, /\\node\[gut\] at \([-\d.]+,0\) \{q\[0\]\}/);
-  assert.match(tex, /\\node\[gut\] at \([-\d.]+,2\) \{amplitude\}/, 'the last row is the amplitudes');
+  assert.match(tex, /\\node\[gut\] at \([-\d.]+,0\) \{\$q_\{0\}\$\}/, 'named as the circuit names it');
+  assert.match(tex, /\\node\[band\] at \([-\d.]+,2\) \{amplitude\}/, 'the last row is the amplitudes');
   assert.equal((tex.match(/\\begin\{tikzpicture\}/g) || []).length, 1);
   assert.equal((tex.match(/\\end\{tikzpicture\}/g) || []).length, 1);
   const open = (tex.match(/(?<!\\)\{/g) || []).length;
@@ -116,16 +116,38 @@ test('the root is marked, the rows are named, and the picture closes', () => {
   assert.equal(open, shut, 'braces balance');
 });
 
-test('a column is wide enough for the widest amplitude in it', () => {
-  // Two amplitude boxes on neighbouring columns collided at 1.15cm — `(1+i)/2` is wider
-  // than that — so the column is sized from the label rather than fixed.
-  const narrow = run(2, SPECIALS.zero.spec(2), 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\n\nx q[0];\n');
+test('the amplitudes get the room they need, and the states keep their own grid', () => {
+  // Two rows of one picture want two different spacings. Letting the amplitudes set both
+  // pulled the states apart until the diagram was a scatter of circles across half a
+  // page; letting the states set both had the amplitudes overlapping into a smear. So the
+  // states are on a fixed grid whatever is written below them, and the row of amplitudes
+  // is opened out pair by pair until each one has room.
+  const narrow = run(2, SPECIALS.zero.spec(2),
+    'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[2];\n\nx q[0];\n');
   const wide = run(3, SPECIALS.basis.spec(3), BELL);
+  const plain = draw(narrow.layouts.at(-1), narrow.circuit);
+  const busy = draw(wide.layouts.at(-1), wide.circuit);
+
   const unit = (tex) => Number(/x=([\d.]+)cm/.exec(tex)[1]);
-  const thin = unit(draw(narrow.layouts.at(-1), narrow.circuit));
-  const fat = unit(draw(wide.layouts.at(-1), wide.circuit));
-  assert.equal(thin, 1.15, 'a picture of 0 and 1 keeps the default');
-  assert.ok(fat > thin, `${fat} should be wider than ${thin}`);
+  assert.equal(unit(plain), unit(busy), 'the states are on the same grid in both');
+
+  // No two amplitudes overlap, and the room between any two is what *those two* need:
+  // half of each plus air. One spacing for a whole row was wrong at both ends — it left
+  // the crowded middle crowded and threw the far ones off the side of the picture.
+  const row = (tex) => [...tex.matchAll(
+    /\\node\[autterm[^\]]*\] \(s\d+\) at \((-?[\d.]+),[^)]*\) \{\$(.*)\$\};/g)]
+    .map((m) => ({ x: Number(m[1]) * unit(tex), w: boxWidth(m[2]) }))
+    .sort((a, b) => a.x - b.x);
+  for (const [what, tex] of [['|0..0>', plain], ['every basis state', busy]]) {
+    const boxes = row(tex);
+    assert.ok(boxes.length >= 2, `${what}: only ${boxes.length} amplitudes to space`);
+    for (let i = 1; i < boxes.length; i++) {
+      const clear = (boxes[i].x - boxes[i - 1].x) - (boxes[i].w + boxes[i - 1].w) / 2;
+      assert.ok(clear > 0.2,
+        `${what}: ${clear.toFixed(2)}cm of paper between two amplitudes is not enough`);
+      assert.ok(clear < 3, `${what}: ${clear.toFixed(2)}cm between two amplitudes is a hole`);
+    }
+  }
 });
 
 test('the circuit goes through the other page\'s exporter, unchanged', () => {

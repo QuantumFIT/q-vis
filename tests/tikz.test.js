@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toLatex, qubitLatex, circuitTikz, diagramTikz } from '../src/tikz.js';
+import { toLatex, qubitLatex, amplitudeLatex, boxWidth, circuitTikz, diagramTikz } from '../src/tikz.js';
 import { MTBDD } from '../src/dd.js';
 import * as P from '../src/poly.js';
 import * as Z from '../src/zomega.js';
@@ -280,30 +280,61 @@ test('parallel edges are bent apart, since a tower is nothing but those', () => 
   assert.match(tex, /to\[bend right=/);
 });
 
-test('a column is wide enough for the amplitudes it has to hold', () => {
-  // At a flat 1.15cm the boxes at the bottom of a figure sat on top of one another the
-  // moment an amplitude stopped being 0 or 1: `(1+ω)/(2√2)` needs three times that, and
-  // the three of them came out as one unreadable smear. So the column is sized from the
-  // widest label, the way the automata page's figures already were.
+test('the amplitudes get the room they need, and the states keep their own grid', () => {
+  // At a flat 1.15cm the amplitudes at the foot of a figure sat on top of one another the
+  // moment one stopped being 0 or 1; sizing every column to the widest of them instead
+  // pulled the states apart until the diagram was a scatter. Two rows, two spacings: the
+  // states on a fixed grid, the amplitudes opened out pair by pair until each has room.
   const unit = (tex) => Number(/x=([\d.]+)cm/.exec(tex)[1]);
-  const figure = (instance, at) => {
+  const figure = (instance) => {
     const { layout, circuit } = laidOut(instance);
-    return diagramTikz(layout, at < 0 ? layout.frames.length - 1 : at, {
+    return diagramTikz(layout, layout.frames.length - 1, {
       qubitLabels: circuit.qubits.map((q) => q.label),
     });
   };
-  const plain = figure({ qasm: 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\nx q[0];\n', state: '|000> : 1' }, -1);
-  const wide = figure({
+  const plain = figure({
+    qasm: 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\nx q[0];\n',
+    state: '|000> : 1',
+  });
+  const busy = figure({
     qasm: 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\nh q[0];\ncx q[0],q[1];\nt q[2];\nh q[2];\n',
     state: '--- : 1/(2*sqrt2)',
-  }, -1);
-  assert.equal(unit(plain), 1.15, 'a figure of 0 and 1 keeps the width it always had');
-  assert.ok(unit(wide) > 2, `${unit(wide)}cm is not enough for (1+omega)/(2 sqrt 2)`);
+  });
 
-  // And the gutter clears the widest box rather than its centre, or the word naming the
-  // row lands on the first amplitude in it.
-  const left = Number(/\\node\[gut\] at \((-?[\d.]+),/.exec(wide)[1]);
-  const firstBox = Math.min(...[...wide.matchAll(/\\node\[ddterm[^\]]*\] \(n\d+\) at \((-?[\d.]+),/g)]
-    .map((m) => Number(m[1])));
-  assert.ok(left < firstBox - 0.5, `the gutter at ${left} does not clear a box at ${firstBox}`);
+  assert.equal(unit(plain), unit(busy), 'the states are on the same grid in both');
+
+  const row = (tex) => [...tex.matchAll(
+    /\\node\[ddterm[^\]]*\] \(n\d+\) at \((-?[\d.]+),[^)]*\) \{\$(.*)\$\};/g)]
+    .map((m) => ({ x: Number(m[1]) * unit(tex), w: boxWidth(m[2]) }))
+    .sort((a, b) => a.x - b.x);
+  for (const [what, tex] of [['0 and 1', plain], ['(1+omega)/(2 sqrt 2)', busy]]) {
+    const boxes = row(tex);
+    assert.ok(boxes.length >= 2, `${what}: only ${boxes.length} amplitudes to space`);
+    for (let i = 1; i < boxes.length; i++) {
+      const clear = (boxes[i].x - boxes[i - 1].x) - (boxes[i].w + boxes[i - 1].w) / 2;
+      assert.ok(clear > 0.2,
+        `${what}: ${clear.toFixed(2)}cm of paper between two amplitudes is not enough`);
+      assert.ok(clear < 3, `${what}: ${clear.toFixed(2)}cm between two amplitudes is a hole`);
+    }
+  }
+
+  // And the gutter clears the widest of them rather than its centre, or the word naming
+  // the row lands on the first amplitude in it.
+  const left = Number(/\\node\[gut\] at \((-?[\d.]+),/.exec(busy)[1]) * unit(busy);
+  const first = row(busy)[0];
+  assert.ok(left < first.x - first.w / 2, `the gutter at ${left} does not clear the first box`);
+});
+
+test('an amplitude is set over a rule, not on a slash', () => {
+  // Both the convention and, since a stacked fraction is as wide as its wider half rather
+  // than as wide as both halves and a slash, half the width — which is the difference
+  // between a row of them that fits under the diagram and one that spreads across a page.
+  assert.equal(amplitudeLatex('1/\u221a2'), '\\frac{1}{\\sqrt{2}}');
+  assert.equal(amplitudeLatex('(1+\u03c9)/(2\u221a2)'), '\\frac{1+\\omega}{2\\sqrt{2}}');
+  assert.equal(amplitudeLatex('-1/2'), '\\frac{-1}{2}');
+  assert.equal(amplitudeLatex('0'), '0', 'nothing to stack');
+  assert.equal(amplitudeLatex('0.3536\u2220\u03c0'), '0.3536\\angle\\pi', 'nor here');
+  assert.equal(amplitudeLatex('a/b/c'), 'a/b/c', 'two divisions would be ambiguous stacked');
+  assert.ok(boxWidth('\\frac{1+\\omega}{2\\sqrt{2}}') < boxWidth('(1+\\omega)/(2\\sqrt{2})'),
+    'and it is measured as the narrower thing it is');
 });

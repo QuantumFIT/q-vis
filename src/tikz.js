@@ -92,6 +92,38 @@ export function toLatex(text) {
   return out;
 }
 
+/**
+ * An amplitude as LaTeX, set the way a paper sets one: over a rule, not on a slash.
+ *
+ * `1/√2` and `(1+ω)/(2√2)` are how the plate writes them, because a plate has one line to
+ * write on. A figure does not, and a stacked fraction is both the convention and — since
+ * it is as wide as its wider half rather than as wide as both halves and a slash — half
+ * the width. That is the difference between a row of amplitudes that fits under the
+ * diagram and one that spreads it across a page.
+ *
+ * Only a division at the top level is stacked: `a/(b/c)` would be ambiguous set that way
+ * and is left as it was written, which is at worst what this always did.
+ */
+export function amplitudeLatex(text) {
+  const s = String(text ?? '');
+  let depth = 0;
+  let at = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(') depth += 1;
+    else if (s[i] === ')') depth -= 1;
+    else if (s[i] === '/' && depth === 0) {
+      if (at >= 0) return toLatex(s);            // two of them: not a simple fraction
+      at = i;
+    }
+  }
+  if (at <= 0 || at === s.length - 1) return toLatex(s);
+  const bare = (part) => (/^\((?:[^()]|\([^()]*\))*\)$/.test(part) ? part.slice(1, -1) : part);
+  const top = bare(s.slice(0, at));
+  const bottom = bare(s.slice(at + 1));
+  if (!top || !bottom || bottom.includes('/')) return toLatex(s);
+  return `\\frac{${toLatex(top)}}{${toLatex(bottom)}}`;
+}
+
 /** A register label: `q[0]` reads better as a subscript than as brackets. */
 export function qubitLatex(label) {
   const m = /^([A-Za-z][A-Za-z0-9_]*)\[(\d+)\]$/.exec(String(label ?? ''));
@@ -248,13 +280,25 @@ export function circuitTikz(circuit, opts = {}) {
 // ---- the diagram ---------------------------------------------------------
 
 const STYLES = [
-  '    ddnode/.style={circle, draw, minimum size=6mm, inner sep=0pt},',
-  '    ddterm/.style={rectangle, rounded corners=1pt, draw, inner xsep=3pt, inner ysep=2pt},',
+  // A state is drawn a shade heavier than the lines between states: the nodes are the
+  // things, and the edges are what is said about them.
+  '    ddnode/.style={circle, draw, semithick, minimum size=6mm, inner sep=0pt},',
+  // An amplitude is set plainly, with no box around it. A box says "another node of the
+  // same kind", which is exactly what a terminal is not, and five of them across the foot
+  // of a figure is a heavy band under a light diagram. Without one the amplitudes read as
+  // what the branches above them come to, which is what they are.
+  '    ddterm/.style={anchor=north, inner xsep=1.5pt, inner ysep=1.5pt},',
   '    dead/.style={draw=black!30, text=black!45},',
+  '    faint/.style={text=black!45},',
   '    low/.style={densely dashed},',
   '    high/.style={},',
   '    wt/.style={inner sep=1pt, fill=white, font=\\scriptsize},',
-  '    gut/.style={anchor=east, font=\\scriptsize\\ttfamily, text=black!55},',
+  // The row names are set the way the circuit beside them sets the same names — in maths,
+  // as q_0 — rather than in the typewriter face the plate uses. On screen `q[0]` matches
+  // the box the reader typed it into; in a paper it matches nothing, and a figure whose
+  // qubits are called q_0 in one picture and q[0] in the next looks like two figures.
+  '    gut/.style={anchor=east, font=\\scriptsize, text=black!60},',
+  '    band/.style={anchor=north east, font=\\scriptsize\\itshape, text=black!60},',
 ];
 
 const coord = (v) => (Math.round(v * 1000) / 1000).toString();
@@ -268,38 +312,108 @@ const coord = (v) => (Math.round(v * 1000) / 1000).toString();
  * thereabouts, and braces set none.
  */
 function glyphs(tex) {
-  return tex.replace(/\\[a-zA-Z]+\s*/g, 'w').replace(/[{}]/g, '').length;
+  // A stacked fraction is as wide as its wider half, not as wide as both of them and a
+  // rule. Counting it the flat way is what made an amplitude ask for twice the room it
+  // takes, and a row of them twice the page.
+  const frac = /\\frac\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*\{((?:[^{}]|\{[^{}]*\})*)\}/;
+  let out = tex;
+  for (let m = frac.exec(out); m; m = frac.exec(out)) {
+    const wide = Math.max(1, Math.round(Math.max(glyphs(m[1]), glyphs(m[2]))));
+    out = out.slice(0, m.index) + 'w'.repeat(wide) + out.slice(m.index + m[0].length);
+  }
+  return out.replace(/\\[a-zA-Z]+\s*/g, 'w').replace(/[{}]/g, '').length;
 }
 
 /**
- * How wide a column has to be, in centimetres, for the widest thing written in it.
+ * How wide a box holding this label comes out, in centimetres.
  *
- * Measured rather than guessed: a box holding n glyphs comes out about 2mm of padding
- * plus 2.6mm a glyph at 10pt, and two of them want 4mm of air between. A weight on an
- * edge is set `\scriptsize`, so it asks for about seven tenths of that. A figure with
- * nothing long in it keeps the old 1.15cm, so the diagrams this has always drawn well are
- * drawn exactly as they were.
+ * Measured off compiled figures rather than guessed: the rule and the padding come to
+ * about 2mm and a glyph at 10pt to about 2.6mm. Good to a millimetre or so, which is all
+ * that is asked of it — everything below adds air on top.
+ */
+export const boxWidth = (tex) => 0.2 + 0.26 * glyphs(tex);
+
+/** How much clear paper two boxes want between them. */
+const AIR = 0.4;
+
+/**
+ * How wide the grid the *states* sit on has to be, in centimetres.
+ *
+ * Only what is written between two columns decides this — in the edge-valued view a
+ * weight on an edge, otherwise nothing, in which case the states keep the 1.15cm they
+ * have always been drawn at. The amplitudes at the bottom are not in it: they are far
+ * wider than anything else in the picture, and letting them set the grid pulled a diagram
+ * four nodes wide across half a page — a sparse scatter of small circles joined by long
+ * diagonals, with the reader's eye doing all the work. They get their own spacing below.
  *
  * @param {{tex: string, small?: boolean}[]} labels
  */
 function columnWidth(labels) {
   const widest = Math.max(0, ...labels.map((l) => glyphs(l.tex) * (l.small ? 0.7 : 1)));
-  return Math.max(1.15, Math.round((0.6 + 0.26 * widest) * 100) / 100);
+  return Math.max(GRID.x, Math.round((0.6 + 0.26 * widest) * 100) / 100);
 }
 
 /**
- * How far left of the first column the gutter labels sit, in column units.
+ * The grid a figure is drawn on, in centimetres, for a state 6mm across.
  *
- * The gutter wants to be a fixed distance from the picture — about a centimetre — and a
- * column is not a fixed distance any more. Written as a constant it drifted: a figure of
- * long amplitudes has wide columns, so a gutter 1.1 columns out ended up four centimetres
- * from a diagram it was labelling, with the reader's eye crossing a strip of nothing.
- *
- * What it has to clear is the leftmost *box*, not the leftmost centre, and a box is as
- * wide as the column less the air `columnWidth` left between two of them. Clearing only
- * the centre put the word `amplitude` on top of the first amplitude.
+ * Taken from the plate's own proportions, which were chosen by looking at pictures: it
+ * gives a state three times its own width of room across and three and a half times down.
+ * These were 1.15 and 1.25 — under twice the width — and that was most of what made the
+ * figures look cramped next to the thing they were exported from. A diagram wants air
+ * between its nodes or it reads as a blot rather than as a shape.
  */
-const gutterAt = (xMin, xUnit) => xMin - (1.15 + Math.max(0, xUnit - 0.4) / 2) / xUnit;
+const GRID = { x: 1.5, y: 1.75 };
+
+/**
+ * Where the gutter labels sit, in column units: a centimetre clear of the widest box on
+ * the row they name, rather than a centimetre from its centre — which put the word
+ * `amplitude` on top of the first amplitude.
+ */
+const gutterAt = (xMin, xUnit, widest) => xMin - (0.6 + widest / 2) / xUnit;
+
+/**
+ * Where each node sits across the page, in column units, once the amplitudes at the
+ * bottom have been given the room they need.
+ *
+ * Two rows of one picture want two different spacings and used to get one. The states
+ * keep their compact grid; the bottom row is opened out until its boxes fit.
+ *
+ * Opened pair by pair, and only where it is needed. How much room two boxes want is a
+ * fact about *those two* — `0` beside `0` wants a few millimetres, two long amplitudes
+ * want three centimetres — so one spacing for a whole row is wrong at both ends. Taking
+ * the widest pair's answer and using it everywhere left a lone `0` a hand's width from
+ * anything it touched and did nothing for the crowded middle. A gap the layout already
+ * made wide enough is left exactly as it was.
+ *
+ * Then the row is centred under the states rather than left wherever it started, so the
+ * amplitudes sit beneath the diagram instead of off to one side of it, with the reader
+ * crossing an empty half-page to get from one to the other.
+ *
+ * @param {{id: number, x: number, terminal?: boolean}[]} nodes
+ * @param {(node: object) => string} texOf the label a node is drawn with, as LaTeX
+ * @param {number} xUnit centimetres to the column
+ * @returns {(node: object) => number}
+ */
+function placeX(nodes, texOf, xUnit) {
+  const row = nodes.filter((nd) => nd.terminal).sort((a, b) => a.x - b.x);
+  if (row.length < 2) return (nd) => nd.x;
+
+  const half = row.map((nd) => boxWidth(texOf(nd)) / 2);
+  const put = [row[0].x];
+  for (let i = 1; i < row.length; i++) {
+    const want = (half[i - 1] + half[i] + AIR) / xUnit;
+    put.push(put[i - 1] + Math.max(want, row[i].x - row[i - 1].x));
+  }
+
+  const states = nodes.filter((nd) => !nd.terminal).map((nd) => nd.x);
+  const centre = states.length
+    ? (Math.min(...states) + Math.max(...states)) / 2
+    : (put[0] + put[put.length - 1]) / 2;
+  const shift = centre - (put[0] + put[put.length - 1]) / 2;
+
+  const at = new Map(row.map((nd, i) => [nd.id, put[i] + shift]));
+  return (nd) => (at.has(nd.id) ? at.get(nd.id) : nd.x);
+}
 
 /**
  * One frame of the diagram as a tikzpicture. Positions come straight from the layout, so
@@ -332,28 +446,35 @@ export function diagramTikz(layout, index, opts = {}) {
   // of the picture sit on top of one another. It used to be a flat 1.15cm, which is fine
   // for `0` and `1` and nowhere near enough for `(1+omega)/(2 sqrt 2)` — that figure came
   // out with three amplitudes overlapping into one unreadable smear.
-  const xUnit = columnWidth([
-    ...nodes.filter((nd) => nd.terminal).map((nd) => ({ tex: toLatex(nd.label) })),
-    // A weight on an edge is written beside it and wants the same kind of room. In the
-    // edge-valued view it is the widest thing in the figure by a long way, and leaving it
-    // out is what had `1` and `1-omega` written on top of each other.
-    ...edges.filter((e) => e.label).map((e) => ({ tex: toLatex(e.label), small: true })),
-  ]);
-  const left = gutterAt(layout.xMin, xUnit);
+  // The states sit on a grid wide enough for the weights written along their edges — in
+  // the edge-valued view that is the widest thing between two columns by a long way, and
+  // leaving it out had `1` and `1-omega` written on top of each other. The amplitudes at
+  // the bottom get their own, wider spacing.
+  const xUnit = columnWidth(edges.filter((e) => e.label)
+    .map((e) => ({ tex: amplitudeLatex(e.label), small: true })));
+  const tex = (nd) => amplitudeLatex(nd.label);
+  const px = placeX(nodes, tex, xUnit);
+  const widest = Math.max(0, ...nodes.filter((nd) => nd.terminal).map((nd) => boxWidth(tex(nd))));
+  const left = gutterAt(Math.min(layout.xMin, ...nodes.map(px)), xUnit, widest);
 
   lines.push('% The qubit each level decides, and the row the amplitudes sit on.');
   for (let q = 0; q < qubitLabels.length; q++) {
-    lines.push(`  \\node[gut] at (${coord(left)},${q}) {${toLatex(qubitLabels[q])}};`);
+    lines.push(`  \\node[gut] at (${coord(left)},${q}) {$${qubitLatex(qubitLabels[q])}$};`);
   }
   if (nodes.some((nd) => nd.terminal)) {
-    lines.push(`  \\node[gut] at (${coord(left)},${layout.height - 1}) {${toLatex(bandLabel)}};`);
+    lines.push(`  \\node[band] at (${coord(left)},${layout.height - 1}) {${toLatex(bandLabel)}};`);
   }
 
   lines.push('', '% Nodes. Internal ones carry no text: their level already names the qubit.');
   for (const nd of nodes) {
-    const style = [nd.terminal ? 'ddterm' : 'ddnode', ...(nd.zero ? ['dead'] : [])].join(', ');
-    const text = nd.terminal ? `$${toLatex(nd.label)}$` : '';
-    lines.push(`  \\node[${style}] (n${nd.id}) at (${coord(nd.x)},${coord(nd.y)}) {${text}};`);
+    // `dead` greys a node's outline as well as its text, which is what a zero *node*
+    // wants and not what a zero amplitude does: the amplitudes have no outline, so it
+    // drew one for that one alone and the row came out with a single box in it.
+    const style = (nd.terminal
+      ? ['ddterm', ...(nd.zero ? ['faint'] : [])]
+      : ['ddnode', ...(nd.zero ? ['dead'] : [])]).join(', ');
+    const text = nd.terminal ? `$${tex(nd)}$` : '';
+    lines.push(`  \\node[${style}] (n${nd.id}) at (${coord(px(nd))},${coord(nd.y)}) {${text}};`);
   }
 
   // Both edges of a node can land on the same child — a tower is nothing but that — and
@@ -376,24 +497,24 @@ export function diagramTikz(layout, index, opts = {}) {
     const side = parallel
       ? `, anchor=${e.high ? 'west' : 'east'}, xshift=${e.high ? '' : '-'}0.8mm`
       : '';
-    const label = e.label ? ` node[wt, midway${side}] {$${toLatex(e.label)}$}` : '';
+    const label = e.label ? ` node[wt, midway${side}] {$${amplitudeLatex(e.label)}$}` : '';
     lines.push(`  \\draw[${style}] (n${e.from}) ${path}${label} (n${e.to});`);
   }
 
   const root = nodes.find((nd) => nd.id === frame.root);
   if (root) {
     lines.push('', '% The root, as decision diagrams are drawn on paper.');
-    lines.push(`  \\draw[->] (${coord(root.x)},${coord(root.y - 0.9)}) -- (n${root.id});`);
+    lines.push(`  \\draw[->] (${coord(px(root))},${coord(root.y - 0.9)}) -- (n${root.id});`);
     // Beside the arrow, not across it: a root weight can be as long as the whole label.
     if (frame.rootWeight && frame.rootWeight !== '1') {
-      lines.push(`  \\node[wt, anchor=west] at ([xshift=1.4mm]${coord(root.x)},`
-        + `${coord(root.y - 0.75)}) {$${toLatex(frame.rootWeight)}$};`);
+      lines.push(`  \\node[wt, anchor=west] at ([xshift=1.4mm]${coord(px(root))},`
+        + `${coord(root.y - 0.75)}) {$${amplitudeLatex(frame.rootWeight)}$};`);
     }
   }
 
   return [
     ...header('Decision diagram', 'tikz', { link }),
-    `\\begin{tikzpicture}[x=${xUnit}cm, y=-1.25cm,`,
+    `\\begin{tikzpicture}[x=${xUnit}cm, y=-${GRID.y}cm,`,
     ...STYLES,
     '  ]',
     ...lines,
@@ -405,12 +526,17 @@ export function diagramTikz(layout, index, opts = {}) {
 // ---- the automaton -------------------------------------------------------
 
 const AUT_STYLES = [
-  '    aut/.style={circle, draw, minimum size=6mm, inner sep=0pt},',
-  '    autterm/.style={rectangle, rounded corners=1pt, draw, inner xsep=3pt, inner ysep=2pt},',
+  '    aut/.style={circle, draw, semithick, minimum size=6mm, inner sep=0pt},',
+  '    autterm/.style={anchor=north, inner xsep=1.5pt, inner ysep=1.5pt},',
   '    low/.style={densely dashed, ->, >=stealth, shorten >=1pt},',
   '    high/.style={->, >=stealth, shorten >=1pt},',
-  '    trans/.style={semithick},',
-  '    gut/.style={anchor=east, font=\\scriptsize\\ttfamily, text=black!55},',
+  // A transition, as one mark rather than a hairline: a soft band spanning the two edges
+  // where they leave, drawn under them so they read over it. This is the notation the
+  // papers use, and it says what a thin arc could only hint at — that these two edges are
+  // one step and are taken together. Butt caps so the band ends square on the edges.
+  '    trans/.style={line width=3.2mm, black!12, line cap=butt},',
+  '    gut/.style={anchor=east, font=\\scriptsize, text=black!60},',
+  '    band/.style={anchor=north east, font=\\scriptsize\\itshape, text=black!60},',
 ];
 
 /**
@@ -430,20 +556,31 @@ const AUT_CHOICE_STYLES = [
 ];
 
 /** The row spacing the picture is drawn at; the column spacing is worked out per figure. */
-const AUT_ASPECT = { y: 1.5 };
+const AUT_ASPECT = { y: GRID.y };
 
 /**
  * The plate's proportions, in millimetres against a 3mm state.
  *
- * On screen a state has an 11px radius, an edge runs straight out to 27px before it
- * bends, the arc marking a transition is drawn at 22px, and an edge turns into its target
- * 15px out. Here the state is 3mm, so the rest follow it: the figure is meant to be the
- * one on the plate, and a picture whose arc sits a third of the way out where the screen
- * puts it two thirds of the way is a different picture.
+ * On screen a state has an 11px radius, an edge runs *straight* out to 27px before it
+ * bends at all, and the arc marking a transition is drawn at 22px — inside that straight
+ * run. That ordering is the whole trick, and it was missing here: the edge was one curve
+ * from the border, so by the time it reached the arc's radius it had already bent away,
+ * and the arc's two ends stuck out past it on both sides like whiskers instead of landing
+ * on the two edges it was drawn to tie together.
+ *
+ * So an edge leaves straight for `RUN`, the arc is drawn at `ARC` within that, and only
+ * then does the edge curve — with a handle `BEND` further along the same ray, and one
+ * `APPROACH` out along the ray it arrives on, so it comes into the next state head-on.
+ *
+ * `ARC` sits out near the end of the run rather than tucked against the state. Tucked in,
+ * the tie is shorter than the state is wide and reads as a tick on the rim; out where the
+ * two edges have had room to separate, it reads as what it is — one mark saying that
+ * these two edges are one transition — and the dots on it are big enough to count.
  */
-const RUN = 4.5;
-const ARC = 5.5;
-const APPROACH = 3;
+const RUN = 4;
+const ARC = 4.8;
+const BEND = 3;
+const APPROACH = 3.4;
 
 /**
  * An exit angle, as TikZ measures them: from east, and whole.
@@ -494,23 +631,27 @@ export function automatonTikz(layout, opts = {}) {
   // A column has to be wide enough for the widest amplitude, or two of them collide at
   // the bottom of the picture. The same rule the decision diagram uses, for the same
   // reason and out of the same function.
-  const xUnit = columnWidth(layout.nodes.filter((nd) => nd.terminal)
-    .map((nd) => ({ tex: toLatex(nd.label) })));
-  const left = gutterAt(layout.xMin, xUnit);
+  // The states sit on the compact grid; the amplitudes below get the room they need.
+  const xUnit = columnWidth([]);
+  const tex = (nd) => amplitudeLatex(nd.label);
+  const px = placeX(layout.nodes, tex, xUnit);
+  const widest = Math.max(0, ...layout.nodes.filter((nd) => nd.terminal)
+    .map((nd) => boxWidth(tex(nd))));
+  const left = gutterAt(Math.min(layout.xMin, ...layout.nodes.map(px)), xUnit, widest);
 
   lines.push('% The qubit each level decides, and the row the amplitudes sit on.');
   for (let q = 0; q < qubitLabels.length; q++) {
-    lines.push(`  \\node[gut] at (${coord(left)},${q}) {${toLatex(qubitLabels[q])}};`);
+    lines.push(`  \\node[gut] at (${coord(left)},${q}) {$${qubitLatex(qubitLabels[q])}$};`);
   }
   if (layout.nodes.some((nd) => nd.terminal)) {
-    lines.push(`  \\node[gut] at (${coord(left)},${layout.height}) {${toLatex(bandLabel)}};`);
+    lines.push(`  \\node[band] at (${coord(left)},${layout.height}) {${toLatex(bandLabel)}};`);
   }
 
   lines.push('', '% States, and the amplitudes they end in.');
   for (const nd of layout.nodes) {
-    const text = nd.terminal ? `$${toLatex(nd.label)}$` : '';
+    const text = nd.terminal ? `$${tex(nd)}$` : '';
     lines.push(`  \\node[${nd.terminal ? 'autterm' : 'aut'}] (s${nd.id}) `
-      + `at (${coord(nd.x)},${coord(nd.y)}) {${text}};`);
+      + `at (${coord(px(nd))},${coord(nd.y)}) {${text}};`);
   }
 
   // Grouped by the state they leave and then by transition, because where an edge leaves
@@ -540,13 +681,14 @@ export function automatonTikz(layout, opts = {}) {
     // width from the label; the guess was three times too large and the arrows ended in
     // mid-air beside the box they were pointing at.
     //
-    // A box is wider than it is tall, so its top edge owns everything from about 50 to
-    // 130 degrees; a circle has more room than that. Both stay inside the narrower limit,
-    // which costs a wide box nothing anyone can see and keeps every arrival on a top edge.
-    const limit = Math.min(entry.limit, b.terminal ? 34 : 66);
+    // An amplitude set without a box is about as tall as it is wide, so the top of it owns
+    // roughly 55 to 125 degrees; a state has more room than that. Arrivals at an amplitude
+    // stay well inside the narrower window, which keeps every one of them on a top edge
+    // rather than creeping around a corner.
+    const limit = Math.min(entry.limit, b.terminal ? 28 : 66);
     const wanted = incoming.map((e) => {
       const a = at.get(e.from);
-      return (180 / Math.PI) * Math.atan2((a.x - b.x) * xUnit, (b.y - a.y) * AUT_ASPECT.y);
+      return (180 / Math.PI) * Math.atan2((px(a) - px(b)) * xUnit, (b.y - a.y) * AUT_ASPECT.y);
     });
     const given = spread(wanted, { limit, gap: Math.min(entry.gap, 2 * limit) });
     // TikZ measures from east and the plate from straight up, positive to the right, so
@@ -557,7 +699,9 @@ export function automatonTikz(layout, opts = {}) {
     });
   }
 
-  lines.push('', '% Transitions: dashed for 0, solid for 1, and an arc over each pair.');
+  // Exit angles first, for every state, because the bands go down before any edge does:
+  // a band is behind the pair it marks, and TikZ paints in the order it is given.
+  const fanned = new Map();
   for (const [from, out] of leaving) {
     const a = at.get(from);
     const groups = [];
@@ -567,9 +711,24 @@ export function automatonTikz(layout, opts = {}) {
     }
     const wanted = groups.map((pair) => pair.map((e) => {
       const b = at.get(e.to);
-      return (180 / Math.PI) * Math.atan2((b.x - a.x) * xUnit, (b.y - a.y) * AUT_ASPECT.y);
+      return (180 / Math.PI) * Math.atan2((px(b) - px(a)) * xUnit, (b.y - a.y) * AUT_ASPECT.y);
     }));
-    const given = fanAngles(wanted);
+    fanned.set(from, { groups, given: fanAngles(wanted) });
+  }
+
+  lines.push('', '% One band per transition, marking the two edges that are taken together.');
+  for (const [from, { groups, given }] of fanned) {
+    groups.forEach((pair, t) => {
+      if (pair.length !== 2) return;
+      const lo = anchor(Math.min(given[t][0], given[t][1]));
+      const hi = anchor(Math.max(given[t][0], given[t][1]));
+      lines.push(`  \\draw[trans] (s${from}) ++(${lo}:${coord(ARC)}mm) `
+        + `arc (${lo}:${hi}:${coord(ARC)}mm);`);
+    });
+  }
+
+  lines.push('', '% Transitions: dashed for the 0-child, solid for the 1-child.');
+  for (const [from, { groups, given }] of fanned) {
     groups.forEach((pair, t) => {
       pair.forEach((e, i) => {
         const leaves = anchor(given[t][i]);
@@ -580,36 +739,40 @@ export function automatonTikz(layout, opts = {}) {
         // left at whatever angle its target happened to be at, which made two exit points
         // read as one and left the arc marking them spanning nothing.
         lines.push(`  \\draw[${e.high ? 'high' : 'low'}] (s${from}.${leaves}) `
-          + `.. controls +(${leaves}:${coord(RUN)}mm) and `
+          + `-- ++(${leaves}:${coord(RUN)}mm) `
+          + `.. controls +(${leaves}:${coord(BEND)}mm) and `
           + `+(${meet ? meet.out : 90}:${coord(APPROACH)}mm) .. `
           + `${meet ? meet.at : `(s${e.to})`};`);
       });
-      if (pair.length === 2) {
-        const lo = anchor(Math.min(given[t][0], given[t][1]));
-        const hi = anchor(Math.max(given[t][0], given[t][1]));
-        lines.push(`  \\draw[trans] (s${from}) ++(${lo}:${coord(ARC)}mm) `
-          + `arc (${lo}:${hi}:${coord(ARC)}mm);`);
-        // The colours that admit the transition, as dots on the arc that marks it.
-        const colours = pair[0].colours ?? [];
-        const inset = Math.min(6, (hi - lo) / 4);
-        const span = Math.max(0, hi - lo - 2 * inset);
-        colours.forEach((c, i) => {
-          const at = colours.length === 1
-            ? lo + inset + span / 2
-            : lo + inset + (span * i) / (colours.length - 1);
-          lines.push(`  \\fill[choice${c % 6}] (s${from}) `
-            + `++(${coord(Math.round(at * 10) / 10)}:${coord(ARC)}mm) circle (0.7mm);`);
-        });
-      }
+    });
+  }
+
+  lines.push('', '% The colours each transition is admitted under, as dots on its band.');
+  for (const [from, { groups, given }] of fanned) {
+    groups.forEach((pair, t) => {
+      const colours = pair.length === 2 ? pair[0].colours ?? [] : [];
+      if (!colours.length) return;
+      const lo = anchor(Math.min(given[t][0], given[t][1]));
+      const hi = anchor(Math.max(given[t][0], given[t][1]));
+      const inset = Math.min(6, (hi - lo) / 4);
+      const span = Math.max(0, hi - lo - 2 * inset);
+      colours.forEach((c, i) => {
+        const where = colours.length === 1
+          ? lo + inset + span / 2
+          : lo + inset + (span * i) / (colours.length - 1);
+        lines.push(`  \\fill[choice${c % 6}] (s${from}) `
+          + `++(${coord(Math.round(where * 10) / 10)}:${coord(ARC)}mm) circle (0.75mm);`);
+      });
     });
   }
 
   const root = layout.nodes.find((nd) => nd.root);
   if (root) {
     lines.push('', '% The root state: a run accepts the tree it read when it ends in one.');
-    lines.push(`  \\draw[->, >=stealth] (${coord(root.x)},${coord(root.y - 0.9)}) -- (s${root.id});`);
+    lines.push(`  \\draw[->, >=stealth] (${coord(px(root))},${coord(root.y - 0.9)}) `
+      + `-- (s${root.id});`);
     lines.push(`  \\node[anchor=east, font=\\footnotesize] at `
-      + `([xshift=-1.2mm]${coord(root.x)},${coord(root.y - 0.78)}) {$R$};`);
+      + `([xshift=-1.2mm]${coord(px(root))},${coord(root.y - 0.78)}) {$R$};`);
   }
 
   // A picture with a dot on it is level-synchronized and one without it is a plain tree
