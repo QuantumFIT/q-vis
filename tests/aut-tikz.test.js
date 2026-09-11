@@ -47,11 +47,18 @@ test('every state is drawn once, and no edge goes into thin air', () => {
     assert.equal(declared.size, layout.nodes.length, 'one node each');
     for (const nd of layout.nodes) assert.ok(declared.has(String(nd.id)), `s${nd.id} is missing`);
 
-    const drawn = [...tex.matchAll(/\\draw\[(low|high)\] \(s(\d+)\.[-\d]+\) -- (.*);$/gm)];
+    const drawn = [...tex.matchAll(
+      /\\draw\[(low|high)\] \(s(\d+)\.[-\d]+\) \.\. controls [^;]+ \.\. ([^;]+);$/gm)];
     assert.equal(drawn.length, layout.edges.length, 'one edge each');
     for (const [, , from, to] of drawn) {
       assert.ok(declared.has(from), `an edge leaves an undeclared s${from}`);
-      const target = /s(\d+)[).]/.exec(to)[1];
+      // The end of an edge is a point on a state's own border and nothing else. It used
+      // to be an offset in millimetres from the top of a terminal box, guessed from the
+      // label — and the guess was wide enough that the arrow ended in the margin beside
+      // the box it was pointing at. A border angle cannot miss: TikZ walks the ray out to
+      // wherever the border turned out to be.
+      assert.match(to, /^\(s\d+\.-?\d+\)$/, `an edge ends at '${to}', which is not a border`);
+      const target = /s(\d+)\./.exec(to)[1];
       assert.ok(declared.has(target), `an edge arrives at an undeclared s${target}`);
     }
   }

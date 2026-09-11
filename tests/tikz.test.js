@@ -279,3 +279,31 @@ test('parallel edges are bent apart, since a tower is nothing but those', () => 
   assert.match(tex, /to\[bend left=/);
   assert.match(tex, /to\[bend right=/);
 });
+
+test('a column is wide enough for the amplitudes it has to hold', () => {
+  // At a flat 1.15cm the boxes at the bottom of a figure sat on top of one another the
+  // moment an amplitude stopped being 0 or 1: `(1+ω)/(2√2)` needs three times that, and
+  // the three of them came out as one unreadable smear. So the column is sized from the
+  // widest label, the way the automata page's figures already were.
+  const unit = (tex) => Number(/x=([\d.]+)cm/.exec(tex)[1]);
+  const figure = (instance, at) => {
+    const { layout, circuit } = laidOut(instance);
+    return diagramTikz(layout, at < 0 ? layout.frames.length - 1 : at, {
+      qubitLabels: circuit.qubits.map((q) => q.label),
+    });
+  };
+  const plain = figure({ qasm: 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\nx q[0];\n', state: '|000> : 1' }, -1);
+  const wide = figure({
+    qasm: 'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[3];\n\nh q[0];\ncx q[0],q[1];\nt q[2];\nh q[2];\n',
+    state: '--- : 1/(2*sqrt2)',
+  }, -1);
+  assert.equal(unit(plain), 1.15, 'a figure of 0 and 1 keeps the width it always had');
+  assert.ok(unit(wide) > 2, `${unit(wide)}cm is not enough for (1+omega)/(2 sqrt 2)`);
+
+  // And the gutter clears the widest box rather than its centre, or the word naming the
+  // row lands on the first amplitude in it.
+  const left = Number(/\\node\[gut\] at \((-?[\d.]+),/.exec(wide)[1]);
+  const firstBox = Math.min(...[...wide.matchAll(/\\node\[ddterm[^\]]*\] \(n\d+\) at \((-?[\d.]+),/g)]
+    .map((m) => Number(m[1])));
+  assert.ok(left < firstBox - 0.5, `the gutter at ${left} does not clear a box at ${firstBox}`);
+});
