@@ -161,6 +161,51 @@
   stroke-linecap: round;
 }
 
+/*
+ * Pointing at a transition lights all of it: both edges, the arc that pairs them, the
+ * dots on the arc, and the heads the edges end in.
+ *
+ * The hit area is its own path — one per transition, over all three strokes at once — and
+ * is wide because a 1px line is not something anyone can point at. It paints nothing;
+ * `pointer-events: stroke` is what makes an unpainted stroke catch the pointer anyway,
+ * and says so rather than relying on `transparent` counting as painted.
+ *
+ * Lit is heavier and darker, not coloured: the accent on this page means "this changed in
+ * this step" and the hues mean "this colour admits it", and a pointer resting somewhere
+ * is neither of those things.
+ */
+.aut-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: calc(11px * var(--unzoom, 1));
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+
+/* While the plate is being dragged the pointer is moving the view rather than pointing
+   at anything, so nothing lights up under it — the same reason the other page makes its
+   nodes inert there. */
+.canvas.panning .aut-hit { pointer-events: none; }
+
+.aut-edge.hot {
+  stroke: var(--ink);
+  stroke-width: calc(2.1px * var(--unzoom, 1));
+}
+
+.aut-arc.hot {
+  stroke: var(--ink);
+  stroke-width: calc(2.4px * var(--unzoom, 1));
+}
+
+/* Ringed rather than grown: the hue is what the dot is for, and a dot that changes size
+   under the pointer reads as a different number of colours rather than the same ones. */
+.aut-dot.hot {
+  stroke: var(--ink);
+  stroke-width: calc(1px * var(--unzoom, 1));
+}
+
+.aut-head.hot { fill: var(--ink); }
+
 /* The one colour on the page marks what changed, as it does on the other. */
 .aut-node.fresh .aut-state,
 .aut-node.fresh .aut-leaf { stroke: var(--accent); }

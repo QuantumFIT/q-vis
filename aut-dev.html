@@ -62,7 +62,7 @@
     aria-label="resize the input column" title="drag to resize · double-click to reset"></div>
 
   <main class="plate">
-    <nav class="circuit" id="circuit" data-min="36"
+    <nav class="circuit" id="circuit" data-min="36" data-fit
       aria-label="circuit; click a column to pick that step"></nav>
     <div class="psplit" id="psplit" role="separator" aria-orientation="horizontal" tabindex="0"
       aria-label="resize the circuit against the automaton"
@@ -71,8 +71,10 @@
   </main>
 
   <footer class="transport">
+    <button id="first" title="back to the input set (Home)">|‹</button>
     <button id="prev" title="previous gate (←)">‹</button>
     <button id="next" title="next gate (→)">›</button>
+    <button id="last" title="on to the end of the circuit (End)">›|</button>
     <span class="stat" id="position"></span>
     <span class="spacer"></span>
     <span class="stat" id="stats"></span>

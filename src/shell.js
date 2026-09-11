@@ -35,6 +35,33 @@ function setColumn(px) {
   return w;
 }
 
+/**
+ * Measure how tall a panel would be if nothing held it back — content, padding, borders,
+ * and the horizontal scrollbar if it has one — and remember the answer on the element.
+ *
+ * The measurement has to let the panel go first. `scrollHeight` is floored at the box's
+ * own height, so a panel already taller than what it holds reports its own height, and a
+ * cap taken from that is the height it already had: the reading would confirm whatever it
+ * was asked to correct. Releasing the basis and the cap for the length of the measurement
+ * is what makes the number about the content.
+ *
+ * Remembered because that release forces a layout, and a drag asks on every pointer move.
+ * What it holds changes when the page redraws it, and `refit` is what the page calls then.
+ */
+function measureFit(el) {
+  const { flex, maxHeight } = el.style;
+  el.style.flex = '0 0 auto';
+  el.style.maxHeight = 'none';
+  const h = el.scrollHeight + (el.offsetHeight - el.clientHeight);
+  el.style.flex = flex;
+  el.style.maxHeight = maxHeight;
+  el.dataset.fitAt = String(h);
+  return h;
+}
+
+/** The remembered cap, measured now if nothing has measured it yet. */
+const fitCap = (el) => Number(el.dataset.fitAt) || measureFit(el);
+
 function setPanelHeight(panel, px) {
   const min = Number(panel.dataset.min) || PANEL_MIN;
   const h = Math.round(Math.max(min, px));
@@ -43,10 +70,37 @@ function setPanelHeight(panel, px) {
   // simply pushed out of the column — on a short window the folded Amplitudes bar ended
   // up drawn over the transport.
   panel.style.flex = `0 1 ${h}px`;
-  // The circuit strip is capped by a max-height until someone drags it. An explicit
-  // height has to beat that cap or the drag would stop dead at 190px.
-  panel.style.maxHeight = 'none';
+  // The circuit strip is capped by a max-height until someone drags it, and an explicit
+  // height has to beat that cap or the drag would stop dead at 190px. `data-fit` asks for
+  // a different cap rather than for none: a panel holding a drawing has nothing to gain
+  // from being taller than the drawing, and every pixel past it is blank paper taken off
+  // whatever is below. A panel holding text is not capped — a box taller than what is
+  // typed in it is room to type.
+  panel.style.maxHeight = 'fit' in panel.dataset ? `${fitCap(panel)}px` : 'none';
   return h;
+}
+
+/**
+ * Recompute the content caps, for when what a panel holds has changed underneath it.
+ *
+ * The cap is a `max-height` rather than a smaller `flex-basis` so that the height the
+ * reader dragged to survives a circuit that is too short to need it: a two-qubit strip is
+ * two qubits tall, and the twelve-qubit one after it is back to whatever it was dragged
+ * to. Only an explicitly sized panel has a cap to recompute — one left to the stylesheet
+ * is already exactly as tall as what it holds.
+ */
+export function refit() {
+  let moved = false;
+  for (const el of document.querySelectorAll('[data-fit]')) {
+    const want = `${measureFit(el)}px`;
+    // A panel left to the stylesheet is already exactly as tall as what it holds; only
+    // one carrying a dragged height has a cap that could now be the wrong one.
+    if (!/\d+px/.test(el.style.flex || '')) continue;
+    if (el.style.maxHeight === want) continue;
+    el.style.maxHeight = want;
+    moved = true;
+  }
+  if (moved) page.onResize();
 }
 
 /** A panel's own floor, whatever set it: the drag minimum or the stylesheet's. */

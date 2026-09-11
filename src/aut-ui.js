@@ -14,7 +14,7 @@
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
-import { armDialog, armPanels, showCode } from './shell.js';
+import { armDialog, armPanels, refit, showCode } from './shell.js';
 import { EXAMPLES, SPECIALS, instantiate, identify } from './aut-examples.js';
 import { HslError, parseHsl, toVector } from './aut-hsl.js';
 import { simulate } from './aut-gates.js';
@@ -142,23 +142,65 @@ const APPROACH = 15;
  * it is entering rather than eight pixels past it.
  */
 function arrowhead() {
-  const marker = svgEl('marker', {
-    id: 'aut-arrow',
-    viewBox: '0 0 8 5.4',
-    refX: 8,
-    refY: 2.7,
-    markerWidth: 7.3,
-    markerHeight: 4.9,
-    // In multiples of the stroke width, so that zooming in — which holds a stroke at a
-    // hairline through `--unzoom` — holds the head it ends in at its size too. In
-    // absolute units the arrows would grow with the diagram and swamp the lines.
-    markerUnits: 'strokeWidth',
-    orient: 'auto',
-  });
-  marker.append(svgEl('path', { class: 'aut-head', d: 'M 0 0 L 8 2.7 L 0 5.4 Z' }));
   const defs = svgEl('defs');
-  defs.append(marker);
+  // Two of them, and the second is the same head in the darker ink. A marker inherits
+  // nothing from the path that uses it, so an edge lit by a hover would otherwise thicken
+  // and darken and then end in the grey head it had before.
+  for (const id of ['aut-arrow', 'aut-arrow-hot']) {
+    const marker = svgEl('marker', {
+      id,
+      viewBox: '0 0 8 5.4',
+      refX: 8,
+      refY: 2.7,
+      markerWidth: 7.3,
+      markerHeight: 4.9,
+      // In multiples of the stroke width, so that zooming in — which holds a stroke at a
+      // hairline through `--unzoom` — holds the head it ends in at its size too. In
+      // absolute units the arrows would grow with the diagram and swamp the lines.
+      markerUnits: 'strokeWidth',
+      orient: 'auto',
+    });
+    marker.append(svgEl('path', {
+      class: `aut-head${id.endsWith('-hot') ? ' hot' : ''}`,
+      d: 'M 0 0 L 8 2.7 L 0 5.4 Z',
+    }));
+    defs.append(marker);
+  }
   return defs;
+}
+
+/**
+ * Light the whole of a transition when the pointer is anywhere on it.
+ *
+ * A transition is four marks — two edges, the arc pairing them, and the dots saying which
+ * colours admit it — and which four they are is the one thing a picture of an automaton
+ * has to make obvious. The arc says it at rest; this says it on demand, and says it for
+ * the edges too, which is where the arc runs out of reach.
+ *
+ * One listener on the plate rather than one per mark: a large automaton is thousands of
+ * elements, and `pointerover` bubbles. Moving onto a mark of another transition, or onto
+ * a state, or off the plate, all arrive here as the same question — what is under the
+ * pointer now — so there is one answer and no pair of handlers to keep in step.
+ */
+function armHover(svg) {
+  let lit = null;
+  const light = (key, on) => {
+    for (const el of svg.querySelectorAll(`[data-trans="${key}"]`)) {
+      el.classList.toggle('hot', on);
+      // A marker inherits nothing from its path, so the head is swapped rather than styled.
+      if (el.classList.contains('aut-edge')) {
+        el.setAttribute('marker-end', `url(#aut-arrow${on ? '-hot' : ''})`);
+      }
+    }
+  };
+  const show = (key) => {
+    if (key === lit) return;
+    if (lit !== null) light(lit, false);
+    lit = key;
+    if (lit !== null) light(lit, true);
+  };
+  svg.addEventListener('pointerover', (e) => show(e.target.closest?.('[data-trans]')?.dataset.trans ?? null));
+  svg.addEventListener('pointerleave', () => show(null));
 }
 
 const DEG = 180 / Math.PI;
@@ -210,20 +252,24 @@ function showVersion() {
  */
 function setStep(i) {
   if (!app.circuit) {
-    $('prev').disabled = true;
-    $('next').disabled = true;
+    for (const id of ['first', 'prev', 'next', 'last']) $(id).disabled = true;
     $('position').textContent = '';
     return;
   }
-  const last = app.circuit.gates.length;
+  const end = app.circuit.gates.length;
   const was = app.index;
-  app.index = Math.max(0, Math.min(i, last));
+  app.index = Math.max(0, Math.min(i, end));
   app.columns.forEach((col, k) => col.classList.toggle('current', k === app.index));
-  $('position').textContent = `${app.index} / ${last}`;
+  $('position').textContent = `${app.index} / ${end}`;
+  $('first').disabled = app.index === 0;
   $('prev').disabled = app.index === 0;
-  $('next').disabled = app.index === last;
+  $('next').disabled = app.index === end;
+  $('last').disabled = app.index === end;
   if (app.index !== was && app.layouts.length) showFrame(app.index);
 }
+
+/** The last step there is, or 0 when there is no circuit to have steps in. */
+const lastStep = () => (app.circuit ? app.circuit.gates.length : 0);
 
 /** Say which of the two the picture is, on the control that chooses between them. */
 function showModel() {
@@ -276,6 +322,9 @@ function compile() {
   const { svg, columns } = circuitStrip(app.circuit, (i) => setStep(i + 1));
   app.columns = columns;
   $('circuit').replaceChildren(svg);
+  // A strip dragged tall for a twelve-qubit circuit must not stay tall for a two-qubit
+  // one; the cap is what it holds, and what it holds has just changed.
+  refit();
   const n = app.circuit.nqubits;
   const g = app.circuit.gates.length;
   // Never turned off. How large a set the reader will build is a fact about the reader,
@@ -345,6 +394,9 @@ function drawAutomaton(layout, labels) {
 
   const at = new Map(layout.nodes.map((n) => [n.id, n]));
   const arcs = svgEl('g');
+  // Every stroke of one transition, keyed by it: the arc first and then its two edges, so
+  // that the hit area drawn from them below covers the whole of it.
+  const strokes = new Map();
   const edges = svgEl('g');
 
   // Both ends of an edge depend on what else is at that end — the fan on how many edges
@@ -392,10 +444,10 @@ function drawAutomaton(layout, labels) {
         const r = GEO.r + run - 5;
         const [sx, sy] = onCircle(cx, cy, r, lo);
         const [ex, ey] = onCircle(cx, cy, r, hi);
-        arcs.append(svgEl('path', {
-          class: 'aut-arc',
-          d: `M ${sx} ${sy} A ${r} ${r} 0 0 0 ${ex} ${ey}`,
-        }));
+        const key = `${from}:${t}`;
+        const arc = `M ${sx} ${sy} A ${r} ${r} 0 0 0 ${ex} ${ey}`;
+        strokes.set(key, [arc]);
+        arcs.append(svgEl('path', { class: 'aut-arc', 'data-trans': key, d: arc }));
         // The colours that admit this transition, as dots on the arc that marks it —
         // the notation the papers draw. A transition that constrains nothing has none,
         // so an ordinary automaton looks exactly as it did.
@@ -403,6 +455,7 @@ function drawAutomaton(layout, labels) {
           const [dx, dy] = onCircle(cx, cy, r, at);
           arcs.append(svgEl('circle', {
             class: `aut-dot c${pair[0].colours[i] % DOT_HUES}`,
+            'data-trans': key,
             cx: dx, cy: dy, r: GEO.dot,
           }));
         }
@@ -460,13 +513,28 @@ function drawAutomaton(layout, labels) {
     const [hx, hy] = where.handle;
     const [ax, ay] = where.approach;
     const [mx, my] = where.meet;
+    const key = `${e.from}:${e.transition}`;
+    const d = `M ${px} ${py} L ${sx} ${sy} C ${hx} ${hy} ${ax} ${ay} ${mx} ${my}`;
+    if (strokes.has(key)) strokes.get(key).push(d);
     edges.append(svgEl('path', {
       class: `aut-edge ${e.high ? 'high' : 'low'}`,
       'marker-end': 'url(#aut-arrow)',
-      d: `M ${px} ${py} L ${sx} ${sy} C ${hx} ${hy} ${ax} ${ay} ${mx} ${my}`,
+      'data-trans': key,
+      d,
     }));
   }
-  svg.append(edges, arcs);
+
+  // One invisible wide stroke per transition, over both its edges and the arc that pairs
+  // them, so that pointing anywhere along any of it lights all of it. A single path with
+  // three subpaths rather than three paths: the hit area is the only thing it is for, and
+  // one element per transition is cheaper than three. Under the states, so that a state
+  // sitting over an edge is still the thing the pointer finds there.
+  const hits = svgEl('g', { class: 'aut-hits' });
+  for (const [key, parts] of strokes) {
+    hits.append(svgEl('path', { class: 'aut-hit', 'data-trans': key, d: parts.join(' ') }));
+  }
+  svg.append(edges, arcs, hits);
+  armHover(svg);
 
   for (const n of layout.nodes) {
     const g = svgEl('g', { class: `aut-node ${n.kind}${n.fresh ? ' fresh' : ''}` });
@@ -823,8 +891,12 @@ export function boot() {
     $(MODEL_BUTTON[which]).addEventListener('click', () => setModel(which));
   }
 
+  // A circuit worth stepping through is usually worth seeing the end of first, and
+  // getting back to the input set afterwards should not be twelve clicks.
+  $('first').addEventListener('click', () => setStep(0));
   $('prev').addEventListener('click', () => setStep(app.index - 1));
   $('next').addEventListener('click', () => setStep(app.index + 1));
+  $('last').addEventListener('click', () => setStep(lastStep()));
 
   $('zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
   $('zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
@@ -887,6 +959,8 @@ export function boot() {
     if (e.altKey || e.shiftKey) return;
     if (e.key === 'ArrowLeft') setStep(app.index - 1);
     else if (e.key === 'ArrowRight') setStep(app.index + 1);
+    else if (e.key === 'Home') setStep(0);
+    else if (e.key === 'End') setStep(lastStep());
     else return;
     e.preventDefault();
   });

@@ -13,7 +13,7 @@ import { LIMDD } from './limdd.js';
 import { circuitTikz, diagramTikz } from './tikz.js';
 import { tableauFrame, tableauText } from './tableau.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
-import { armDialog, armPanels, showCode, showRich } from './shell.js';
+import { armDialog, armPanels, refit, showCode, showRich } from './shell.js';
 import * as Ent from './entangle.js';
 import * as Order from './order.js';
 import * as Pauli from './pauli.js';
@@ -369,6 +369,7 @@ function renderCircuit() {
   const { svg, columns } = circuitStrip(app.circuit, (i) => { stop(); setFrame(i + 1); });
   app.colEls = columns;
   $('circuit').replaceChildren(svg);
+  refit();
 }
 
 // ---- the plate ----------------------------------------------------------
@@ -947,8 +948,11 @@ function renderStats(f) {
       + 'never changes shape, so the leaves are the only thing that can differ.'
     : 'Nodes reachable from the root. The ones this gate created are marked on the plate.';
   $('position').textContent = `${f.index} / ${app.layout.frames.length - 1}`;
+  const end = f.index === app.layout.frames.length - 1;
+  $('first').disabled = f.index === 0;
   $('prev').disabled = f.index === 0;
-  $('next').disabled = f.index === app.layout.frames.length - 1;
+  $('next').disabled = end;
+  $('last').disabled = end;
 }
 
 // ---- the gate reference -------------------------------------------------
@@ -1818,8 +1822,13 @@ export function boot() {
   $('qasm').addEventListener('input', onEdit);
   $('stateText').addEventListener('input', onEdit);
 
+  // The two jumps the keyboard has always had, as buttons: Home and End were in the
+  // tooltips of the step buttons, which said that stepping and jumping were the same
+  // thing and left anyone without a keyboard clicking twelve times to get back.
+  $('first').addEventListener('click', () => { stop(); setFrame(0); });
   $('prev').addEventListener('click', () => { stop(); step(-1); });
   $('next').addEventListener('click', () => { stop(); step(1); });
+  $('last').addEventListener('click', () => { stop(); setFrame(app.layout.frames.length - 1); });
   $('play').addEventListener('click', play);
   $('export').addEventListener('click', exportSvg);
   $('tikzDiagram').addEventListener('click', () => showTikz('diagram'));

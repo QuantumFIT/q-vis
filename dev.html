@@ -100,7 +100,7 @@
     aria-label="resize the input column" title="drag to resize · double-click to reset"></div>
 
   <main class="plate">
-    <nav class="circuit" id="circuit" data-min="36"
+    <nav class="circuit" id="circuit" data-min="36" data-fit
       aria-label="circuit; click a column to jump to that step"></nav>
     <div class="psplit" id="psplit" role="separator" aria-orientation="horizontal" tabindex="0"
       aria-label="resize the circuit against the diagram"
@@ -109,9 +109,11 @@
   </main>
 
   <footer class="transport">
-    <button id="prev" title="previous gate (← / Home)">‹</button>
+    <button id="first" title="back to the input state (Home)">|‹</button>
+    <button id="prev" title="previous gate (←)">‹</button>
     <button id="play" title="play through the circuit (space)">▶</button>
-    <button id="next" title="next gate (→ / End)">›</button>
+    <button id="next" title="next gate (→)">›</button>
+    <button id="last" title="on to the end of the circuit (End)">›|</button>
     <span class="stat" id="position"></span>
     <a class="footnote" href="https://ondrik.github.io/" target="_blank" rel="noopener"
        title="questions, requests and bugs — Ondřej Lengál">requests? ondrik.github.io</a>
