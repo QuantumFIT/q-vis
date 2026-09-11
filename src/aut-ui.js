@@ -6,10 +6,11 @@
 // decision diagram, and a test fails if it ever does.
 //
 // What is here now: the circuit, drawn and steppable; the worked examples of the other
-// page restated as sets; the automaton the specification denotes, level-synchronized and
-// with its choices drawn as coloured dots; the gates, which carry it through the circuit
-// so that stepping moves the picture; and TikZ for both. What is not: permalinks, an SVG
-// export, and reading AutoQ's own `.aut` files. See the plan.
+// page restated as sets; the automaton the specification denotes, held either as a plain
+// tree automaton or as a level-synchronized one with its choices drawn as coloured dots;
+// the gates, which carry it through the circuit so that stepping moves the picture; and
+// TikZ for both. What is not: permalinks, an SVG export, and reading AutoQ's own `.aut`
+// files. See the plan.
 
 import { parseQasm, QasmError } from './qasm.js';
 import { circuitStrip, svgEl } from './circuit-view.js';
@@ -28,6 +29,10 @@ const THEME_STORE = 'q-vis:theme';       // shared with the other page: one choi
 const STORE = 'q-vis:aut';               // its own text, though — different second box
 const THEMES = ['auto', 'light', 'dark'];
 const THEME_GLYPH = { auto: '◐', light: '☀', dark: '☾' };
+
+/** The two automata the page will hold a set in, and the button that names each. */
+const MODELS = ['ta', 'lsta'];
+const MODEL_BUTTON = { ta: 'modelTa', lsta: 'modelLsta' };
 
 /**
  * How far `fit` may scale, and how far the buttons may go.
@@ -51,6 +56,10 @@ const app = {
   circuit: null,
   index: 0,
   columns: [],
+  // Which automaton the set is held as: 'lsta' for level-synchronized, 'ta' for a plain
+  // tree automaton. It decides how a gate is applied and so what the picture shows, and
+  // it is kept because comparing the two on the same circuit is most of the point.
+  model: 'lsta',
   ta: null,
   frames: [],           // the automaton before the circuit, and after each gate of it
   layouts: [],          // one per frame, laid out in order so a survivor stays put
@@ -73,7 +82,7 @@ const GEO = {
   // padY leaves room above the first row for the arrow into the root, as padTop does on
   // the other page.
   rowH: 78, colW: 66, padX: 34, padY: 44, gutter: 62, r: 11, termW: 46, termH: 22,
-  handle: 12, dot: 2.1,
+  handle: 12, dot: 2.9,
 };
 
 /**
@@ -214,6 +223,29 @@ function setStep(i) {
   $('prev').disabled = app.index === 0;
   $('next').disabled = app.index === last;
   if (app.index !== was && app.layouts.length) showFrame(app.index);
+}
+
+/** Say which of the two the picture is, on the control that chooses between them. */
+function showModel() {
+  for (const which of MODELS) {
+    $(MODEL_BUTTON[which]).setAttribute('aria-pressed', String(which === app.model));
+  }
+}
+
+/**
+ * Hold the same set as the other kind of automaton, at the same step of the same circuit.
+ *
+ * Everything is rebuilt, because a colour is not something that can be added to or taken
+ * off an automaton that has already been through a gate — the two models compute
+ * different intermediate objects, and only their languages agree. The step is kept, so
+ * flipping back and forth is a comparison of one picture against another rather than a
+ * return to the beginning.
+ */
+function setModel(which) {
+  if (app.model === which) return;
+  app.model = which;
+  showModel();
+  compile();
 }
 
 /** Read the circuit box, draw what it says, and say plainly when it says nothing valid. */
@@ -576,12 +608,14 @@ function showAutomaton() {
   const n = app.circuit.nqubits;
   try {
     const spec = parseHsl($('specText').value, n);
-    const ta = new LSTA(P.Ring, n);
+    // The one place the choice of model is made. Everything downstream reads it off the
+    // automaton: how a gate is applied, whether the merge has colours to protect, and
+    // whether the picture has any dots to draw.
+    const ta = new LSTA(P.Ring, n, { colours: app.model === 'lsta' });
     const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, P.Ring)));
     app.ta = ta;
-    // Each frame is already the reduced automaton: a gate is applied to the whole set at
-    // once — the colours are what let it be — and what comes out is reduced, so the next
-    // gate starts from the small form and the picture is the object the run carries.
+    // Each frame is already the reduced automaton, so the next gate starts from the small
+    // form and the picture is the object the run carries rather than a snapshot of it.
     app.frames = simulate(ta, root, app.circuit);
     let rank = new Map();
     app.layouts = app.frames.map((frame) => {
@@ -730,7 +764,9 @@ function showExample() {
 
 function save() {
   try {
-    localStorage.setItem(STORE, JSON.stringify({ qasm: $('qasm').value, spec: $('specText').value }));
+    localStorage.setItem(STORE, JSON.stringify({
+      qasm: $('qasm').value, spec: $('specText').value, model: app.model,
+    }));
   } catch { /* private windows are fine; the text is still on screen */ }
 }
 
@@ -740,6 +776,7 @@ function load() {
     if (v && typeof v.qasm === 'string' && typeof v.spec === 'string') {
       $('qasm').value = v.qasm;
       $('specText').value = v.spec;
+      if (MODELS.includes(v.model)) app.model = v.model;
       return true;
     }
   } catch { /* a corrupt entry is not worth failing over */ }
@@ -779,6 +816,12 @@ export function boot() {
       app.index = 0;
       compile();
     });
+  }
+
+  // A plain tree automaton or a level-synchronized one. The same circuit and the same
+  // set either way; what differs is what it costs to carry them through a gate.
+  for (const which of MODELS) {
+    $(MODEL_BUTTON[which]).addEventListener('click', () => setModel(which));
   }
 
   $('prev').addEventListener('click', () => setStep(app.index - 1));
@@ -849,5 +892,8 @@ export function boot() {
     e.preventDefault();
   });
 
-  if (load()) { showExample(); compile(); } else useExample(0, undefined);
+  // After `load`, which is what may have restored a model other than the default.
+  const restored = load();
+  showModel();
+  if (restored) { showExample(); compile(); } else useExample(0, undefined);
 }

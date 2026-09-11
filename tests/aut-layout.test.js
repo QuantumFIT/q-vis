@@ -170,3 +170,24 @@ test('one edge arriving arrives where it wanted, and a crowd stays centred', () 
   assert.ok(Math.abs(crowd[0] + crowd[3]) < CLOSE, `not centred: ${crowd.join(', ')}`);
   assert.equal(new Set(crowd).size, 4, 'and four distinct places');
 });
+
+test('a plain automaton has nothing to draw dots for', () => {
+  // What the renderer reads to decide whether the picture has any colours on it at all.
+  // A level-synchronized automaton over a set of several members tells them apart at
+  // every level; the same set held as a plain tree automaton tells nothing apart, and
+  // `palette` says zero so no dot is drawn and no arc carries one.
+  for (const n of [1, 2, 3]) {
+    const vectors = [basis(n, 0), basis(n, 2 ** n - 1)];
+
+    const plain = new LSTA(ring, n, { colours: false });
+    const flat = laid(plain, plain.fromVectors(vectors).root);
+    assert.deepEqual(flat.palette, new Array(n).fill(0), `${n} qubits: no colours anywhere`);
+    assert.ok(flat.edges.every((e) => e.colours === null), 'so no edge carries one');
+
+    const painted = new LSTA(ring, n);
+    const dotted = laid(painted, painted.fromVectors(vectors).root);
+    assert.ok(dotted.palette.every((k) => k === 2),
+      `${n} qubits: two members, told apart on every level`);
+    assert.ok(dotted.edges.some((e) => e.colours?.length), 'and the edges say which');
+  }
+});

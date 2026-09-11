@@ -37,6 +37,14 @@
 // A state is still interned on its transitions — now including their colours — so
 // identity is still semantic equality, and a frame diff is still a set difference over
 // ids.
+//
+// A *plain* tree automaton is the case where no colour is ever used, and it is built
+// here too, under `colours: false`. Not as a fallback: it is the formalism of PLDI'23,
+// it is what this picture looks like with the dots taken off, and the difference between
+// the two is most of what there is to see. Everything downstream reads `ta.colours`
+// rather than being told again, so an automaton knows which of the two it is. What the
+// plain one pays for it is in `aut-gates.js` — with no way to say that two sibling
+// subtrees made the same choice, a mixing gate has to take the set apart first.
 
 /** A choice set that constrains nothing: this transition is fine under any colour. */
 export const ANY = null;
@@ -62,10 +70,14 @@ export class LSTA {
    * @param {object} ring the amplitude ring — `poly.js`'s `Ring`, so leaves may be
    *   symbolic. Only zero/one/add/mul/eq/key/isZero are used.
    * @param {number} nvars how many qubits, so how deep the trees are
+   * @param {object} [opts]
+   * @param {boolean} [opts.colours] false for a plain tree automaton, which puts no
+   *   colour on anything and so synchronizes nothing between levels
    */
-  constructor(ring, nvars) {
+  constructor(ring, nvars, { colours = true } = {}) {
     this.ring = ring;
     this.nvars = nvars;
+    this.colours = colours;
     this.states = [];              // id -> { level, value } | { level, transitions }
     this.interned = new Map();     // canonical key -> id
   }
@@ -142,6 +154,10 @@ export class LSTA {
    * Doing this here rather than leaving the colours for later is what makes the whole
    * pipeline work: `reduce` merges transitions and the colours come along, and a gate
    * intersects them. Nothing downstream ever has to invent a colour.
+   *
+   * Without colours the same set is a plain tree automaton: the members stand side by
+   * side under one root and nothing relates them, which is the PLDI'23 encoding and
+   * exactly as much as a tree automaton can say.
    */
   fromVectors(vectors) {
     const roots = [];
@@ -150,6 +166,9 @@ export class LSTA {
         throw new Error(`a state of ${this.nvars} qubits has ${2 ** this.nvars} amplitudes`);
       }
       roots.push(this.#tree(amplitudes, 0, 0));
+    }
+    if (!this.colours) {
+      return { root: this.state(0, roots.map((r) => this.transitionsOf(r)[0])), roots };
     }
 
     // Which members each uncoloured state belongs to. A state is a subtree, so a member

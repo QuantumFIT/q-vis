@@ -322,3 +322,101 @@ test('the zero state is a set of one, and stays one all the way through', () => 
   assertClose(asComplex(ghz[7]), { re: half, im: 0 }, '|111>');
   assert.ok(ghz.filter((x) => !ring.isZero(x)).length === 2, 'and nothing else');
 });
+
+test('the two models denote the same set at every step of the same circuit', () => {
+  // The claim the page makes by offering the choice at all: a plain tree automaton and a
+  // level-synchronized one are two ways of holding one set, not two semantics. So the
+  // same specification is carried through the same circuit in both, and their languages
+  // are compared frame by frame. Swept, because the gates that mix siblings are the ones
+  // where a plain automaton has to take the set apart and put it back, and that is the
+  // step with something to get wrong.
+  const r = rng(20260916);
+  const names = ['x', 'z', 'h', 's', 't', 'cx', 'cz', 'swap'];
+  const asSet = (ta, root) => new Set(ta.language(root)
+    .map((v) => v.map((x) => ring.key(x)).join('|')));
+  let frames = 0;
+  for (let iter = 0; iter < 24; iter++) {
+    const n = randInt(r, 2, 4);
+    const picks = [];
+    for (let k = 0; k < randInt(r, 2, 3); k++) {
+      const b = randInt(r, 0, 2 ** n - 1);
+      if (!picks.includes(b)) picks.push(b);
+    }
+    const gates = [];
+    for (let g = 0; g < 4; g++) {
+      const name = names[randInt(r, 0, names.length - 1)];
+      const arity = GATES[name].matrix.length === 2 ? 1 : 2;
+      const qubits = [];
+      while (qubits.length < arity) {
+        const q = randInt(r, 0, n - 1);
+        if (!qubits.includes(q)) qubits.push(q);
+      }
+      gates.push({ name, qubits });
+    }
+    const circuit = { nqubits: n, gates };
+
+    const runs = [true, false].map((colours) => {
+      const ta = new LSTA(ring, n, { colours });
+      const { root } = ta.fromVectors(picks.map((b) => basis(n, b)));
+      return { ta, frames: simulate(ta, root, circuit) };
+    });
+    const where = `${n} qubits, ${picks.length} states, `
+      + gates.map((g) => `${g.name}(${g.qubits})`).join(' ');
+    assert.equal(runs[0].frames.length, runs[1].frames.length, where);
+    runs[0].frames.forEach((frame, i) => {
+      assert.deepEqual(asSet(runs[0].ta, frame.root),
+        asSet(runs[1].ta, runs[1].frames[i].root), `${where}: step ${i}`);
+      assert.equal(frame.members, runs[1].frames[i].members, `${where}: step ${i} members`);
+      frames += 1;
+    });
+  }
+  assert.ok(frames > 100, `only ${frames} frames compared`);
+});
+
+test('a mixing gate costs a plain automaton its sharing, and a synchronized one nothing', () => {
+  // Why the choice is worth having in front of a reader rather than in a paragraph. The
+  // set is every computational basis state, which both models hold in 2n+1 states; then
+  // one Hadamard, which needs the two halves of a node to agree on which member they came
+  // from. A plain tree automaton cannot say that, so it takes the set apart and the
+  // sharing goes with it; a level-synchronized one says it with a colour and stays linear.
+  const measured = [];
+  for (const n of [3, 4, 5]) {
+    const spec = parseHsl(SPECIALS.basis.spec(n), n);
+    const sizes = [true, false].map((colours) => {
+      const ta = new LSTA(ring, n, { colours });
+      const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+      const frames = simulate(ta, root, { nqubits: n, gates: [{ name: 'h', qubits: [0] }] });
+      assert.equal(frames[0].size, 2 * n + 1, `${n} qubits: both start at 2n+1`);
+      assert.equal(frames[1].members, 2 ** n, 'and a unitary moves the set without resizing it');
+      return frames[1].size;
+    });
+    measured.push({ n, lsta: sizes[0], ta: sizes[1] });
+  }
+  assert.deepEqual(measured, [
+    { n: 3, lsta: 9, ta: 17 },
+    { n: 4, lsta: 12, ta: 34 },
+    { n: 5, lsta: 15, ta: 67 },
+  ], 'three states a qubit against a doubling');
+});
+
+test('only a plain automaton takes the set apart, and every part of it is a tree', () => {
+  const n = 3;
+  const spec = parseHsl(SPECIALS.basis.spec(n), n);
+  const vectors = spec.vectors.map((v) => toVector(v, ring));
+
+  const plain = new LSTA(ring, n, { colours: false });
+  const flat = new Algebra(plain);
+  const small = reduce(plain, plain.fromVectors(vectors).root);
+  assert.equal(flat.expand(small).length, 2 ** n, 'one deterministic state per member');
+  assert.ok(flat.expand(small).every((m) => colourDeterministic(plain, m) === null),
+    'and each of them is a tree, which is what the algebra walks');
+
+  // A level-synchronized automaton has no business here: its choices are what a gate
+  // uses, and pushing them up would be throwing away the thing that makes it work.
+  const painted = new LSTA(ring, n);
+  const alg = new Algebra(painted);
+  const root = reduce(painted, painted.fromVectors(vectors).root);
+  assert.ok(painted.transitionsOf(root).length > 1, 'the root really does have a choice');
+  assert.equal(applyOp(alg, root, { name: 'h', qubits: [0] }),
+    applyGate(alg, root, [0], GATES.h.matrix), 'so applyOp is one call on the whole set');
+});

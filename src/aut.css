@@ -191,3 +191,44 @@
   letter-spacing: 0.14em;
   fill: var(--ink-faint);
 }
+
+/* ---- which automaton ---------------------------------------------------
+ *
+ * Two buttons that are one control. A set of states can be held as a plain tree
+ * automaton or as a level-synchronized one, the page will draw either, and which of
+ * them is on screen has to be readable without inferring it from whether the picture
+ * happens to have dots on it.
+ *
+ * Joined into a single pill, because they are one choice rather than two switches that
+ * could both be on. The chosen half is filled with ink and not with the accent: the
+ * accent means "this changed in this step" everywhere else here, and a setting is not
+ * a change. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  min-width: 0;
+  padding: 3px 9px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  background: var(--plate);
+}
+
+.segmented button + button { border-left: 1px solid var(--rule); }
+
+.segmented button[aria-pressed="true"] {
+  color: var(--plate);
+  background: var(--ink-soft);
+}
+
+.segmented button:hover:not([aria-pressed="true"]) {
+  color: var(--ink);
+  background: var(--panel);
+}

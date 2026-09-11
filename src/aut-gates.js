@@ -20,18 +20,22 @@
 // depends on this qubit" has to look like when the shape is fixed. Everything else falls
 // out unchanged.
 //
-// **A set is not a state, and the colours are what keep it one thing.** Every operation
-// below is the same product: pair the two automata's transitions, intersect their
-// colours, and recurse. Under one colouring the automaton is an ordinary tree and the
-// product is ordinary arithmetic on it; over all colourings it is the whole set at once.
-// So a gate never takes the set apart, and the sharing an automaton was built for
-// survives it — which is the entire reason a level-synchronized automaton exists.
+// **A set is not a state, and this is where the two models part company.** Everything
+// below works on one tree at a time: `add` walks two trees in lockstep, and that only
+// means anything when each of them has a single run. How a gate gets from a set to trees
+// is the whole difference between a plain tree automaton and a level-synchronized one,
+// and it is worth having both, because the difference is the point.
 //
-// The correlation a mixing gate needs falls out of this for free. `restrict` gives the
+// **A level-synchronized automaton does not have to.** Every operation is one product:
+// pair the two automata's transitions, intersect their colours, and recurse. Under one
+// colouring the automaton is an ordinary tree and the product is ordinary arithmetic on
+// it; over all colourings it is the whole set at once. So a gate never takes the set
+// apart, and the sharing an automaton was built for survives it.
+//
+// The correlation a mixing gate needs falls out of that for free. `restrict` gives the
 // cofactors, and adding two of them pairs their transitions by colour: under a colouring
 // each cofactor has exactly one run, so the two halves of a transformed node are the two
-// halves of the *same* tree. In a plain automaton they were not, and the only exact
-// answer was to enumerate the members.
+// halves of the *same* tree.
 //
 // That "exactly one run under a colouring" is the invariant the whole construction rests
 // on, so `applyGate` checks it rather than assuming it. It holds by how the colours are
@@ -39,6 +43,22 @@
 // alternatives a state offers are painted with disjoint sets; `reduce` unites states no
 // member shares, which keeps them disjoint; and a product of two automata that each have
 // one run has one run. See `colourDeterministic`.
+//
+// **A plain tree automaton has to, and `expand` is where it pays.** It reads the two
+// children of a node independently, so two sibling subtrees cannot agree on anything —
+// and a gate that mixes them needs exactly that agreement. Except for the gates that
+// never mix siblings (X, Y, Z, S, T and the phases: each sends a pair of subtrees to a
+// pair that is again a product of two sets), there is no way around it. So the root is
+// taken apart into one deterministic state per member, each is transformed on its own,
+// and the results are collected back. Sharing is not lost — interning and the memo
+// tables notice every subtree two members still agree on, and `reduce` puts the rest
+// back together afterwards — but the *choices* are gone, and a mixing gate multiplies
+// out what they were holding.
+//
+// That loop, expand → transform → reduce, is the PLDI'23 one, and the two numbers the
+// page prints beside each other are its cost and its saving. Switching the same set to
+// the other model and watching the first number stop growing is the argument for
+// level synchronization, made in one click rather than in a theorem.
 
 import { GATES } from './gates.js';
 import { ANY, meet } from './aut-lsta.js';
@@ -49,6 +69,16 @@ const DEAD = -1;
 
 /** How many automaton states a run may build before it is called off. */
 export const STATE_BUDGET = 200000;
+
+/**
+ * How many members a plain automaton may have before a gate refuses to take it apart.
+ *
+ * Comfortably above the 64 an HSL specification may name, because a unitary is a
+ * bijection on the set and cannot make it bigger — this is a backstop against an
+ * automaton that arrived some other way, not a limit anyone should meet. A
+ * level-synchronized automaton never reaches here at all: it is not taken apart.
+ */
+export const MEMBER_BUDGET = 4096;
 
 /**
  * A colouring under which some state could take two steps at once.
@@ -91,6 +121,39 @@ export class Algebra {
     this.products = new Map();
     this.scalings = new Map();
     this.restrictions = new Map();
+    this.members = new Map();
+  }
+
+  /**
+   * A state as the deterministic states of its members, one per tree it accepts.
+   *
+   * The choices are pushed up: a state with a choice under it becomes several states
+   * with none, which is what the algebra needs and what a plain tree automaton cannot
+   * avoid. Memoised, so a subtree shared between members is taken apart once.
+   *
+   * Only a colourless automaton comes through here. A level-synchronized one keeps its
+   * choices, because they are what a gate uses.
+   */
+  expand(id) {
+    const had = this.members.get(id);
+    if (had !== undefined) return had;
+    if (this.ta.isLeaf(id)) return [id];
+    const level = this.ta.levelOf(id);
+    const out = new Set();
+    for (const [lo, hi] of this.ta.transitionsOf(id)) {
+      for (const l of this.expand(lo)) {
+        for (const h of this.expand(hi)) {
+          if (out.size >= MEMBER_BUDGET) {
+            throw new Error(`this automaton accepts more than ${MEMBER_BUDGET} states, `
+              + 'which is more than a plain tree automaton will take apart for a gate');
+          }
+          out.add(this.ta.state(level, [[l, h]]));
+        }
+      }
+    }
+    const made = [...out];
+    this.members.set(id, made);
+    return made;
   }
 
   /** The tree that is `value` at every leaf, from `level` down. */
@@ -264,16 +327,20 @@ export function applyGate(alg, root, qubits, matrix) {
 }
 
 /**
- * Apply one circuit operation to the whole set at once.
+ * Apply one circuit operation to the set the automaton accepts.
  *
- * One call. The set is never taken apart, because the colours hold it together, and that
- * is the difference between this and what a plain tree automaton could do.
+ * Which is one call if the colours are there to hold the set together, and a call per
+ * member if they are not. Both move every state in the set, and move each of them the
+ * same way; the difference is what it costs and what is left of the sharing afterwards.
+ * Reducing the result is the caller's business — `simulate` does it.
  */
 export function applyOp(alg, root, op, levelOf = null) {
   const matrix = op.matrix || (GATES[op.name] && GATES[op.name].matrix);
   if (!matrix) throw new Error(`unknown gate '${op.name}'`);
   const at = levelOf ? op.qubits.map((q) => levelOf[q]) : op.qubits;
-  return applyGate(alg, root, at, matrix);
+  if (alg.ta.colours) return applyGate(alg, root, at, matrix);
+  const moved = alg.expand(root).map((member) => applyGate(alg, member, at, matrix));
+  return alg.ta.state(0, moved.flatMap((m) => alg.ta.transitionsOf(m)));
 }
 
 /**
@@ -283,7 +350,8 @@ export function applyOp(alg, root, op, levelOf = null) {
  * @property {number} root           the reduced automaton after that gate
  * @property {number} size           states reachable from it
  * @property {number} expanded       states it took before the reduction — what the
- *                                   merge and the recolouring between them saved
+ *                                   merge and the recolouring between them saved, and,
+ *                                   on a plain automaton, what taking the set apart cost
  * @property {number} members        how many quantum states it accepts
  * @property {number[]} added        states present now but not in the previous frame
  * @property {number[]} removed      states present in the previous frame but not now
@@ -325,14 +393,16 @@ export function simulate(ta, initialRoot, circuit, levelOf = null) {
 
   push(0, null, ta.size(initialRoot));
   circuit.gates.forEach((g, i) => {
-    // Transform, reduce — and the next gate starts from what came out. There is no
-    // expansion any more: the colours carry the correlation a gate needs, so the set
-    // goes through whole and the sharing found once is never paid for twice.
+    // Transform, reduce — and the next gate starts from what came out, not from whatever
+    // the transform had to widen it into. Holding on to the wide form instead would mean
+    // every gate after the first paid again for a sharing already found once.
     const wide = applyOp(alg, root, g, levelOf);
     root = reduce(ta, wide);
     if (ta.states.length > STATE_BUDGET) {
       throw new Error(`the automaton passed ${STATE_BUDGET} states at gate ${i + 1} `
-        + `(${g.name}), which is more than this page will draw`);
+        + `(${g.name}), which is more than this page will draw`
+        + (ta.colours ? '' : ' — a level-synchronized automaton may hold the same set '
+          + 'in far fewer, because it never has to take it apart'));
     }
     push(i + 1, g, ta.size(wide));
   });

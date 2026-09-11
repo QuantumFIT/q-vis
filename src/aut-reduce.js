@@ -33,17 +33,25 @@
 // only tell two things apart. Colours that no transition on their level separates are
 // the same colour, so they are made into one. That keeps the sets small, the products in
 // `aut-gates.js` cheap, and the dots on the picture countable.
+//
+// On a plain tree automaton — one built with `colours: false` — both of those halves get
+// simpler. There is nothing to recolour, and the merge has nothing to protect, so it
+// never refuses: the guard below exists only to keep a colour able to pick out a run,
+// and an automaton with no colours has no run to pick out. Which makes the merge rule
+// here the ordinary one, and the 2n+1 states it finds for every basis state the ones a
+// plain automaton finds too. The two models part company at the gates, not here.
 
 import { ANY, join } from './aut-lsta.js';
 
 /**
  * The same language, in fewer states.
  *
- * @param {import('./aut-lsta.js').LSTA} ta
+ * @param {import('./aut-lsta.js').LSTA} ta whether it uses colours decides whether the
+ *   merge has to protect them, and whether there is a recolouring to do at all
  * @param {number} root
  * @returns {number} the root of the reduced automaton, interned in the same `ta`
  */
-export function reduce(ta, root, { recolour: paint = true } = {}) {
+export function reduce(ta, root) {
   const done = new Map();
   const walk = (id) => {
     if (ta.isLeaf(id)) return id;
@@ -58,7 +66,7 @@ export function reduce(ta, root, { recolour: paint = true } = {}) {
     return made;
   };
   const merged = walk(root);
-  return paint ? recolour(ta, merged) : merged;
+  return ta.colours ? recolour(ta, merged) : merged;
 }
 
 const key = (steps) => steps.map((p) => `${p[0]},${p[1]}:${p[2] === ANY ? '*' : p[2].join('.')}`)
@@ -92,7 +100,7 @@ function pass(ta, steps, side, childLevel) {
   for (const [at, group] of groups) {
     const distinct = [...new Set(group.map((step) => step[1 - side]))];
     const canUnite = distinct.length > 1 && distinct.every((id) => !ta.isLeaf(id))
-      && tellsApart(ta, distinct);
+      && (!ta.colours || tellsApart(ta, distinct));
     if (!canUnite) {
       for (const step of group) out.push(step);
       continue;
@@ -119,6 +127,8 @@ function pass(ta, steps, side, childLevel) {
  * a slightly larger automaton, and one a gate can still be applied to. The cases that
  * matter most are all yes — states no member shares carry disjoint colours by
  * construction, which is what makes every basis state fold into 2n+1.
+ *
+ * A plain automaton never asks, because it has no colours to lose track of.
  */
 function tellsApart(ta, ids) {
   const steps = new Map();

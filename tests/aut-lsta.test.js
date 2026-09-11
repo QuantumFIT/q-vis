@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LSTA } from '../src/aut-lsta.js';
+import { ANY, LSTA } from '../src/aut-lsta.js';
 import { reduce } from '../src/aut-reduce.js';
 import { simulate } from '../src/aut-gates.js';
 import { parseHsl, toVector } from '../src/aut-hsl.js';
@@ -240,4 +240,33 @@ test('the colours are quotiented to the fewest a level can tell apart', () => {
   assert.equal(ta.palette(root)[1].length, 2 ** n, 'before: one colour per member');
   assert.deepEqual(ta.palette(reduce(ta, root)).map((at) => at.length),
     Array.from({ length: n }, () => 2), 'after: two, at every level');
+});
+
+test('a plain tree automaton is the same automaton with no colour on it', () => {
+  // The other model the page offers, and the whole of what makes it the other one. Same
+  // encoding of a state, same interning, same set denoted — the transitions simply carry
+  // nothing, so no choice is synchronized with any other and the picture has no dots.
+  for (const n of [1, 2, 3, 4]) {
+    const vectors = [basis(n, 0), basis(n, 2 ** n - 1)];
+    const plain = new LSTA(ring, n, { colours: false });
+    const { root } = plain.fromVectors(vectors);
+    assert.equal(plain.colours, false, 'and it says so, because everything downstream asks');
+
+    for (const id of plain.reachable(root)) {
+      if (plain.isLeaf(id)) continue;
+      for (const [, , choice] of plain.transitionsOf(id)) {
+        assert.equal(choice, ANY, `${n} qubits: a plain automaton names no colour`);
+      }
+    }
+    assert.deepEqual(plain.palette(root), Array.from({ length: n }, () => [ANY]),
+      `${n} qubits: nothing to tell apart on any level`);
+
+    // And it accepts exactly what the level-synchronized one does. Colours constrain the
+    // runs; with two members that share nothing there is nothing for them to constrain.
+    const painted = new LSTA(ring, n);
+    const asSet = (ta, r) => new Set(ta.language(r)
+      .map((v) => v.map((x) => ring.key(x)).join('|')));
+    assert.deepEqual(asSet(plain, root), asSet(painted, painted.fromVectors(vectors).root),
+      `${n} qubits: the two models denote the same set`);
+  }
 });

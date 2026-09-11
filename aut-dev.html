@@ -69,6 +69,12 @@
     <button id="next" title="next gate (→)">›</button>
     <span class="stat" id="position"></span>
     <span class="spacer"></span>
+    <span class="segmented" id="model">
+      <button id="modelTa" type="button" aria-pressed="false"
+        title="a plain tree automaton: no colours, so a gate that mixes siblings has to take the set apart first">TA</button>
+      <button id="modelLsta" type="button" aria-pressed="true"
+        title="level-synchronized: one colour per level, so a gate carries the whole set through at once">LSTA</button>
+    </span>
     <span class="stat" id="stats"></span>
     <span class="spacer"></span>
     <button id="zoomOut" title="zoom out (−)">−</button>

@@ -1,4 +1,4 @@
-# Level-synchronized tree automata
+# Tree automata, plain and level-synchronized
 
 The automata page represents a **set** of quantum states, and the encoding of each one is
 the PLDI'23 one: a perfect binary tree of depth n, an internal node at level i decides
@@ -6,6 +6,12 @@ qubit i, a leaf holds an amplitude, and every branch is a computational basis st
 this page adds is the POPL'25 level-synchronized automaton, which changes one thing about
 what an automaton may say — and that one thing is the difference between a picture that
 stays small and one that does not.
+
+The page will hold a set **either way**, and the control in the transport says which. The
+two denote the same set at every step of the same circuit, which the tests check frame by
+frame; what differs is what carrying it through a gate costs. Watching that difference
+happen on one circuit is a better argument for level synchronization than this document
+is, which is why the choice is on the page and not only in this file.
 
 ## What a plain tree automaton cannot do
 
@@ -19,15 +25,18 @@ its two children are read apart, and nothing relates them. The only exact answer
 to take the set apart into its members, transform each, and put it back — which is
 correct, and throws away every bit of sharing the automaton was built for.
 
-Measured, on the set of every computational basis state of five qubits:
+Measured, on the set of every computational basis state and one Hadamard on the top
+qubit — the state count after the gate, both models reduced:
 
-| | states |
-| --- | --- |
-| the set, as an automaton | **11** (2n+1) |
-| after one Hadamard, as a plain tree automaton | 67 |
-| after one Hadamard, level-synchronized | **16** |
+| qubits | the set itself | plain | level-synchronized |
+| ---: | ---: | ---: | ---: |
+| 3 | 7 | 17 | **9** |
+| 4 | 9 | 34 | **12** |
+| 5 | 11 | 67 | **15** |
 
-The gap is `2ⁿ` against `n`, and it is why the level-synchronized version exists.
+Both start at 2n+1, because the reduction is the same rule in both and the two models
+part company at the gates, not at the merge. After the gate the gap is `2ⁿ` against `3n`,
+and that is why the level-synchronized version exists.
 
 ## The one idea
 
@@ -74,7 +83,23 @@ picture can draw and the products can afford.
 
 The merge asks first whether uniting would leave a colour unable to tell the parts apart,
 and declines when it would. That costs a little compression and keeps every automaton one
-a gate can still be applied to.
+a gate can still be applied to. A plain automaton never asks — it has no colours to lose
+track of — so the merge there is the ordinary one.
+
+## Holding the same set as a plain automaton
+
+`colours: false` on the automaton, and everything downstream reads it off there rather
+than being told again: `fromVectors` paints nothing, `reduce` skips both the guard and the
+recolouring, `palette` reports nothing to tell apart so the picture draws no dots, and the
+TikZ export leaves out the colour styles and captions the figure as what it is.
+
+The one place it genuinely diverges is `applyOp`. With no way to say that two sibling
+subtrees made the same choice, the root is taken apart into one deterministic state per
+member — `Algebra.expand` — each is transformed on its own, and the results are collected
+back under one root. Sharing is not *lost*: interning and the memo tables notice every
+subtree two members still agree on, and `reduce` puts the rest back together afterwards.
+But the choices are gone, and a mixing gate multiplies out what they were holding. That
+loop, expand → transform → reduce, is the PLDI'23 one.
 
 ## What is checked
 
@@ -86,6 +111,11 @@ language before. Swept over random sets, random gates and random qubits.
 Beside it: that the language survives reduction exactly, that reducing twice is reducing
 once, that a colouring picks out one run, and that every basis state of n qubits is 2n+1
 states and stays linear through a Hadamard.
+
+And, for the choice: that the two models carry the same set through the same circuit and
+agree on it at every step — swept over random sets, random gates and random qubits — that
+a plain automaton names no colour anywhere and so draws no dot, and that the sizes in the
+table above are the sizes they are.
 
 ## Not built
 

@@ -128,3 +128,34 @@ test('the circuit goes through the other page\'s exporter, unchanged', () => {
   assert.equal(circuitTikz(circuit), circuitTikz(circuit));
   assert.match(circuitTikz(circuit), /\\begin\{quantikz\}/);
 });
+
+test('a figure says which of the two automata it is, and carries only the styles it uses', () => {
+  // The dots are the notation, so their absence is notation too: a picture with none is
+  // a plain tree automaton and one with them is level-synchronized, and the comment at
+  // the top of the figure says so rather than leaving it to be inferred. The six colour
+  // styles go with them — six unused definitions in a preamble are six lines for the
+  // figure's author to read and then delete.
+  const spec = SPECIALS.basis.spec(3);
+  const circuit = parseQasm(BELL);
+
+  const forModel = (colours) => {
+    const ta = new LSTA(ring, 3, { colours });
+    const parsed = parseHsl(spec, 3);
+    const { root } = ta.fromVectors(parsed.vectors.map((v) => toVector(v, ring)));
+    const frames = simulate(ta, root, circuit);
+    const last = frames[frames.length - 1];
+    return draw(layoutAutomaton(ta, last.root, { formatValue: (v) => P.format(v, 'exact') }),
+      circuit);
+  };
+
+  const painted = forModel(true);
+  assert.match(painted, /% Level-synchronized tree automaton, from q-vis\./);
+  assert.match(painted, /choice0\/\.style=/, 'the hues it puts on the arcs');
+  assert.match(painted, /\\fill\[choice\d\]/, 'and dots that use them');
+
+  const plain = forModel(false);
+  assert.match(plain, /% Tree automaton, from q-vis\./);
+  assert.ok(!/Level-synchronized/.test(plain), 'which it is not');
+  assert.ok(!/choice/.test(plain), 'no colours, so no dots and no styles for them');
+  assert.match(plain, /\\draw\[trans\]/, 'but the arcs that pair up a transition are still there');
+});

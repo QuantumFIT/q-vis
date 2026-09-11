@@ -132,3 +132,18 @@ test('a leaf is not a state that can be united, and is not pretended to be', () 
   assert.equal(ta.transitionsOf(small).length, 2);
   assert.deepEqual(asSet(ta.language(small)), asSet(ta.language(root)));
 });
+
+test('the merge is the ordinary one when there are no colours to protect', () => {
+  // A plain tree automaton reduces by the same rule and finds the same 2n+1 states — the
+  // two models part company at the gates, not here. It never reaches `tellsApart`, which
+  // exists only to keep a colour able to pick out a run.
+  for (const n of [1, 2, 3, 4, 5, 6]) {
+    const ta = new LSTA(ring, n, { colours: false });
+    const spec = parseHsl(SPECIALS.basis.spec(n), n);
+    const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+    const small = reduce(ta, root);
+    assert.equal(ta.size(small), 2 * n + 1, `${n} qubits`);
+    assert.equal(ta.language(small).length, 2 ** n, 'and it still accepts every one of them');
+    assert.equal(reduce(ta, small), small, 'reducing it again changes nothing');
+  }
+});

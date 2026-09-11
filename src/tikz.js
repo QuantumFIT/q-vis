@@ -350,14 +350,23 @@ const AUT_STYLES = [
   '    low/.style={densely dashed, ->, >=stealth, shorten >=1pt},',
   '    high/.style={->, >=stealth, shorten >=1pt},',
   '    trans/.style={semithick},',
-  // Six hues for the colours a transition is admitted under, as the papers draw them.
+  '    gut/.style={anchor=east, font=\\scriptsize\\ttfamily, text=black!55},',
+];
+
+/**
+ * Six hues for the colours a transition is admitted under, as the papers draw them.
+ *
+ * Emitted only for a picture that has dots on it. A plain tree automaton has none, and
+ * six unused styles in the preamble of a figure is six lines for its author to read and
+ * then delete.
+ */
+const AUT_CHOICE_STYLES = [
   '    choice0/.style={fill=blue!65!black},',
   '    choice1/.style={fill=orange!80!black},',
   '    choice2/.style={fill=green!55!black},',
   '    choice3/.style={fill=violet},',
   '    choice4/.style={fill=cyan!70!black},',
   '    choice5/.style={fill=brown},',
-  '    gut/.style={anchor=east, font=\\scriptsize\\ttfamily, text=black!55},',
 ];
 
 /** The row spacing the picture is drawn at; the column spacing is worked out per figure. */
@@ -505,7 +514,7 @@ export function automatonTikz(layout, opts = {}) {
             ? lo + inset + span / 2
             : lo + inset + (span * i) / (colours.length - 1);
           lines.push(`  \\fill[choice${c % 6}] (s${from}) `
-            + `++(${coord(Math.round(at * 10) / 10)}:4.2mm) circle (0.45mm);`);
+            + `++(${coord(Math.round(at * 10) / 10)}:4.2mm) circle (0.62mm);`);
         });
       }
     });
@@ -519,10 +528,15 @@ export function automatonTikz(layout, opts = {}) {
       + `(${coord(root.x - 0.08)},${coord(root.y - 0.78)}) {$R$};`);
   }
 
+  // A picture with a dot on it is level-synchronized and one without it is a plain tree
+  // automaton, and the caption of a figure is a poor place to leave that to inference.
+  const synchronized = (layout.palette ?? []).some((k) => k > 0);
   return [
-    ...header('Tree automaton', 'tikz', { link }),
+    ...header(synchronized ? 'Level-synchronized tree automaton' : 'Tree automaton',
+      'tikz', { link }),
     `\\begin{tikzpicture}[x=${xUnit}cm, y=-1.25cm,`,
     ...AUT_STYLES,
+    ...(synchronized ? AUT_CHOICE_STYLES : []),
     '  ]',
     ...lines,
     '\\end{tikzpicture}',
