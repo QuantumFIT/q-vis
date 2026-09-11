@@ -36,12 +36,20 @@ import { parseAmplitude } from './state.js';
 /**
  * How many quantum states one specification may denote.
  *
- * `{c |i> : |i|=n}` is 2^n of them, and every one is a transition of the automaton's
- * root — that is what a set with no shared choice costs, and it is the reason a
- * level-synchronized automaton exists. The cap is where the picture stops being a
- * picture, not where the language stops.
+ * Not a limit on the picture, which is the thing it used to be: `{c |i> : |i|=n}` is 2^n
+ * states and its automaton, once reduced, is 2n+1 — twenty-five of them at twelve qubits,
+ * which would draw perfectly well. The limit is on *this reader*, which makes every
+ * member in full, as a dense vector of 2^n amplitudes, before the automaton gets a chance
+ * to share anything between them. That is 4^n work, and it is what a set of this size
+ * actually costs today.
+ *
+ * So the number is measured rather than chosen. Every basis state of nine qubits — 512 of
+ * them — is read, built, reduced, counted and carried through a circuit in under half a
+ * second; ten qubits takes 1.7s and eleven takes nine, almost all of it in making those
+ * vectors and in counting the members back out of the automaton afterwards. Sparse
+ * amplitudes would move the wall a long way, and are not built.
  */
-export const MAX_STATES = 64;
+export const MAX_STATES = 512;
 
 export class HslError extends Error {
   constructor(message, line) {
@@ -193,8 +201,9 @@ export function parseHsl(text, nqubits) {
       vectors.push(buildSet(parsed, nqubits, pick, line));
       any = true;
       if (vectors.length > MAX_STATES) {
-        throw new HslError(`this names more than ${MAX_STATES} quantum states, and each `
-          + 'one is a transition of the automaton\'s root — more than the page will draw', line);
+        throw new HslError(`this names more than ${MAX_STATES} quantum states, which is `
+          + 'more than this reader will build — it makes each one in full before the '
+          + 'automaton shares anything between them', line);
       }
     }
     if (!any) throw new HslError('the constraints leave this set with no states in it', line);

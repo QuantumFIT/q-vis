@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fanAngles, layoutAutomaton, spread } from '../src/aut-layout.js';
 import { LSTA } from '../src/aut-lsta.js';
+import { reduce } from '../src/aut-reduce.js';
 import * as P from '../src/poly.js';
 import { rng, randInt, CLOSE } from './helpers.js';
 
@@ -189,5 +190,44 @@ test('a plain automaton has nothing to draw dots for', () => {
     assert.ok(dotted.palette.every((k) => k === 2),
       `${n} qubits: two members, told apart on every level`);
     assert.ok(dotted.edges.some((e) => e.colours?.length), 'and the edges say which');
+  }
+});
+
+test('every transition of a synchronized automaton carries its colours, choice or not', () => {
+  // A reader following one hue down the picture has to be able to keep following it. A
+  // transition with nothing else beside it is still on some runs and not others, and it
+  // used to be drawn bare — so the trail stopped at the first state with one way to go
+  // and the reader had to know that a bare arc means "every colour". Now it says so.
+  for (const n of [1, 2, 3]) {
+    // A set of one. There is no choice anywhere in it, and it is still a colouring.
+    const one = new LSTA(ring, n);
+    const alone = laid(one, one.fromVectors([basis(n, 0)]).root);
+    assert.deepEqual(alone.palette, new Array(n).fill(1), `${n} qubits: one colour a level`);
+    assert.ok(alone.edges.every((e) => e.colours?.length === 1),
+      'and every edge carries it, though nothing anywhere has a choice to make');
+
+    // A set of three, reduced the way the page reduces it. Some states have a choice
+    // under them and some do not; both kinds say which colours they are on.
+    const many = new LSTA(ring, n);
+    const picks = [...new Set([0, 1, 2 ** n - 1])].slice(0, 2 ** n);
+    const root = reduce(many, many.fromVectors(picks.map((b) => basis(n, b))).root);
+    const layout = laid(many, root);
+    assert.ok(layout.edges.every((e) => e.colours && e.colours.length),
+      `${n} qubits: no edge is left bare`);
+    assert.ok(layout.edges.every((e) => e.colours.every((c) => c < layout.palette[
+      layout.nodes.find((nd) => nd.id === e.from).y])),
+    'and every colour is a place in its own level');
+
+    // A transition admitting everything is drawn as everything, not as nothing — which
+    // is what `ANY` means, and the two have to agree or the picture is lying.
+    const wide = layout.edges.filter((e) => {
+      const level = layout.nodes.find((nd) => nd.id === e.from).y;
+      return e.colours.length === layout.palette[level];
+    });
+    for (const e of wide) {
+      const level = layout.nodes.find((nd) => nd.id === e.from).y;
+      assert.deepEqual(e.colours, [...Array(layout.palette[level]).keys()],
+        'a transition on every run shows every hue of its level');
+    }
   }
 });

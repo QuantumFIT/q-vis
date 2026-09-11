@@ -420,3 +420,37 @@ test('only a plain automaton takes the set apart, and every part of it is a tree
   assert.equal(applyOp(alg, root, { name: 'h', qubits: [0] }),
     applyGate(alg, root, [0], GATES.h.matrix), 'so applyOp is one call on the whole set');
 });
+
+test('how many quantum states the set holds is counted off the small automaton', () => {
+  // Same number either way — `reduce` keeps the language exactly — and one of the two is
+  // enormously cheaper. Out of `fromVectors` the members stand side by side with nothing
+  // shared above them, so the frontier descent walks each separately; reduced, they share
+  // almost everything. Every basis state of eight qubits took four and a half seconds the
+  // slow way and a twentieth of a second the fast one, and that was most of what made a
+  // large set of them undrawable. This pins the equality the shortcut rests on.
+  for (const n of [1, 2, 3, 4, 5]) {
+    const ta = new LSTA(ring, n);
+    const spec = parseHsl(SPECIALS.basis.spec(n), n);
+    const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+    const small = reduce(ta, root);
+    assert.equal(ta.language(small).length, ta.language(root).length,
+      `${n} qubits: reducing changed how many states it accepts`);
+    assert.equal(simulate(ta, root, { nqubits: n, gates: [] })[0].members, 2 ** n,
+      'and the frame says that number');
+  }
+});
+
+test('a set of five hundred states is read, where sixty-five used to be the wall', () => {
+  // What the cap is now, and that it is about this reader rather than about the picture.
+  // Nine qubits is 512 members; the automaton they reduce to is 19 states, which is a
+  // smaller drawing than most of the worked examples produce.
+  const n = 9;
+  const spec = parseHsl(SPECIALS.basis.spec(n), n);
+  assert.equal(spec.vectors.length, 2 ** n, 'every input, and none of them refused');
+  const ta = new LSTA(ring, n);
+  const { root } = ta.fromVectors(spec.vectors.map((v) => toVector(v, ring)));
+  const frames = simulate(ta, root, { nqubits: n, gates: [{ name: 'h', qubits: [0] }] });
+  assert.equal(frames[0].size, 2 * n + 1, 'the set itself is 2n+1 states');
+  assert.equal(frames[0].members, 2 ** n);
+  assert.ok(frames[1].size < 40, `and one Hadamard leaves ${frames[1].size}, not thousands`);
+});

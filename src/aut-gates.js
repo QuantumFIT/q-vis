@@ -374,7 +374,14 @@ export function simulate(ta, initialRoot, circuit, levelOf = null) {
   let root = reduce(ta, initialRoot);
 
   // A unitary is a bijection on the set, so how many states it holds is settled once.
-  const members = ta.language(initialRoot).length;
+  //
+  // Counted off the *reduced* automaton, which accepts exactly the same set. Counting it
+  // off the one that came out of `fromVectors` gives the same number and takes orders of
+  // magnitude longer: there the members stand side by side with nothing shared above
+  // them, so the frontier descent walks each one separately. Every basis state of eight
+  // qubits took four and a half seconds that way and twenty-six milliseconds this way,
+  // and that alone was most of what made a large set of them undrawable.
+  const members = ta.language(root).length;
 
   const push = (index, gate, expanded) => {
     const now = new Set(ta.reachable(root));

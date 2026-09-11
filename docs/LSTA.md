@@ -52,6 +52,15 @@ alternative are forced to take the same one — which is exactly the agreement a
 needs. The papers draw the colours as dots on the transition; so does this page, on the
 arc that already marks it.
 
+**Every** transition carries its dots, including the ones with nothing beside them. A
+transition written `ANY` internally is not colourless — it is admitted under every colour
+of its level at once, and that is how it is drawn. The alternative, suppressing it, meant
+a reader following one hue down the picture lost the trail at the first state with only
+one way to go, and had to know a convention to get it back. A level that names no colour
+has one nominal colour and every transition on it carries that; only a plain tree
+automaton, which has no colours at all, has no dots. So a set of one is still a colouring,
+and the two models differ on screen even there.
+
 ## What follows from it
 
 **Gates.** Two automata are combined by pairing their transitions and intersecting their
@@ -116,6 +125,33 @@ And, for the choice: that the two models carry the same set through the same cir
 agree on it at every step — swept over random sets, random gates and random qubits — that
 a plain automaton names no colour anywhere and so draws no dot, and that the sizes in the
 table above are the sizes they are.
+
+## How large a set the page will take
+
+`MAX_STATES` is 512, and it is a limit on **the reader**, not on the picture. Every
+computational basis state of twelve qubits is an automaton of twenty-five states, which
+would draw perfectly well; what stops it is that `aut-hsl.js` makes every member in full,
+as a dense vector of 2ⁿ amplitudes, before the automaton gets a chance to share anything
+between them. That is 4ⁿ work.
+
+Measured end to end — read, build, reduce, count, and carry through a circuit:
+
+| qubits | members | automaton | total |
+| ---: | ---: | ---: | ---: |
+| 8 | 256 | 17 | 0.1 s |
+| 9 | 512 | 19 | 0.4 s |
+| 10 | 1024 | 21 | 1.7 s |
+| 11 | 2048 | 23 | 8.7 s |
+
+The gates are not in it: three of them on the 11-qubit automaton cost 5 ms. What costs is
+making the vectors and counting the members back out afterwards. Sparse amplitudes would
+move the wall a long way and are not built.
+
+The cap is not a reason to take a control away. `all |x>` writes its specification at any
+size; past the cap the reader refuses it, in the same words and the same place a
+hand-typed one would be refused in. What a page will read is a fact about the page, and a
+button that vanishes when the circuit grows says instead that the circuit decides what may
+be asked.
 
 ## Not built
 

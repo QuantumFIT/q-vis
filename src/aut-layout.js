@@ -184,12 +184,20 @@ export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } 
   // The colours are given as places in their level's palette rather than as the
   // automaton's own ids, so that the picture can hold a fixed row of hues and a level
   // that tells two things apart always uses the first two of them.
+  //
+  // *Every* transition of a level-synchronized automaton carries its colours, including
+  // the ones with no choice under them. `ANY` is not "no colour" — it is every colour of
+  // the level at once, and that is how it is drawn. Suppressing it, as this did, meant a
+  // reader following one hue down the picture lost the trail at the first state that had
+  // only one way to go, and had to know the convention that a bare arc means "all of
+  // them". A level that names no colour has one nominal colour and every transition on it
+  // carries that; only a plain tree automaton, which has no colours at all, has no dots.
   const palette = ta.palette(root);
   const places = (level, choice) => {
-    if (choice === ANY) return null;                 // constrains nothing, so no dots
+    if (!ta.colours) return null;
     const at = palette[level];
-    const found = choice.map((c) => at.indexOf(c)).filter((i) => i >= 0);
-    return found.length === at.length ? null : found.sort((a, b) => a - b);
+    if (choice === ANY) return at.map((_, i) => i);
+    return choice.map((c) => at.indexOf(c)).filter((i) => i >= 0).sort((a, b) => a - b);
   };
 
   const edges = [];
@@ -210,8 +218,9 @@ export function layoutAutomaton(ta, root, { formatValue, prevRank = new Map() } 
     xMax,
     width: xMax - xMin,
     height: ta.nvars,
-    // How many colours each level can tell apart, so the renderer knows how many hues to
-    // hold ready and whether a level has any choice to make at all.
-    palette: palette.map((at) => (at.length === 1 && at[0] === ANY ? 0 : at.length)),
+    // How many hues each level uses, so the renderer knows how many to hold ready. Zero
+    // only for a plain tree automaton, which has no colours to draw; a level of a
+    // synchronized one that names nothing still has the one colour every run picks there.
+    palette: ta.colours ? palette.map((at) => at.length) : new Array(ta.nvars).fill(0),
   };
 }
