@@ -170,9 +170,17 @@
  * `pointer-events: stroke` is what makes an unpainted stroke catch the pointer anyway,
  * and says so rather than relying on `transparent` counting as painted.
  *
- * Lit is heavier and darker, not coloured: the accent on this page means "this changed in
- * this step" and the hues mean "this colour admits it", and a pointer resting somewhere
- * is neither of those things.
+ * Lit is the accent, because colour is what the eye finds and thickness is not. A stroke
+ * that doubles in width says "this one is bigger" before it says "this one", and on a
+ * picture whose whole subject is which lines belong together, changing how heavy a line
+ * is changes what it looks like it means. So the hue carries it and the width only
+ * follows, a little.
+ *
+ * The accent is this page's one emphasis colour and it also marks a state the last gate
+ * made, which is the single overlap. The two do not collide in practice: `fresh` outlines
+ * a state and this paints the lines between them, and what is lit here is under the
+ * reader's own pointer. Nothing else was free — the six choice hues take most of the
+ * spectrum, and a seventh would say there is a seventh kind of thing to look at.
  */
 .aut-hit {
   fill: none;
@@ -188,23 +196,24 @@
 .canvas.panning .aut-hit { pointer-events: none; }
 
 .aut-edge.hot {
-  stroke: var(--ink);
-  stroke-width: calc(2.1px * var(--unzoom, 1));
+  stroke: var(--accent);
+  stroke-width: calc(1.7px * var(--unzoom, 1));
 }
 
 .aut-arc.hot {
-  stroke: var(--ink);
-  stroke-width: calc(2.4px * var(--unzoom, 1));
+  stroke: var(--accent);
+  stroke-width: calc(2.1px * var(--unzoom, 1));
 }
 
-/* Ringed rather than grown: the hue is what the dot is for, and a dot that changes size
-   under the pointer reads as a different number of colours rather than the same ones. */
+/* Ringed rather than grown, and it keeps its own hue: which colours admit a transition is
+   the one thing the dot is there to say, and a dot that changed colour under the pointer
+   would be answering a different question. */
 .aut-dot.hot {
-  stroke: var(--ink);
-  stroke-width: calc(1px * var(--unzoom, 1));
+  stroke: var(--accent);
+  stroke-width: calc(1.1px * var(--unzoom, 1));
 }
 
-.aut-head.hot { fill: var(--ink); }
+.aut-head.hot { fill: var(--accent); }
 
 /* The one colour on the page marks what changed, as it does on the other. */
 .aut-node.fresh .aut-state,
