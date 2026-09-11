@@ -215,6 +215,14 @@
 
 .aut-head.hot { fill: var(--accent); }
 
+/* The three states the transition names take a wash of the same accent rather than its
+   outline. The outline is already spoken for — `fresh` marks a state this gate made — and
+   a state that is both new and under the pointer has to be able to say both things at
+   once. A wash also reads as "these three", which is what it means, where a heavier ring
+   would read as "these are bigger". */
+.aut-node.hot .aut-state,
+.aut-node.hot .aut-leaf { fill: var(--accent-soft); }
+
 /* The one colour on the page marks what changed, as it does on the other. */
 .aut-node.fresh .aut-state,
 .aut-node.fresh .aut-leaf { stroke: var(--accent); }

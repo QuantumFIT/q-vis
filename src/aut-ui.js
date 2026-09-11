@@ -177,17 +177,18 @@ function arrowhead() {
 /**
  * Light the whole of a transition when the pointer is anywhere on it.
  *
- * A transition is four marks — two edges, the arc pairing them, and the dots saying which
- * colours admit it — and which four they are is the one thing a picture of an automaton
- * has to make obvious. The arc says it at rest; this says it on demand, and says it for
- * the edges too, which is where the arc runs out of reach.
+ * A transition is a whole statement — `q → f(q₀, q₁)` — and the picture spreads it over
+ * two edges, the arc pairing them, the dots saying which colours admit it, and the three
+ * states it names. Which marks those are is the one thing a picture of an automaton has
+ * to make obvious. The arc says part of it at rest; this says all of it on demand, and
+ * says it where the arc runs out of reach.
  *
  * One listener on the plate rather than one per mark: a large automaton is thousands of
  * elements, and `pointerover` bubbles. Moving onto a mark of another transition, or onto
  * a state, or off the plate, all arrive here as the same question — what is under the
  * pointer now — so there is one answer and no pair of handlers to keep in step.
  */
-function armHover(svg) {
+function armHover(svg, touching) {
   let lit = null;
   const light = (key, on) => {
     for (const el of svg.querySelectorAll(`[data-trans="${key}"]`)) {
@@ -196,6 +197,13 @@ function armHover(svg) {
       if (el.classList.contains('aut-edge')) {
         el.setAttribute('marker-end', `url(#aut-arrow${on ? '-hot' : ''})`);
       }
+    }
+    // The state it leaves and the two it reaches. `toggle` is given the flag rather than
+    // left to flip, so a transition whose two children are the same state — which is what
+    // "no longer depends on this qubit" looks like on a perfect tree — does not light it
+    // and then put it out again.
+    for (const id of touching.get(key) ?? []) {
+      svg.querySelector(`[data-node="${id}"]`)?.classList.toggle('hot', on);
     }
   };
   const show = (key) => {
@@ -439,6 +447,9 @@ function drawAutomaton(layout, labels) {
   // Every stroke of one transition, keyed by it: the arc first and then its two edges, so
   // that the hit area drawn from them below covers the whole of it.
   const strokes = new Map();
+  // And the three states it names — the one it leaves and the two it goes to — so that
+  // pointing at it can light the whole statement and not only the lines of it.
+  const touching = new Map();
   const edges = svgEl('g');
 
   // Both ends of an edge depend on what else is at that end — the fan on how many edges
@@ -489,6 +500,7 @@ function drawAutomaton(layout, labels) {
         const key = `${from}:${t}`;
         const arc = `M ${sx} ${sy} A ${r} ${r} 0 0 0 ${ex} ${ey}`;
         strokes.set(key, [arc]);
+        touching.set(key, [from, ...pair.map((e) => e.to)]);
         arcs.append(svgEl('path', { class: 'aut-arc', 'data-trans': key, d: arc }));
         // The colours that admit this transition, as dots on the arc that marks it —
         // the notation the papers draw. A transition that constrains nothing has none,
@@ -576,10 +588,13 @@ function drawAutomaton(layout, labels) {
     hits.append(svgEl('path', { class: 'aut-hit', 'data-trans': key, d: parts.join(' ') }));
   }
   svg.append(edges, arcs, hits);
-  armHover(svg);
+  armHover(svg, touching);
 
   for (const n of layout.nodes) {
-    const g = svgEl('g', { class: `aut-node ${n.kind}${n.fresh ? ' fresh' : ''}` });
+    const g = svgEl('g', {
+      class: `aut-node ${n.kind}${n.fresh ? ' fresh' : ''}`,
+      'data-node': n.id,
+    });
     if (n.terminal) {
       g.append(svgEl('rect', {
         class: 'aut-leaf', x: xOf(n.x) - GEO.termW / 2, y: yOf(n.y) - GEO.termH / 2,
