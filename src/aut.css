@@ -199,6 +199,11 @@
  * them is on screen has to be readable without inferring it from whether the picture
  * happens to have dots on it.
  *
+ * It sits in the masthead, finishing the sentence the tagline starts — "as tree
+ * automata", and then which kind. That is a claim about what the whole page is showing
+ * rather than a setting for the view, so it belongs beside the title and not among the
+ * zoom buttons, where it would read as one more way of looking at one picture.
+ *
  * Joined into a single pill, because they are one choice rather than two switches that
  * could both be on. The chosen half is filled with ink and not with the accent: the
  * accent means "this changed in this step" everywhere else here, and a setting is not
@@ -208,15 +213,22 @@
   border: 1px solid var(--rule);
   border-radius: 3px;
   overflow: hidden;
+  /* The masthead aligns on the baseline, and so does this: the two labels sit on the
+     same line as the tagline they qualify, with the pill drawn around them. */
+  align-self: baseline;
+  /* And it never gives way on a narrow window. The note beside it is the thing that
+     shrinks to an ellipsis there; a control whose labels are clipped is worse than a
+     link whose text is, because there is nothing left to read it by. */
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .segmented button {
   border: 0;
   border-radius: 0;
-  min-width: 0;
-  padding: 3px 9px;
-  font-size: 12px;
-  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   color: var(--ink-soft);
   background: var(--plate);
 }

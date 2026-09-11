@@ -16,6 +16,12 @@
     <span class="wordmark">q<span>-</span>vis<span>/</span>aut</span>
     <a id="version" class="version"></a>
     <span class="tagline">sets of quantum states, as tree automata</span>
+    <span class="segmented" id="model" role="group" aria-label="which automaton">
+      <button id="modelTa" type="button" aria-pressed="false"
+        title="a plain tree automaton: no colours, so a gate that mixes siblings has to take the set apart first">TA</button>
+      <button id="modelLsta" type="button" aria-pressed="true"
+        title="level-synchronized: one colour per level, so a gate carries the whole set through at once">LSTA</button>
+    </span>
     <span class="spacer"></span>
     <a id="sibling" class="footnote" href="../"
        title="the decision-diagram tool: one state, drawn gate by gate">one state? q-vis</a>
@@ -69,12 +75,6 @@
     <button id="next" title="next gate (→)">›</button>
     <span class="stat" id="position"></span>
     <span class="spacer"></span>
-    <span class="segmented" id="model">
-      <button id="modelTa" type="button" aria-pressed="false"
-        title="a plain tree automaton: no colours, so a gate that mixes siblings has to take the set apart first">TA</button>
-      <button id="modelLsta" type="button" aria-pressed="true"
-        title="level-synchronized: one colour per level, so a gate carries the whole set through at once">LSTA</button>
-    </span>
     <span class="stat" id="stats"></span>
     <span class="spacer"></span>
     <button id="zoomOut" title="zoom out (−)">−</button>
