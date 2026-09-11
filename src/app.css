@@ -893,7 +893,32 @@ dialog > header .spacer { flex: 1; }
   border-top: 1px solid var(--rule);
 }
 
-.transport button { min-width: 32px; text-align: center; font-size: 15px; line-height: 1.1; }
+/* A floor as well as a width, because what is inside these varies: a chevron at 15px, a
+   ▶ set smaller because most fonts draw it large, a drawn glyph 12px square. Without it
+   the row steps up and down in the middle of itself according to which mark each button
+   happens to hold. */
+.transport button {
+  min-width: 32px;
+  min-height: 25px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+/* The jump-to-either-end glyphs, drawn rather than typed. The characters for them —
+   U+23EE and U+23ED — are missing from most of the fonts in this page's stack and arrive
+   as a box; where they are present they are emoji, and a colour pictogram beside a plain
+   ▶ is worse than a box. So they are two paths, which look the same everywhere, take
+   their colour from the button, and go grey with it when it is disabled. */
+.transport button .glyph {
+  display: block;
+  width: 12px;
+  /* The line box a button of text gets, so a drawn glyph sits in a button the same height
+     as the chevrons beside it. The art inside keeps its own 12x12 and is centred in it. */
+  height: 1.1em;
+  margin: 0 auto;
+  fill: currentColor;
+}
 .transport button#play { font-size: 12px; }
 .transport .spacer { flex: 1; }
 

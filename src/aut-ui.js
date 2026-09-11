@@ -68,7 +68,12 @@ const app = {
   plate: null,          // its size in its own coordinates
   zoom: 'fit',
   scale: 1,
+  playing: false,
+  timer: null,
 };
+
+/** How long one gate is held on screen while playing. The other page's pace. */
+const PLAY_MS = 750;
 
 /**
  * The plate's geometry, in the same spirit as the other page's.
@@ -252,7 +257,7 @@ function showVersion() {
  */
 function setStep(i) {
   if (!app.circuit) {
-    for (const id of ['first', 'prev', 'next', 'last']) $(id).disabled = true;
+    for (const id of ['first', 'prev', 'play', 'next', 'last']) $(id).disabled = true;
     $('position').textContent = '';
     return;
   }
@@ -263,6 +268,7 @@ function setStep(i) {
   $('position').textContent = `${app.index} / ${end}`;
   $('first').disabled = app.index === 0;
   $('prev').disabled = app.index === 0;
+  $('play').disabled = end === 0;
   $('next').disabled = app.index === end;
   $('last').disabled = app.index === end;
   if (app.index !== was && app.layouts.length) showFrame(app.index);
@@ -270,6 +276,40 @@ function setStep(i) {
 
 /** The last step there is, or 0 when there is no circuit to have steps in. */
 const lastStep = () => (app.circuit ? app.circuit.gates.length : 0);
+
+/**
+ * Go somewhere because the reader said so, which is also a way of saying stop.
+ *
+ * Everything a reader can do to move — the five buttons, the arrow and jump keys, a click
+ * on a column of the circuit — comes through here, so none of them has to remember that
+ * the run might be playing itself. Only the timer moves without it.
+ */
+const jump = (i) => { stop(); setStep(i); };
+
+/**
+ * Walk the circuit on a timer, at the pace the other page uses.
+ *
+ * From the top when it is already at the end, because the one thing to want from the
+ * button there is to see it again. It stops itself at the last gate rather than looping:
+ * a picture that keeps moving is one a reader has to wait out before reading it.
+ */
+function play() {
+  if (app.playing) { stop(); return; }
+  if (!app.circuit || !app.circuit.gates.length) return;
+  if (app.index === lastStep()) setStep(0);
+  app.playing = true;
+  $('play').textContent = '❚❚';
+  app.timer = setInterval(() => {
+    setStep(app.index + 1);
+    if (app.index === lastStep()) stop();
+  }, PLAY_MS);
+}
+
+function stop() {
+  app.playing = false;
+  clearInterval(app.timer);
+  $('play').textContent = '▶';
+}
 
 /** Say which of the two the picture is, on the control that chooses between them. */
 function showModel() {
@@ -296,6 +336,8 @@ function setModel(which) {
 
 /** Read the circuit box, draw what it says, and say plainly when it says nothing valid. */
 function compile() {
+  // Whatever is playing is playing through a circuit that is about to be replaced.
+  stop();
   // Saved first, and on every path: a circuit that does not parse is still work, and so
   // is whatever has been written beside it. Only the success path used to save, so an
   // afternoon in the specification box vanished if the circuit had a typo in it.
@@ -319,7 +361,7 @@ function compile() {
   // specification denotes can be a different size entirely, and holding a zoom chosen
   // for the old one would leave the new one half off the plate.
   app.zoom = 'fit';
-  const { svg, columns } = circuitStrip(app.circuit, (i) => setStep(i + 1));
+  const { svg, columns } = circuitStrip(app.circuit, (i) => jump(i + 1));
   app.columns = columns;
   $('circuit').replaceChildren(svg);
   // A strip dragged tall for a twelve-qubit circuit must not stay tall for a two-qubit
@@ -893,10 +935,11 @@ export function boot() {
 
   // A circuit worth stepping through is usually worth seeing the end of first, and
   // getting back to the input set afterwards should not be twelve clicks.
-  $('first').addEventListener('click', () => setStep(0));
-  $('prev').addEventListener('click', () => setStep(app.index - 1));
-  $('next').addEventListener('click', () => setStep(app.index + 1));
-  $('last').addEventListener('click', () => setStep(lastStep()));
+  $('first').addEventListener('click', () => jump(0));
+  $('prev').addEventListener('click', () => jump(app.index - 1));
+  $('play').addEventListener('click', play);
+  $('next').addEventListener('click', () => jump(app.index + 1));
+  $('last').addEventListener('click', () => jump(lastStep()));
 
   $('zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
   $('zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
@@ -957,10 +1000,11 @@ export function boot() {
     if (zooms[e.key]) { e.preventDefault(); zooms[e.key](); return; }
     // Alt+Left is Back and Shift+Left extends a selection; a step is not worth either.
     if (e.altKey || e.shiftKey) return;
-    if (e.key === 'ArrowLeft') setStep(app.index - 1);
-    else if (e.key === 'ArrowRight') setStep(app.index + 1);
-    else if (e.key === 'Home') setStep(0);
-    else if (e.key === 'End') setStep(lastStep());
+    if (e.key === ' ') { e.preventDefault(); play(); return; }
+    if (e.key === 'ArrowLeft') jump(app.index - 1);
+    else if (e.key === 'ArrowRight') jump(app.index + 1);
+    else if (e.key === 'Home') jump(0);
+    else if (e.key === 'End') jump(lastStep());
     else return;
     e.preventDefault();
   });
