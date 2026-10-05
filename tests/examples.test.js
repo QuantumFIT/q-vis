@@ -196,3 +196,34 @@ test('a Toffoli chain costs what it should', () => {
     assert.equal(tGates, 7 * toffolis, `${n} qubits: ${toffolis} Toffolis at seven T each`);
   }
 });
+
+test('a graph state is the sign of its edges, and the graph sets the width', () => {
+  // (-1)^(edges inside x) / sqrt(2^n), read off the circuit's own cz lines, so a wrong
+  // edge list shows up here rather than as a plausible-looking diagram.
+  const graphs = EXAMPLES.filter((ex) => ex.name.startsWith('Graph state'));
+  assert.deepEqual(graphs.map((ex) => ex.name),
+    ['Graph state: ring', 'Graph state: star', 'Graph state: complete']);
+  const sizeOf = {};
+  for (const graph of graphs) {
+    for (const n of graph.sizes) {
+      const instance = instantiate(graph, n);
+      const edges = [...instance.qasm.matchAll(/cz q\[(\d+)\],q\[(\d+)\];/g)].map((m) => [+m[1], +m[2]]);
+      const { dd, root } = run(instance);
+      sizeOf[`${graph.name} ${n}`] = dd.size(root);
+      if (n > 8) continue;
+      for (let b = 0; b < 2 ** n; b++) {
+        const bits = b.toString(2).padStart(n, '0');
+        const inside = edges.filter(([i, j]) => bits[i] === '1' && bits[j] === '1').length;
+        const { re, im } = Z.toComplex(P.asScalar(dd.evaluate(root, bits)));
+        assert.ok(Math.abs(re - (-1) ** inside / Math.sqrt(2 ** n)) < 1e-12 && Math.abs(im) < 1e-12,
+          `${graph.name} on ${n}: |${bits}> has the wrong sign`);
+      }
+    }
+  }
+  for (let n = 5; n <= 12; n++) {
+    // The star only has to remember q0: two nodes a level, whatever n is.
+    assert.equal(sizeOf[`Graph state: star ${n}`], 2 * n, `star on ${n}`);
+    // Every pair is an edge, yet the diagram is narrower than the ring's, which has n.
+    assert.ok(sizeOf[`Graph state: complete ${n}`] < sizeOf[`Graph state: ring ${n}`], `complete vs ring on ${n}`);
+  }
+});

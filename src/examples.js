@@ -153,6 +153,27 @@ ${chain.join('\n')}
 /** How many Toffolis an X controlled on n-1 qubits costs. */
 const toffoliCount = (n) => (n === 3 ? 1 : 2 * n - 5);
 
+/**
+ * A graph state: |+> on every qubit, then a controlled-Z on every edge. The amplitude of
+ * |x> is +-1/sqrt(2^n), negative when the qubits x sets span an odd number of edges, so
+ * the width of the diagram at a level is how much it has to remember about the qubits
+ * above it to settle that sign. That is what tells the shapes apart.
+ */
+function graphState(n, edges, what) {
+  return `${HEADER}
+qreg q[${n}];
+
+// |+> everywhere, then a controlled-Z on every edge: ${what}
+h q;
+
+${edges.map(([a, b]) => `cz q[${a}],q[${b}];`).join('\n')}
+`;
+}
+
+const ringEdges = (n) => range(0, n - 1).map((i) => [i, (i + 1) % n]);
+const starEdges = (n) => range(1, n - 1).map((i) => [0, i]);
+const completeEdges = (n) => range(0, n - 1).flatMap((i) => range(i + 1, n - 1).map((j) => [i, j]));
+
 export const EXAMPLES = [
   {
     name: 'Bell pair',
@@ -189,6 +210,34 @@ ${each(n, (i) => `h q[${i}];`)}
 
 ${each(n - 1, (i) => `cz q[${i}],q[${i + 1}];`)}
 `,
+    state: zeros,
+  },
+  {
+    name: 'Graph state: ring',
+    // From three: a ring on two qubits is one edge, which is the cluster state above.
+    sizes: range(3, 12),
+    defaultSize: 5,
+    // The widest of the graphs: the last edge closes back onto q0, so every level has to
+    // carry q0 down as well as what the path needs.
+    qasm: (n) => graphState(n, ringEdges(n),
+      `a ring. The edge back to q[0] is why this is the widest diagram of the graphs.`),
+    state: zeros,
+  },
+  {
+    name: 'Graph state: star',
+    sizes: range(3, 12),
+    defaultSize: 5,
+    qasm: (n) => graphState(n, starEdges(n),
+      `a star around q[0]. Below it the only thing to remember is q[0], so two nodes a level.`),
+    state: zeros,
+  },
+  {
+    name: 'Graph state: complete',
+    // From four: the complete graph on three qubits is the ring on three.
+    sizes: range(4, 12),
+    defaultSize: 5,
+    qasm: (n) => graphState(n, completeEdges(n),
+      `every pair. Many edges, yet a narrow diagram: the sign depends only on how many qubits are set.`),
     state: zeros,
   },
   {
