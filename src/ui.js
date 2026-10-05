@@ -83,13 +83,13 @@ const $ = (id) => document.getElementById(id);
  * as X^x Z^z internally but printed with Y, which owes the weight a factor of (-i) for
  * every Y — so the two are put back together before either is shown.
  */
-function limLabel(e, i, n, show, levelOf = null) {
+function limLabel(e, i, n, show, levelOf = null, below = 0) {
   const owed = Pauli.phaseShift(e);
   const w = owed ? P.mul(e.w, P.fromZ(Z.omegaPow(-2 * owed))) : e.w;
   const text = show(w, i);
   if (Pauli.isIdentityString(e)) return text;
   if (P.isZero(w)) return text;
-  return P.attachCoefficient(text, Pauli.formatString(e, n, levelOf));
+  return P.attachCoefficient(text, Pauli.formatString(e, n, levelOf, below));
 }
 
 /** Parse both inputs, run the circuit, lay every frame out. Keeps the last good
@@ -170,7 +170,7 @@ function compile() {
     app.limdd = li;
     const memo = new Map();
     const built = frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) }));
-    const label = (e, i) => limLabel(e, i, circuit.nqubits, show, app.levelOf);
+    const label = (e, i, below) => limLabel(e, i, circuit.nqubits, show, app.levelOf, below);
     // The tree here is the diagram unfolded rather than rebuilt: which labels a LIMDD
     // chooses depends on the diagram it is building, so a tree computed on its own would
     // be a different thing wearing the same name. See layoutEdgeValuedTree.

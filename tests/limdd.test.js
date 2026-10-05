@@ -11,7 +11,8 @@ import { simulate } from '../src/sim.js';
 import { allInstances } from '../src/examples.js';
 import { rng, randInt } from './helpers.js';
 import { pauliClassCount } from './oracle.js';
-import { layoutEdgeValuedTree } from '../src/layout.js';
+import { layoutEdgeValued, layoutEdgeValuedTree } from '../src/layout.js';
+import * as Pauli from '../src/pauli.js';
 
 const allBits = (n) => Array.from({ length: 1 << n }, (_, i) => i.toString(2).padStart(n, '0'));
 const make = (n, kind = 'low') => new LIMDD(P.Ring, n, unitNormaliser(P, Z, kind));
@@ -278,5 +279,51 @@ test('the diagram is a function of the state, not of what was built before it', 
       assert.equal(P.Ring.key(a.w), P.Ring.key(b.w), `${kind}: root weight depends on history`);
       assert.equal(`${a.x}.${a.z}`, `${b.x}.${b.z}`, `${kind}: root Pauli depends on history`);
     }
+  }
+});
+
+test('an edge\'s string acts only on the qubits below where it starts', () => {
+  // Which is what lets a label leave the others out: an edge out of a node at level L
+  // leads to a state on levels L+1 and down, and a letter for anything above would be
+  // a letter for a qubit that is not there. Checked rather than assumed, on every example.
+  for (const instance of allInstances()) {
+    const circuit = parseQasm(instance.qasm);
+    const n = circuit.nqubits;
+    if (n > Pauli.MAX_QUBITS) continue;
+    const dd = new MTBDD(P.Ring, n);
+    const frames = simulate(dd, buildState(dd, parseState(instance.state, n).entries), circuit);
+    const li = make(n);
+    const memo = new Map();
+    for (const f of frames) {
+      const edge = li.fromMTBDD(dd, f.root, memo);
+      for (const id of li.reachable(edge)) {
+        if (li.isTerminal(id)) continue;
+        const above = (1 << (li.levelOf(id) + 1)) - 1;
+        for (const e of [li.lowOf(id), li.highOf(id)]) {
+          assert.equal((e.x | e.z) & above, 0,
+            `${instance.name} on ${instance.size}: an edge out of level ${li.levelOf(id)} reaches above it`);
+        }
+      }
+    }
+  }
+});
+
+test('a label has one letter per qubit below its source, in both layouts', () => {
+  const n = 4;
+  const { li, edge } = build(graphState(n, [[0, 1], [1, 2], [2, 3], [3, 0]]), zeros(n));
+  const show = (e, i, below) => (Pauli.isIdentityString(e) ? '' : Pauli.formatString(e, n, null, below));
+  const names = Array.from({ length: n }, (_, q) => `q${q}`);
+  for (const lay of [layoutEdgeValued, layoutEdgeValuedTree]) {
+    const [frame] = lay(li, [{ index: 0, gate: null, edge }], names, show).frames;
+    const levelOf = new Map(frame.nodes.map((nd) => [nd.id, nd.level]));
+    let strings = 0;
+    for (const e of frame.edges) {
+      if (!e.label) continue;
+      strings++;
+      assert.equal(e.label.split('⊗').length, n - 1 - levelOf.get(e.from),
+        `${lay.name}: ${e.label} out of level ${levelOf.get(e.from)}`);
+    }
+    assert.ok(strings > 0, `${lay.name}: the ring state has strings to check`);
+    if (frame.rootWeight) assert.equal(frame.rootWeight.split('⊗').length, n, 'the root edge spans every qubit');
   }
 });

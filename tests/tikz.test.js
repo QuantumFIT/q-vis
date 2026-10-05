@@ -36,12 +36,12 @@ function laidOut(instance, { view = 'reduced', format = 'exact', tree = false } 
     const li = new LIMDD(P.Ring, n, unitNormaliser(P, Z, 'low'));
     const memo = new Map();
     const built = frames.map((f) => ({ index: f.index, gate: f.gate, edge: li.fromMTBDD(dd, f.root, memo) }));
-    const label = (e, i) => {
+    const label = (e, i, below) => {
       const owed = Pauli.phaseShift(e);
       const w = owed ? P.mul(e.w, P.fromZ(Z.omegaPow(-2 * owed))) : e.w;
       const text = show(w, i);
       if (Pauli.isIdentityString(e) || P.isZero(w)) return text;
-      return P.attachCoefficient(text, Pauli.formatString(e, n));
+      return P.attachCoefficient(text, Pauli.formatString(e, n, null, below));
     };
     layout = tree ? layoutEdgeValuedTree(li, built, qubitLabels, label)
       : layoutEdgeValued(li, built, qubitLabels, label);

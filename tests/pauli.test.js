@@ -149,6 +149,12 @@ test('a string prints as a tensor product, with Y where X and Z meet', () => {
   assert.equal(Pauli.formatString({ x: 0b011, z: 0b110 }, 3), 'X⊗Y⊗Z');
   assert.equal(Pauli.formatString({ x: 0, z: 0 }, 4), 'I⊗I⊗I⊗I');
   assert.equal(Pauli.formatString({ x: 1, z: 0 }, 1), 'X', 'one qubit needs no operator');
+  // From a level down: the qubits above it have no letter at all.
+  assert.equal(Pauli.formatString({ x: 0b011, z: 0b110 }, 3, null, 1), 'Y⊗Z');
+  assert.equal(Pauli.formatString({ x: 0b100, z: 0 }, 3, null, 2), 'X');
+  // Under an order the cut is by level, and what is left is still in qubit order.
+  assert.equal(Pauli.formatString({ x: 0b101, z: 0b010 }, 3, [2, 0, 1], 1), 'X⊗Z',
+    'q0 at level 2 is X, q1 at level 0 is cut, q2 at level 1 is Z');
   // XZ is -i*Y, so printing that Y owes the weight a factor of -i.
   assert.equal(Pauli.phaseShift({ x: 0b011, z: 0b110 }), 1);
   assert.equal(Pauli.phaseShift({ x: 0b011, z: 0b011 }), 2);

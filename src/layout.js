@@ -300,7 +300,9 @@ function layoutTrees(dd, frames, labels, show, weighting) {
  * @param {import('./evdd.js').EVDD} ev
  * @param {{index:number, gate:?object, edge:object}[]} frames
  * @param {string[]} labels qubit names
- * @param {(v: any, frameIndex: number) => string} show
+ * @param {(e: object, frameIndex: number, below: number) => string} showEdge `below` is
+ *   the first level under the edge's source — 0 for the root edge — which is all a LIMDD
+ *   label needs to spell out
  */
 export function layoutEdgeValued(ev, frames, labels, showEdge) {
   const out = [];
@@ -374,7 +376,7 @@ export function layoutEdgeValued(ev, frames, labels, showEdge) {
       if (ev.isTerminal(id)) continue;
       for (const high of [false, true]) {
         const e = high ? ev.highOf(id) : ev.lowOf(id);
-        const weight = showEdge(e, frame.index);
+        const weight = showEdge(e, frame.index, ev.levelOf(id) + 1);
         edges.push({
           from: id,
           to: e.node,
@@ -390,7 +392,7 @@ export function layoutEdgeValued(ev, frames, labels, showEdge) {
       index: frame.index,
       gate: frame.gate,
       root: root.node,
-      rootWeight: showEdge(root, frame.index),
+      rootWeight: showEdge(root, frame.index, 0),
       nodes,
       edges,
       size: nodes.length,
@@ -422,7 +424,8 @@ export function layoutEdgeValued(ev, frames, labels, showEdge) {
  * @param {{nvars:number, ring:object, zeroEdge:object}} ev an EVDD or a LIMDD
  * @param {{index:number, gate:?object, edge:object}[]} frames
  * @param {string[]} labels qubit names
- * @param {(e: object, frameIndex: number) => string} showEdge
+ * @param {(e: object, frameIndex: number, below: number) => string} showEdge as for
+ *   layoutEdgeValued
  */
 export function layoutEdgeValuedTree(ev, frames, labels, showEdge) {
   const n = ev.nvars;
@@ -493,7 +496,7 @@ export function layoutEdgeValuedTree(ev, frames, labels, showEdge) {
         for (const high of [false, true]) {
           const to = idOf(level + 1, path * 2 + (high ? 1 : 0));
           const e = incoming.get(to);
-          const text = showEdge(e, frame.index);
+          const text = showEdge(e, frame.index, level + 1);
           edges.push({ from: id, to, high, toZero: ev.ring.isZero(e.w), label: text === '1' ? '' : text });
         }
       }
@@ -503,7 +506,7 @@ export function layoutEdgeValuedTree(ev, frames, labels, showEdge) {
       index: frame.index,
       gate: frame.gate,
       root: idOf(0, 0),
-      rootWeight: showEdge(frame.edge, frame.index),
+      rootWeight: showEdge(frame.edge, frame.index, 0),
       nodes,
       edges,
       size: nodes.length,

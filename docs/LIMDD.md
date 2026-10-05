@@ -8,6 +8,14 @@ Coopmans, Elkouss, Dunjko and Laarman, [arXiv:2108.00931](https://arxiv.org/abs/
 An edge reads `w·X⊗Z⊗I`: `w` times X on the first qubit, Z on the second, nothing on
 the third. An unlabelled edge is the identity with weight 1, as usual.
 
+Only the root edge spells out every qubit. An edge out of a node at level L leads to a
+state on the qubits below L, so its string has one letter for each of those and none for
+the rest: on four qubits the root edge has four letters, the edges out of q0 have three,
+and the edges into the terminal have none, so they show only a weight. `tests/limdd.test.js`
+checks that no string ever acts at or above its source, which is what makes dropping the
+letters lossless. Under a qubit order the cut is by level, and the letters that are left
+stay in qubit order, as the full strings do.
+
 ## What it buys
 
 Their Theorem 1: a state is a stabilizer state **exactly when** its LIMDD is a *tower* —

@@ -144,11 +144,17 @@ const LETTERS = [['I', 'Z'], ['X', 'Y']];
  * The masks are indexed by *level*, since that is what the diagram's algebra works in, so
  * under a qubit order the letter for qubit q comes from bit `levelOf[q]`. A Pauli string is
  * always written in qubit order: only the rows of the diagram move.
+ *
+ * `from` drops the qubits above a level. An edge out of a node at level L leads to a
+ * state on the qubits below L and nothing else, so its string has no letter to give the
+ * others: the edge has one letter per qubit below its source, and the strings get shorter
+ * row by row down the diagram, as they do in the paper.
  */
-export function formatString(a, n, levelOf = null) {
+export function formatString(a, n, levelOf = null, from = 0) {
   const letters = [];
   for (let q = 0; q < n; q++) {
     const bit = levelOf ? levelOf[q] : q;
+    if (bit < from) continue;
     letters.push(LETTERS[(a.x >> bit) & 1][(a.z >> bit) & 1]);
   }
   return letters.join('⊗');
