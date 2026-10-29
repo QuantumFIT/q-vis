@@ -530,16 +530,22 @@ button:disabled { color: var(--ink-faint); cursor: default; }
 .gutter {
   fill: var(--ink-faint);
   transition: fill .3s;
-  font: 10px/1 var(--mono);
-  font-size: calc(10px * var(--unzoom, 1));
+  font: 12px/1 var(--mono);
+  font-size: calc(12px * var(--unzoom, 1));
   text-anchor: end;
   dominant-baseline: middle;
 }
 .gutter.band {
   font-family: var(--sans);
   letter-spacing: 0.1em;
-  font-size: calc(9px * var(--unzoom, 1));
+  font-size: calc(11px * var(--unzoom, 1));
 }
+/*
+ * An exponent in a gutter note, sized and raised in em so it follows the text it hangs
+ * off. In user units it would not: the note is held at screen size by --unzoom and the
+ * exponent would grow with the plate, until it was larger than its base.
+ */
+.gutter .sup { font-size: 0.72em; }
 
 .edge {
   fill: none;

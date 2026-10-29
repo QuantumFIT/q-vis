@@ -385,7 +385,7 @@ function resetCanvas() {
   // The gutter has to fit the longest thing written in it — register names can be much
   // wider than "q[0]" — or the labels get clipped at the left edge of the plate.
   const longest = Math.max(BAND_LABEL.length, ...app.circuit.qubits.map((q) => q.label.length));
-  const gutter = Math.max(GEO.gutter, Math.round(longest * 6.3) + 26);
+  const gutter = Math.max(GEO.gutter, Math.round(longest * 7.6) + 26);
   // Amplitude boxes are the widest things drawn, so they set the column width. Measured
   // over every frame, not just the current one, so stepping never rescales the plate.
   let widest = 0;
@@ -757,7 +757,7 @@ function drawFrame(f) {
     || f.edges?.some((e) => e.label?.includes('ω'));
   app.omegaNote.style.display = showsOmega ? '' : 'none';
   if (showsOmega) {
-    const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
+    const sup = svgEl('tspan', { class: 'sup', dy: '-0.55em' });
     sup.textContent = `iπ/${level}`;
     app.omegaNote.replaceChildren('ω = e', sup);
   }
@@ -770,7 +770,7 @@ function drawFrame(f) {
     app.tupleNote.replaceChildren(level === 4
       ? '(a,b,c,d) = aω³+bω²+cω+d, over √2'
       : `(c${level - 1}…c0) = Σ cjωʲ, over √2`);
-    const sup = svgEl('tspan', { dy: -4, 'font-size': 8 });
+    const sup = svgEl('tspan', { class: 'sup', dy: '-0.55em' });
     sup.textContent = String(app.commonK[f.index]);
     app.tupleNote.append(sup);
   }
@@ -1159,8 +1159,9 @@ function exportSvg() {
     .band-rule { stroke: ${v('--rule')}; stroke-width: 1 }
     .gutter-bg { fill: ${v('--plate')} }
     .gutter-edge { stroke: none }
-    .gutter { fill: ${v('--ink-faint')}; font: 10px monospace; text-anchor: end; dominant-baseline: middle }
-    .gutter.band { font: 9px sans-serif; letter-spacing: .1em }
+    .gutter { fill: ${v('--ink-faint')}; font: 12px monospace; text-anchor: end; dominant-baseline: middle }
+    .gutter.band { font: 11px sans-serif; letter-spacing: .1em }
+    .gutter .sup { font-size: .72em }
     .gutter.legend-cap { text-anchor: start }
     .level-rule.acting { stroke: ${v('--accent')}; opacity: .55 }
     .gutter.acting { fill: ${v('--accent')} }
