@@ -200,11 +200,16 @@ const CELL_BUDGET = 900;
  */
 export function circuitTikz(circuit, opts = {}) {
   const n = circuit.nqubits;
+  // Wires go in the diagram's row order, so the figure and the diagram line up; quantikz
+  // spans a control or a swap by a count of rows, which is why rows are what is counted.
+  const order = opts.order?.length === n ? opts.order : Array.from({ length: n }, (_, q) => q);
+  const rowOf = [];
+  order.forEach((q, r) => { rowOf[q] = r; });
   const rows = Array.from({ length: n }, () => []);
 
   for (const gate of circuit.gates) {
     const draw = gate.draw || { controls: 0, target: 'box', symbol: gate.label };
-    const involved = [...gate.qubits].sort((a, b) => a - b);
+    const involved = [...gate.qubits].sort((a, b) => rowOf[a] - rowOf[b]);
     const controls = new Set(gate.qubits.slice(0, draw.controls));
     const targets = gate.qubits.slice(draw.controls);
     // A swap only reads as a swap when it has no decoration to lose. iSWAP and anything
@@ -215,7 +220,7 @@ export function circuitTikz(circuit, opts = {}) {
     const cells = new Map();
     involved.forEach((q, index) => {
       const next = involved[index + 1];
-      const delta = next === undefined ? null : next - q;
+      const delta = next === undefined ? null : rowOf[next] - rowOf[q];
       let cell;
       if (controls.has(q) || (draw.target === 'dot' && targets.includes(q))) {
         cell = delta === null ? '\\control{}' : `\\ctrl{${delta}}`;
@@ -230,7 +235,7 @@ export function circuitTikz(circuit, opts = {}) {
       cells.set(q, cell);
     });
 
-    for (let q = 0; q < n; q++) rows[q].push(cells.get(q) ?? '\\qw');
+    order.forEach((q, r) => rows[r].push(cells.get(q) ?? '\\qw'));
   }
 
   // A few hundred columns in one environment exhausts TeX's memory, and would be
@@ -238,8 +243,8 @@ export function circuitTikz(circuit, opts = {}) {
   // long circuit is drawn on paper.
   const stave = (from, to) => [
     '\\begin{quantikz}',
-    rows.map((cells, q) => {
-      const label = qubitLatex(circuit.qubits[q].label);
+    rows.map((cells, r) => {
+      const label = qubitLatex(circuit.qubits[order[r]].label);
       const slice = cells.slice(from, to);
       return `  \\lstick{$${label}$} & ${[...slice, '\\qw'].join(' & ')}`;
     }).join(' \\\\\n'),

@@ -31,15 +31,21 @@ const capWidth = (symbol) => Math.max(CIRC.boxW, symbol.length * 7 + 8);
  * @param {object} circuit as `parseQasm` returns it
  * @param {(step: number) => void} onPick called with the gate index a column stands for,
  *   or -1 for the column before any gate
+ * @param {?number[]} [order] the qubits top to bottom, when the rows beside it are not in
+ *   circuit order: a wire sits on the row of the qubit it carries, so the strip and the
+ *   diagram read across at the same height
  * @returns {{svg: SVGElement, columns: SVGElement[]}} the drawing, and one transparent
  *   strip per step in step order, for the caller to highlight as it likes
  */
-export function circuitStrip(circuit, onPick) {
+export function circuitStrip(circuit, onPick, order = null) {
   const n = circuit.nqubits;
+  const rows = order ?? Array.from({ length: n }, (_, q) => q);
+  const rowOf = [];
+  rows.forEach((q, r) => { rowOf[q] = r; });
   const gates = circuit.gates;
   const gutter = Math.max(44, Math.round(Math.max(...circuit.qubits.map((q) => q.label.length)) * 6.4) + 16);
   const H = CIRC.padY * 2 + n * CIRC.rowH;
-  const wireY = (q) => CIRC.padY + CIRC.rowH * (q + 0.5);
+  const wireY = (q) => CIRC.padY + CIRC.rowH * (rowOf[q] + 0.5);
 
   // Columns are only as wide as what they hold. A fixed width was enough while the widest
   // cap was 'S†'; a rotation writes its angle in the box, so 'U(π/2,0,π)' is three times
@@ -69,7 +75,7 @@ export function circuitStrip(circuit, onPick) {
   const art = svgEl('g', { class: 'art' });
   svg.append(strips, art);
 
-  for (let q = 0; q < n; q++) {
+  for (const q of rows) {
     art.append(svgEl('line', { class: 'wire', x1: gutter - 4, y1: wireY(q), x2: W - 6, y2: wireY(q) }));
     const label = svgEl('text', { class: 'wire-label', x: gutter - 12, y: wireY(q) });
     label.textContent = circuit.qubits[q].label;

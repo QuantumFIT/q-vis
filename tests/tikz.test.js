@@ -186,6 +186,35 @@ test('every vertical offset lands on a row the gate actually touches', () => {
   }
 });
 
+test('under an order the wires are the diagram\'s rows, and still connect right', () => {
+  // Reversed and shuffled: each row is the qubit the order puts there, and an offset
+  // counts drawn rows, so it has to land on a row whose qubit the gate touches.
+  for (const instance of allInstances()) {
+    const circuit = parseQasm(instance.qasm);
+    const n = circuit.nqubits;
+    if (circuit.gates.length > 32 || n < 2) continue;
+    const reversed = Array.from({ length: n }, (_, q) => n - 1 - q);
+    const shuffled = Array.from({ length: n }, (_, q) => (q * 3 + 1) % n);
+    for (const order of [reversed, new Set(shuffled).size === n ? shuffled : reversed]) {
+      const tex = circuitTikz(circuit, { order });
+      const labels = [...tex.matchAll(/\\lstick\{\$(.*?)\$\}/g)].map((m) => m[1]);
+      assert.deepEqual(labels, order.map((q) => qubitLatex(circuit.qubits[q].label)), instance.name);
+      const rows = cellsOf(tex);
+      circuit.gates.forEach((gate, column) => {
+        const touched = new Set(gate.qubits);
+        rows.forEach((row, r) => {
+          const cell = row[column];
+          assert.equal(cell !== '\\qw', touched.has(order[r]), `${instance.name}: ${gate.name} on row ${r}`);
+          for (const [, delta] of cell.matchAll(/\\(?:ctrl|vqw|swap)\{(-?\d+)\}/g)) {
+            assert.ok(Number(delta) > 0 && touched.has(order[r + Number(delta)]),
+              `${instance.name}: ${gate.name} points from row ${r} by ${delta}`);
+          }
+        });
+      });
+    }
+  }
+});
+
 test('a long circuit is broken into staves, and says why', () => {
   const grover = instantiate(EXAMPLES.find((ex) => ex.name === 'Grover'), 6);
   const tex = circuitTikz(parseQasm(grover.qasm));

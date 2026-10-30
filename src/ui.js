@@ -62,6 +62,7 @@ const app = {
   levelOf: [],            // its inverse: where each qubit sits
   theme: 'auto',
   ampFormat: 'exact',
+  circuitFollows: true,   // the circuit's wires drawn in the diagram's order
   zoom: 'fit',
   scale: 1,
   nodeEls: new Map(),
@@ -364,9 +365,16 @@ function fail(e, where) {
 
 // ---- the circuit -------------------------------------------------------
 
+/**
+ * The order the circuit's wires are drawn in: the diagram's, so that a wire is level with
+ * the row it decides, unless the reader has asked for the circuit as written. A view
+ * preference rather than part of the state, so it is kept per browser and not in links.
+ */
+const circuitOrder = () => (app.circuitFollows ? app.order : null);
+
 /** The strip, drawn by the shared renderer; here a column is a step of the animation. */
 function renderCircuit() {
-  const { svg, columns } = circuitStrip(app.circuit, (i) => { stop(); setFrame(i + 1); });
+  const { svg, columns } = circuitStrip(app.circuit, (i) => { stop(); setFrame(i + 1); }, circuitOrder());
   app.colEls = columns;
   $('circuit').replaceChildren(svg);
   refit();
@@ -1202,7 +1210,7 @@ function showTikz(what) {
   // from — pinned to this build, so it keeps showing this figure.
   const link = permalinkPair();
   const text = what === 'circuit'
-    ? circuitTikz(app.circuit, { link })
+    ? circuitTikz(app.circuit, { link, order: circuitOrder() })
     : diagramTikz(app.layout, app.index, {
       qubitLabels: app.order.map((q) => app.circuit.qubits[q].label),
       bandLabel: BAND_LABEL.toLowerCase(),
@@ -1721,6 +1729,7 @@ async function copyPermalink() {
 const STORE = 'q-vis:v1';
 const THEME_STORE = 'q-vis:theme';
 const AMP_STORE = 'q-vis:amplitudes';
+const CIRCUIT_ORDER_STORE = 'q-vis:circuit-order';
 const THEMES = ['auto', 'light', 'dark'];
 // A symbol rather than the word: the control is a single glyph among other controls, and
 // the word for the current state reads like a label for what clicking will do.
@@ -1940,6 +1949,12 @@ export function boot() {
     app.zoom = held;
     fitCanvas();
   });
+  $('circuitFollows').addEventListener('change', (e) => {
+    app.circuitFollows = e.target.checked;
+    try { localStorage.setItem(CIRCUIT_ORDER_STORE, app.circuitFollows ? '1' : '0'); } catch { /* storage may be unavailable */ }
+    renderCircuit();
+    setFrame(app.index);
+  });
   $('zoomIn').addEventListener('click', () => zoomBy(ZOOM_STEP));
   $('zoomOut').addEventListener('click', () => zoomBy(1 / ZOOM_STEP));
   $('zoomLevel').addEventListener('click', () => setZoom('fit'));
@@ -2038,6 +2053,11 @@ export function boot() {
     if (AMP_FORMATS.includes(normaliseFormat(amp))) app.ampFormat = normaliseFormat(amp);
   } catch { /* storage may be unavailable */ }
   $('ampFormat').value = app.ampFormat;
+
+  try {
+    app.circuitFollows = localStorage.getItem(CIRCUIT_ORDER_STORE) !== '0';
+  } catch { /* storage may be unavailable */ }
+  $('circuitFollows').checked = app.circuitFollows;
 
   // A link wins over whatever this browser happened to be looking at last.
   if (applyPermalink()) return;

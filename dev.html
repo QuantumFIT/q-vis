@@ -61,6 +61,8 @@
           <select id="order" aria-label="which qubit each level decides"></select>
           <button id="sift" type="button"
             title="search for an order that makes the widest frame of the run smaller">sift</button>
+          <label class="toggle"><input type="checkbox" id="circuitFollows" checked
+            title="draw the circuit's wires in this order too, so each wire is level with the row it decides"> circuit too</label>
         </div>
         <input id="orderText" type="text" spellcheck="false" hidden
           aria-label="the qubits, top level first"
