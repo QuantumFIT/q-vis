@@ -1030,7 +1030,7 @@ function buildHelp() {
     ['crz(pi/4) q[0],q[1];', 'the same rotation under a control; crx and cry likewise'],
     ['u3(pi/2,0,pi) q[0];', 'the general one-qubit gate — here, H; u and cu3 likewise'],
     ['u2(0,pi) q[0];', 'u3 with a first angle of π/2'],
-    ['rxx(pi/2) q[0],q[1];', 'the two-qubit rotation exp(-iθ X⊗X/2); rzz likewise'],
+    ['rxx(pi/2) q[0],q[1];', 'the two-qubit rotation exp(-iθ X⊗X/2); ryy and rzz likewise'],
   ]));
 
   body.append(el('h3', null, 'The input state'));
@@ -1671,6 +1671,20 @@ function permalinkPair() {
   return { pinned, current: current === pinned ? null : current };
 }
 
+/**
+ * quedit (QuantumFIT/quedit), the circuit editor, reads OpenQASM 2 from the same `#c=`
+ * a link here carries, so handing a circuit over is the circuit and nothing else: the
+ * input state and the view mean nothing there. The link is an anchor in the page, to the
+ * current quedit rather than a pinned one — a way to go and edit, not a link to keep —
+ * and gains the circuit just before it is followed, by any button.
+ */
+function linkToQuedit() {
+  const a = $('toQuedit');
+  const p = new URLSearchParams();
+  p.set('c', encodeText($('qasm').value));
+  a.href = `${a.href.split('#')[0]}#${p}`;
+}
+
 /** @returns {boolean} whether a link was found and applied */
 function applyPermalink() {
   if (!location.hash.startsWith('#c=')) return false;
@@ -1892,6 +1906,8 @@ export function boot() {
   });
   armDialog();
   $('permalink').addEventListener('click', copyPermalink);
+  $('toQuedit').addEventListener('pointerdown', linkToQuedit);
+  $('toQuedit').addEventListener('click', linkToQuedit);
   // Both state buttons are written for the circuit as currently *typed*, not the last one
   // that compiled: after editing the register the old state no longer parses, and that is
   // exactly when one of these is reached for.

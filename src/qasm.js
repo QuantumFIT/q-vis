@@ -11,7 +11,7 @@
 // an error message.
 
 import { GATES, controlled, phaseGate } from './gates.js';
-import { rxGate, ryGate, rzGate, rxxGate, rzzGate, uGate } from './gates.js';
+import { rxGate, ryGate, rzGate, rxxGate, ryyGate, rzzGate, uGate } from './gates.js';
 
 export class QasmError extends Error {
   constructor(message, line) {
@@ -176,6 +176,7 @@ const ROTATION_GATES = {
   cry: { angles: 1, half: 1, controls: 1, cap: 'Ry', make: (a) => controlled(ryGate(a[0])) },
   crz: { angles: 1, half: 1, controls: 1, cap: 'Rz', make: (a) => controlled(rzGate(a[0])) },
   rxx: { angles: 1, half: 1, controls: 0, cap: 'Rxx', make: (a) => rxxGate(a[0]) },
+  ryy: { angles: 1, half: 1, controls: 0, cap: 'Ryy', make: (a) => ryyGate(a[0]) },
   rzz: { angles: 1, half: 1, controls: 0, cap: 'Rzz', make: (a) => rzzGate(a[0]) },
   u: { angles: 3, half: 1, controls: 0, cap: 'U', make: (a) => uGate(a[0], a[1], a[2]) },
   u3: { angles: 3, half: 1, controls: 0, cap: 'U', make: (a) => uGate(a[0], a[1], a[2]) },

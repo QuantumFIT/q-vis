@@ -72,7 +72,7 @@ A finer phase moves the ring up a level instead of rounding, so a QFT is exact a
 width; `π/3` is refused at every level.
 
 The parametrised rotations are there too — `rx ry rz`, their controlled forms `crx cry
-crz`, the two-qubit `rxx rzz`, and the general one-qubit gate `u`/`u2`/`u3`/`cu3` — at the
+crz`, the two-qubit `rxx ryy rzz`, and the general one-qubit gate `u`/`u2`/`u3`/`cu3` — at the
 same kind of angle. A rotation turns through *half* its angle, so its entries are a cosine
 and a sine rather than a root of unity; those are exact here too, because
 cos(θ/2) = (z + z̄)/2 and halving is two factors of 1/√2, which the ring has. The cost is

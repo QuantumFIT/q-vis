@@ -166,6 +166,13 @@ export function rxxGate(t) {
   return [[c, O, O, m], [O, c, m, O], [O, m, c, O], [m, O, O, c]];
 }
 
+/** Ryy(t) = exp(-i t Y⊗Y/2): Rxx with the sign of the |00>,|11> coupling flipped. */
+export function ryyGate(t) {
+  const { c, s } = cosSin(t);
+  const m = Z.mul(NI, s);
+  return [[c, O, O, Z.neg(m)], [O, c, m, O], [O, m, c, O], [Z.neg(m), O, O, c]];
+}
+
 /** Rzz(t) = exp(-i t Z⊗Z/2), diagonal. */
 export function rzzGate({ j, d }) {
   const a = Z.rootPow(-j, 2 * d);

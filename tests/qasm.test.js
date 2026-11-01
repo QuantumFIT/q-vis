@@ -246,3 +246,27 @@ test('a name and an argument mean the same thing wherever they are written', () 
   assert.doesNotThrow(() => parseQasm(`${Q}gate g a { rx(pi/2) a; }\ng q[0];\n`));
   assert.throws(() => parseQasm(`${Q}gate loop a { loop a; }\nloop q[0];\n`), /expands recursively/);
 });
+
+test('ryy is exp(-i theta Y(x)Y/2), and agrees with its usual decomposition', () => {
+  // Written out against the closed form, and then against the decomposition into
+  // rx, cx and rz that toolchains define it by (quedit's exported OpenQASM 2 among them),
+  // so a sign slip in either corner pair cannot pass.
+  const t = Math.PI / 4;
+  const m = parseQasm(`${HEAD}qreg q[2];\nryy(pi/4) q[0],q[1];\n`).gates[0].matrix;
+  const c = Math.cos(t / 2), s = Math.sin(t / 2);
+  const want = [[[c, 0], 0, 0, [0, s]], [0, [c, 0], [0, -s], 0],
+    [0, [0, -s], [c, 0], 0], [[0, s], 0, 0, [c, 0]]];
+  want.forEach((row, r) => row.forEach((v, k) => {
+    const [re, im] = v || [0, 0];
+    assertClose(Z.toComplex(m[r][k]), { re, im }, `ryy entry ${r}${k}`);
+  }));
+
+  const dd = new MTBDD(P.Ring, 2);
+  const run = (body) => {
+    const circuit = parseQasm(`${HEAD}qreg q[2];\nh q[0];\nt q[0];\nh q[1];\n${body}`);
+    const frames = simulate(dd, dd.basisState('00', P.one), circuit);
+    return frames[frames.length - 1].root;
+  };
+  assert.equal(run('ryy(pi/4) q[0],q[1];\n'),
+    run('rx(pi/2) q[0];\nrx(pi/2) q[1];\ncx q[0],q[1];\nrz(pi/4) q[1];\ncx q[0],q[1];\nrx(-pi/2) q[0];\nrx(-pi/2) q[1];\n'));
+});
